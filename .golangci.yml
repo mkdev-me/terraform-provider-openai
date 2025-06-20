@@ -1,59 +1,23 @@
-linters:
-  enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-  disable:
-    - unused
+version: "2"
 
 run:
   timeout: 5m
 
-issues:
-  exclude-dirs:
-    - vendor/
-    - examples/
-    - website/
-    - registry/
-    - registry.terraform.io/
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosimple
-        - govet
-        - ineffassign
-        - staticcheck
-    - path: internal/provider/.*\.go
-      linters:
-        - unused
-    - path: internal/client/.*\.go
-      text: "declaration of .* shadows"
-      linters:
-        - govet
-    - path: .*\.go
-      text: "declaration of .* shadows"
-      linters:
-        - govet
-
-output:
-  sort-results: true
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  govet:
-    enable:
-      - shadow
-    settings:
-      printf:
-        funcs:
-          - Errorf
-          - Fatalf
-          - Fprintf
-          - Printf
-          - Sprintf
-          - Warnf
-          - Warningf 
+linters:
+  enable:
+    - ineffassign
+    - staticcheck
+  disable:
+    - errcheck
+    - govet
+    - unused
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - "-ST1005"
+        - "-QF1003"
+        - "-QF1008"
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1021"

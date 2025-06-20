@@ -36,7 +36,7 @@ signs:
       - "${artifact}"
 release:
   github:
-    owner: fjcorp
+    owner: mkdev-me
     name: terraform-provider-openai
   draft: true
   prerelease: auto
