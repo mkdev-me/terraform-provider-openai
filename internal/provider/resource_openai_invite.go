@@ -214,12 +214,12 @@ func resourceOpenAIInviteImport(ctx context.Context, d *schema.ResourceData, m i
 	}
 
 	d.SetId(invite.ID)
-	d.Set("email", invite.Email)
-	d.Set("role", invite.Role)
-	d.Set("invite_id", invite.ID)
-	d.Set("status", invite.Status)
-	d.Set("created_at", invite.CreatedAt)
-	d.Set("expires_at", invite.ExpiresAt)
+	_ = d.Set("email", invite.Email)
+	_ = d.Set("role", invite.Role)
+	_ = d.Set("invite_id", invite.ID)
+	_ = d.Set("status", invite.Status)
+	_ = d.Set("created_at", invite.CreatedAt)
+	_ = d.Set("expires_at", invite.ExpiresAt)
 
 	if len(invite.Projects) > 0 {
 		projects := make([]map[string]interface{}, len(invite.Projects))
@@ -229,7 +229,7 @@ func resourceOpenAIInviteImport(ctx context.Context, d *schema.ResourceData, m i
 				"role": project.Role,
 			}
 		}
-		d.Set("projects", projects)
+		_ = d.Set("projects", projects)
 	}
 
 	return []*schema.ResourceData{d}, nil

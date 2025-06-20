@@ -238,7 +238,7 @@ func dataSourceOpenAIBatchRead(ctx context.Context, d *schema.ResourceData, m in
 	}
 
 	// Convert metadata to strings for Terraform
-	if batchResponse.Metadata != nil && len(batchResponse.Metadata) > 0 {
+	if len(batchResponse.Metadata) > 0 {
 		metadataMap := make(map[string]string)
 		for k, v := range batchResponse.Metadata {
 			switch val := v.(type) {

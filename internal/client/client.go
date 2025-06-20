@@ -32,9 +32,7 @@ func NewClient(apiKey, organizationID, apiURL string) *OpenAIClient {
 	}
 
 	// Ensure the URL doesn't end with a slash
-	if strings.HasSuffix(apiURL, "/") {
-		apiURL = apiURL[:len(apiURL)-1]
-	}
+	apiURL = strings.TrimSuffix(apiURL, "/")
 
 	// Debug: Print the client configuration
 	fmt.Printf("DEBUG: Creating new OpenAI client with API URL: %s\n", apiURL)
@@ -2232,9 +2230,7 @@ func (c *OpenAIClient) newRequest(method, path string, body interface{}) (*http.
 
 	// Ensure APIURL doesn't end with /v1 to avoid duplication
 	baseURL := c.APIURL
-	if strings.HasSuffix(baseURL, "/v1") {
-		baseURL = strings.TrimSuffix(baseURL, "/v1")
-	}
+	baseURL = strings.TrimSuffix(baseURL, "/v1")
 
 	// Also remove trailing slash from base URL
 	baseURL = strings.TrimSuffix(baseURL, "/")
@@ -2418,9 +2414,7 @@ func SafeJoinURL(baseURL, path string) string {
 		trimmedBase = strings.TrimSuffix(trimmedBase, "/")
 
 		// Make sure the path starts with /v1 but remove any duplicate /v1 occurrences
-		if strings.HasPrefix(pathPart, "/v1") {
-			pathPart = strings.TrimPrefix(pathPart, "/v1")
-		}
+		pathPart = strings.TrimPrefix(pathPart, "/v1")
 		if !strings.HasPrefix(pathPart, "/") {
 			pathPart = "/" + pathPart
 		}
@@ -2439,9 +2433,7 @@ func SafeJoinURL(baseURL, path string) string {
 
 		// Extract clean path without any duplicate v1 prefixes
 		cleanPath := pathPart
-		if strings.HasPrefix(cleanPath, "/v1") {
-			cleanPath = strings.TrimPrefix(cleanPath, "/v1")
-		}
+		cleanPath = strings.TrimPrefix(cleanPath, "/v1")
 		if !strings.HasPrefix(cleanPath, "/") {
 			cleanPath = "/" + cleanPath
 		}
@@ -2471,9 +2463,7 @@ func SafeJoinURL(baseURL, path string) string {
 
 	// For other cases, ensure no duplicate v1 in path
 	cleanPath := pathPart
-	if strings.HasPrefix(cleanPath, "/v1") {
-		cleanPath = strings.TrimPrefix(cleanPath, "/v1")
-	}
+	cleanPath = strings.TrimPrefix(cleanPath, "/v1")
 
 	// Use standard URL joining with clean paths
 	trimmedBase := strings.TrimSuffix(baseURL, "/v1")

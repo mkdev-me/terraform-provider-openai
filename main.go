@@ -1,5 +1,8 @@
 package main
 
+//go:generate terraform fmt -recursive ./examples/
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+
 import (
 	"github.com/fjcorp/terraform-provider-openai/internal/provider"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"

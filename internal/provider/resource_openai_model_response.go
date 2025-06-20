@@ -671,10 +671,10 @@ func resourceOpenAIModelResponseImport(ctx context.Context, d *schema.ResourceDa
 	log.Printf("[INFO] Importing OpenAI model response with ID: %s", d.Id())
 
 	// Mark as imported resource
-	d.Set("imported", true)
+	_ = d.Set("imported", true)
 
 	// Also set preserve_on_change to true for imported resources to prevent recreation
-	d.Set("preserve_on_change", true)
+	_ = d.Set("preserve_on_change", true)
 
 	// Get OpenAI client
 	client, err := GetOpenAIClient(meta)
@@ -743,17 +743,17 @@ func resourceOpenAIModelResponseImport(ctx context.Context, d *schema.ResourceDa
 
 	// Try direct input field
 	if inputVal, ok := responseMap["input"].(string); ok && inputVal != "" {
-		d.Set("input", inputVal)
+		_ = d.Set("input", inputVal)
 		log.Printf("[DEBUG] Import: Found input directly in response: %s", truncateString(inputVal, 50))
 		inputFound = true
 	} else if request, ok := responseMap["request"].(map[string]interface{}); ok {
 		// Try request fields where input might be stored
 		if prompt, exists := request["prompt"]; exists && prompt != nil && prompt.(string) != "" {
-			d.Set("input", prompt)
+			_ = d.Set("input", prompt)
 			log.Printf("[DEBUG] Import: Found input in request.prompt: %s", truncateString(prompt.(string), 50))
 			inputFound = true
 		} else if input, exists := request["input"]; exists && input != nil && input.(string) != "" {
-			d.Set("input", input)
+			_ = d.Set("input", input)
 			log.Printf("[DEBUG] Import: Found input in request.input: %s", truncateString(input.(string), 50))
 			inputFound = true
 		} else if messages, exists := request["messages"].([]interface{}); exists && len(messages) > 0 {
@@ -763,7 +763,7 @@ func resourceOpenAIModelResponseImport(ctx context.Context, d *schema.ResourceDa
 				if ok {
 					if content, exists := msgMap["content"]; exists && content != nil &&
 						msgMap["role"] == "user" && content.(string) != "" {
-						d.Set("input", content)
+						_ = d.Set("input", content)
 						log.Printf("[DEBUG] Import: Found input in messages[user].content: %s",
 							truncateString(content.(string), 50))
 						inputFound = true
@@ -780,17 +780,17 @@ func resourceOpenAIModelResponseImport(ctx context.Context, d *schema.ResourceDa
 
 	// Handle top_p specially for imported resources
 	if topP, ok := responseMap["top_p"].(float64); ok {
-		d.Set("top_p", topP)
+		_ = d.Set("top_p", topP)
 		log.Printf("[DEBUG] Import: Found top_p in response: %v", topP)
 	} else if request, ok := responseMap["request"].(map[string]interface{}); ok {
 		if topP, ok := request["top_p"].(float64); ok {
-			d.Set("top_p", topP)
+			_ = d.Set("top_p", topP)
 			log.Printf("[DEBUG] Import: Found top_p in request: %v", topP)
 		}
 	}
 
 	// Mark as a special imported resource to prevent recreation
-	d.Set("_imported_resource", "true")
+	_ = d.Set("_imported_resource", "true")
 
 	// Read the computed attributes from the API response
 	diags := resourceOpenAIModelResponseRead(ctx, d, meta)

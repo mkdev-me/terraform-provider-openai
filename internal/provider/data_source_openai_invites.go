@@ -113,7 +113,7 @@ func dataSourceOpenAIInvitesRead(ctx context.Context, d *schema.ResourceData, m 
 		if strings.Contains(err.Error(), "timeout") ||
 			strings.Contains(err.Error(), "deadline exceeded") ||
 			strings.Contains(err.Error(), "504") {
-			d.Set("invites", []map[string]interface{}{})
+			_ = d.Set("invites", []map[string]interface{}{})
 			return diag.Diagnostics{
 				diag.Diagnostic{
 					Severity: diag.Warning,

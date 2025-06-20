@@ -289,7 +289,7 @@ func convertMessageToMap(message MessageResponse) map[string]interface{} {
 	}
 
 	// Add metadata if present
-	if message.Metadata != nil && len(message.Metadata) > 0 {
+	if len(message.Metadata) > 0 {
 		m["metadata"] = message.Metadata
 	}
 

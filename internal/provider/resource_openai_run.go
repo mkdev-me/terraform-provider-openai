@@ -764,14 +764,14 @@ func resourceOpenAIRunImport(ctx context.Context, d *schema.ResourceData, m inte
 				stringIDs[i] = strID
 			}
 		}
-		d.Set("file_ids", stringIDs)
+		_ = d.Set("file_ids", stringIDs)
 	} else {
-		d.Set("file_ids", []string{})
+		_ = d.Set("file_ids", []string{})
 	}
 
 	// Handle tools
 	if tools, ok := rawResponse["tools"].([]interface{}); ok && len(tools) > 0 {
-		d.Set("tools", tools)
+		_ = d.Set("tools", tools)
 	}
 
 	// Handle metadata
@@ -788,27 +788,27 @@ func resourceOpenAIRunImport(ctx context.Context, d *schema.ResourceData, m inte
 				}
 			}
 		}
-		d.Set("metadata", flatMetadata)
+		_ = d.Set("metadata", flatMetadata)
 	}
 
 	// Handle temperature
 	if temp, ok := rawResponse["temperature"].(float64); ok {
-		d.Set("temperature", temp)
+		_ = d.Set("temperature", temp)
 	}
 
 	// Handle top_p
 	if topP, ok := rawResponse["top_p"].(float64); ok {
-		d.Set("top_p", topP)
+		_ = d.Set("top_p", topP)
 	}
 
 	// Handle max_tokens
 	if maxTokens, ok := rawResponse["max_completion_tokens"].(float64); ok {
-		d.Set("max_tokens", int(maxTokens))
+		_ = d.Set("max_tokens", int(maxTokens))
 	}
 
 	// Handle stream_for_tool
 	if streamForTool, ok := rawResponse["stream_for_tool"].(bool); ok {
-		d.Set("stream_for_tool", streamForTool)
+		_ = d.Set("stream_for_tool", streamForTool)
 	}
 
 	// Handle steps
@@ -850,7 +850,7 @@ func resourceOpenAIRunImport(ctx context.Context, d *schema.ResourceData, m inte
 				steps = append(steps, step)
 			}
 		}
-		d.Set("steps", steps)
+		_ = d.Set("steps", steps)
 	}
 
 	// Handle usage
@@ -867,7 +867,7 @@ func resourceOpenAIRunImport(ctx context.Context, d *schema.ResourceData, m inte
 			usage["total_tokens"] = int(totalTokens)
 		}
 
-		d.Set("usage", usage)
+		_ = d.Set("usage", usage)
 	}
 
 	return []*schema.ResourceData{d}, nil
@@ -876,7 +876,7 @@ func resourceOpenAIRunImport(ctx context.Context, d *schema.ResourceData, m inte
 // Helper function to set a field from the API response if it exists
 func setIfPresent(d *schema.ResourceData, response map[string]interface{}, apiField, schemaField string) {
 	if value, ok := response[apiField]; ok {
-		d.Set(schemaField, value)
+		_ = d.Set(schemaField, value)
 	}
 }
 

@@ -162,7 +162,7 @@ func resourceOpenAIVectorStoreFileBatchCreate(ctx context.Context, d *schema.Res
 		"file_ids": fileIDs,
 	}
 
-	if attributes != nil && len(attributes) > 0 {
+	if len(attributes) > 0 {
 		requestBody["attributes"] = attributes
 	}
 
@@ -289,7 +289,7 @@ func resourceOpenAIVectorStoreFileBatchUpdate(ctx context.Context, d *schema.Res
 
 	// Only attributes can be updated
 	requestBody := map[string]interface{}{}
-	if attributes != nil && len(attributes) > 0 {
+	if len(attributes) > 0 {
 		requestBody["attributes"] = attributes
 	}
 

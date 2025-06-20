@@ -412,7 +412,7 @@ func customizeDiffModeration(ctx context.Context, d *schema.ResourceDiff, meta i
 
 		// This is the key line - Set the new value (from config) to be the old value (from state)
 		// This makes Terraform think there's no difference
-		d.SetNew("model", oldModel)
+		_ = d.SetNew("model", oldModel)
 		return nil
 	}
 

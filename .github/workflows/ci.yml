@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -16,8 +16,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.12.*'
+          terraform_wrapper: false
       - run: go mod download
-      - run: go build -v .
+      - run: make build
       - run: go generate ./...
       - name: Check for uncommitted changes
         run: |
@@ -25,7 +29,7 @@ jobs:
           git diff --staged --exit-code
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -48,17 +52,17 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
       - run: go mod download
-      - run: go test -v -cover ./...
+      - run: make test
 
   golangci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
           cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+      - run: go mod download
+      - uses: golangci/golangci-lint-action@v6
         with:
           version: latest

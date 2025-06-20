@@ -117,7 +117,7 @@ func dataSourceOpenAIThreadRead(ctx context.Context, d *schema.ResourceData, m i
 	}
 
 	// Set metadata if present
-	if thread.Metadata != nil && len(thread.Metadata) > 0 {
+	if len(thread.Metadata) > 0 {
 		metadataMap := make(map[string]string)
 		for k, v := range thread.Metadata {
 			if strVal, ok := v.(string); ok {

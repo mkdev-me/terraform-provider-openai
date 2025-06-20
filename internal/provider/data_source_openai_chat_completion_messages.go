@@ -153,7 +153,7 @@ func dataSourceOpenAIChatCompletionMessagesRead(ctx context.Context, d *schema.R
 		if strings.Contains(err.Error(), "not found") {
 			// Set ID to a derived ID to prevent Terraform from failing
 			d.SetId(fmt.Sprintf("%s-messages", completionID))
-			d.Set("has_more", false)
+			_ = d.Set("has_more", false)
 			// Return empty messages array
 			if err := d.Set("messages", []map[string]interface{}{}); err != nil {
 				return diag.FromErr(err)
@@ -175,9 +175,15 @@ func dataSourceOpenAIChatCompletionMessagesRead(ctx context.Context, d *schema.R
 	}
 
 	d.SetId(fmt.Sprintf("%s-messages", completionID))
-	d.Set("has_more", response.HasMore)
-	d.Set("first_id", response.FirstID)
-	d.Set("last_id", response.LastID)
+	if err := d.Set("has_more", response.HasMore); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("first_id", response.FirstID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("last_id", response.LastID); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Process messages
 	if len(response.Data) > 0 {

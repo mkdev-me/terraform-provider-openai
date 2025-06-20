@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -259,7 +260,9 @@ func dataSourceOpenAIFineTuningJobsRead(ctx context.Context, d *schema.ResourceD
 		hyperparams := make(map[string]interface{})
 		hyperparamsJSON, err := json.Marshal(job.Hyperparameters)
 		if err == nil {
-			json.Unmarshal(hyperparamsJSON, &hyperparams)
+			if err := json.Unmarshal(hyperparamsJSON, &hyperparams); err != nil {
+				tflog.Warn(ctx, "Failed to unmarshal hyperparameters", map[string]interface{}{"error": err})
+			}
 
 			// Convert numeric values to strings for the Terraform schema
 			stringHyperparams := make(map[string]interface{})

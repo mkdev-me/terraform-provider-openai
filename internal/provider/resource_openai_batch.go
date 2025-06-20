@@ -213,7 +213,7 @@ func resourceOpenAIBatchCreate(ctx context.Context, d *schema.ResourceData, m in
 	}
 
 	// Store metadata if present
-	if batchResponse.Metadata != nil && len(batchResponse.Metadata) > 0 {
+	if len(batchResponse.Metadata) > 0 {
 		metadataMap := make(map[string]string)
 		for k, v := range batchResponse.Metadata {
 			switch val := v.(type) {
@@ -276,32 +276,46 @@ func resourceOpenAIBatchRead(ctx context.Context, d *schema.ResourceData, m inte
 	}
 
 	// Update the state
-	d.Set("input_file_id", batchResponse.InputFileID)
+	if err := d.Set("input_file_id", batchResponse.InputFileID); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Endpoint should be normalized to remove the /v1 prefix if present
 	endpoint := batchResponse.Endpoint
-	if strings.HasPrefix(endpoint, "/v1") {
-		endpoint = strings.TrimPrefix(endpoint, "/v1")
+	endpoint = strings.TrimPrefix(endpoint, "/v1")
+	if err := d.Set("endpoint", endpoint); err != nil {
+		return diag.FromErr(err)
 	}
-	d.Set("endpoint", endpoint)
 
-	d.Set("completion_window", batchResponse.CompletionWindow)
-	d.Set("created_at", batchResponse.CreatedAt)
-	d.Set("expires_at", batchResponse.ExpiresAt)
-	d.Set("status", batchResponse.Status)
+	if err := d.Set("completion_window", batchResponse.CompletionWindow); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("created_at", batchResponse.CreatedAt); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("expires_at", batchResponse.ExpiresAt); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("status", batchResponse.Status); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Si hay un output_file_id, guardarlo
 	if batchResponse.OutputFileID != "" {
-		d.Set("output_file_id", batchResponse.OutputFileID)
+		if err := d.Set("output_file_id", batchResponse.OutputFileID); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	// Si hay un error_file_id, guardarlo como error
 	if batchResponse.ErrorFileID != "" {
-		d.Set("error", batchResponse.ErrorFileID)
+		if err := d.Set("error", batchResponse.ErrorFileID); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	// Store metadata if present
-	if batchResponse.Metadata != nil && len(batchResponse.Metadata) > 0 {
+	if len(batchResponse.Metadata) > 0 {
 		metadataMap := make(map[string]string)
 		for k, v := range batchResponse.Metadata {
 			switch val := v.(type) {
@@ -401,9 +415,7 @@ func importBatchState(ctx context.Context, d *schema.ResourceData, m interface{}
 
 	// Endpoint should be normalized to remove the /v1 prefix if present
 	endpoint := batchResponse.Endpoint
-	if strings.HasPrefix(endpoint, "/v1") {
-		endpoint = strings.TrimPrefix(endpoint, "/v1")
-	}
+	endpoint = strings.TrimPrefix(endpoint, "/v1")
 	if err := d.Set("endpoint", endpoint); err != nil {
 		return nil, fmt.Errorf("error setting endpoint: %s", err)
 	}
@@ -445,7 +457,7 @@ func importBatchState(ctx context.Context, d *schema.ResourceData, m interface{}
 	}
 
 	// Set metadata if available
-	if batchResponse.Metadata != nil && len(batchResponse.Metadata) > 0 {
+	if len(batchResponse.Metadata) > 0 {
 		// Convert the metadata to a string map as required by schema
 		metadataMap := make(map[string]interface{})
 		for k, v := range batchResponse.Metadata {

@@ -158,7 +158,7 @@ func resourceOpenAIVectorStoreCreate(ctx context.Context, d *schema.ResourceData
 		requestBody["file_ids"] = fileIDs
 	}
 
-	if metadata != nil && len(metadata) > 0 {
+	if len(metadata) > 0 {
 		requestBody["metadata"] = metadata
 	}
 
@@ -241,35 +241,35 @@ func resourceOpenAIVectorStoreRead(ctx context.Context, d *schema.ResourceData, 
 
 	// Set the parameters from the response
 	if name, ok := response["name"]; ok && name != nil {
-		d.Set("name", name.(string))
+		_ = d.Set("name", name.(string))
 	}
 	if createdAt, ok := response["created_at"]; ok && createdAt != nil {
-		d.Set("created_at", int(createdAt.(float64)))
+		_ = d.Set("created_at", int(createdAt.(float64)))
 	}
 	if fileCount, ok := response["file_count"]; ok && fileCount != nil {
-		d.Set("file_count", int(fileCount.(float64)))
+		_ = d.Set("file_count", int(fileCount.(float64)))
 	}
 	if object, ok := response["object"]; ok && object != nil {
-		d.Set("object", object.(string))
+		_ = d.Set("object", object.(string))
 	}
 	if status, ok := response["status"]; ok && status != nil {
-		d.Set("status", status.(string))
+		_ = d.Set("status", status.(string))
 	}
 
 	// Handle optional fields with checks
 	if fileIDs, ok := response["file_ids"].([]interface{}); ok {
-		d.Set("file_ids", fileIDs)
+		_ = d.Set("file_ids", fileIDs)
 	}
 	if metadata, ok := response["metadata"].(map[string]interface{}); ok {
-		d.Set("metadata", metadata)
+		_ = d.Set("metadata", metadata)
 	}
 
 	// Optional fields: Set defaults or handle missing fields
 	if expiresAfter, ok := response["expires_after"].(map[string]interface{}); ok {
-		d.Set("expires_after", expiresAfter)
+		_ = d.Set("expires_after", expiresAfter)
 	}
 	if chunkingStrategy, ok := response["chunking_strategy"].(map[string]interface{}); ok {
-		d.Set("chunking_strategy", chunkingStrategy)
+		_ = d.Set("chunking_strategy", chunkingStrategy)
 	}
 
 	return diag.Diagnostics{}

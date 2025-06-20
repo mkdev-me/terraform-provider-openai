@@ -776,7 +776,7 @@ func resourceOpenAIChatCompletionUpdate(ctx context.Context, d *schema.ResourceD
 		if d.HasChange("usage") {
 			oldVal, _ := d.GetChange("usage")
 			if oldVal != nil {
-				d.Set("usage", oldVal)
+				_ = d.Set("usage", oldVal)
 			}
 		}
 		return resourceOpenAIChatCompletionRead(ctx, d, meta)
@@ -819,10 +819,10 @@ func resourceOpenAIChatCompletionImport(ctx context.Context, d *schema.ResourceD
 			var completion ChatCompletionResponse
 			if err := json.Unmarshal(respBody, &completion); err == nil {
 				// Set all the imported details
-				d.Set("created", completion.Created)
-				d.Set("object", completion.Object)
-				d.Set("model", completion.Model)
-				d.Set("model_used", completion.Model)
+				_ = d.Set("created", completion.Created)
+				_ = d.Set("object", completion.Object)
+				_ = d.Set("model", completion.Model)
+				_ = d.Set("model_used", completion.Model)
 
 				// Process choices
 				if len(completion.Choices) > 0 {
@@ -898,8 +898,8 @@ func resourceOpenAIChatCompletionImport(ctx context.Context, d *schema.ResourceD
 						messages = append([]map[string]interface{}{systemMessage}, messages...)
 					}
 
-					d.Set("choices", choices)
-					d.Set("messages", messages)
+					_ = d.Set("choices", choices)
+					_ = d.Set("messages", messages)
 				}
 
 				// Set usage statistics
@@ -909,23 +909,23 @@ func resourceOpenAIChatCompletionImport(ctx context.Context, d *schema.ResourceD
 						"completion_tokens": completion.Usage.CompletionTokens,
 						"total_tokens":      completion.Usage.TotalTokens,
 					}
-					d.Set("usage", usage)
+					_ = d.Set("usage", usage)
 				}
 
 				// Get temperature from the most recent example
-				d.Set("temperature", 0.7) // Most common default value
-				d.Set("max_tokens", 300)  // Reasonable default
+				_ = d.Set("temperature", 0.7) // Most common default value
+				_ = d.Set("max_tokens", 300)  // Reasonable default
 
 				// Set other parameters with reasonable defaults
-				d.Set("frequency_penalty", 0.0)
-				d.Set("presence_penalty", 0.0)
-				d.Set("top_p", 1.0)
-				d.Set("n", 1)
-				d.Set("stream", false)
-				d.Set("store", true) // Since we could retrieve it, it must have been stored
+				_ = d.Set("frequency_penalty", 0.0)
+				_ = d.Set("presence_penalty", 0.0)
+				_ = d.Set("top_p", 1.0)
+				_ = d.Set("n", 1)
+				_ = d.Set("stream", false)
+				_ = d.Set("store", true) // Since we could retrieve it, it must have been stored
 
 				// Mark as imported
-				d.Set("imported", true)
+				_ = d.Set("imported", true)
 
 				return []*schema.ResourceData{d}, nil
 			}
@@ -934,7 +934,7 @@ func resourceOpenAIChatCompletionImport(ctx context.Context, d *schema.ResourceD
 
 	// If we couldn't fetch the details from the API, we'll use the values from configuration if possible
 	// First, preserve the ID with chat_completion_id
-	d.Set("imported", true) // Set this first to mark it as imported
+	_ = d.Set("imported", true) // Set this first to mark it as imported
 
 	// Don't modify any values in the state that are already set from configuration
 	// This allows the import to work with existing configuration values
@@ -971,10 +971,8 @@ func customizeDiffForChatCompletion(ctx context.Context, d *schema.ResourceDiff,
 
 		// Special handling for computed fields like 'usage'
 		// We don't want changes to computed fields to trigger recreation
-		if d.HasChange("usage") {
-			// Don't mark usage changes as requiring ForceNew
-			// The field is computed and will be populated by the provider
-		}
+		// Don't mark usage changes as requiring ForceNew
+		// The field is computed and will be populated by the provider
 	}
 
 	// Safely check for max_tokens - avoid GetRawState and GetRawConfig which can cause issues with nil interfaces

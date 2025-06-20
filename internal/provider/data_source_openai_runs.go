@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -224,7 +225,7 @@ func dataSourceOpenAIRunsRead(ctx context.Context, d *schema.ResourceData, m int
 	if before != "" {
 		idParts = append(idParts, "before="+before)
 	}
-	d.SetId(threadID)
+	d.SetId(strings.Join(idParts, ":"))
 
 	// Set the retrieved data in the state
 	if err := d.Set("runs", runs); err != nil {

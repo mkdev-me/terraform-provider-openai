@@ -223,10 +223,18 @@ func dataSourceOpenAIChatCompletionRead(ctx context.Context, d *schema.ResourceD
 	}
 
 	d.SetId(completion.ID)
-	d.Set("id", completion.ID)
-	d.Set("created", completion.Created)
-	d.Set("object", completion.Object)
-	d.Set("model", completion.Model)
+	if err := d.Set("id", completion.ID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("created", completion.Created); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("object", completion.Object); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("model", completion.Model); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Process choices
 	if len(completion.Choices) > 0 {

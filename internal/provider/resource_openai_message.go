@@ -266,10 +266,8 @@ func resourceOpenAIMessageCreate(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	// Process attachments if present
-	if len(messageResponse.Attachments) > 0 {
-		// Don't try to set attachments from response, keep the original request attachments
-		// The API returns a different structure than what we send
-	}
+	// Don't try to set attachments from response, keep the original request attachments
+	// The API returns a different structure than what we send
 
 	return diag.Diagnostics{}
 }

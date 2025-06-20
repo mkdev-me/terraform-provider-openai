@@ -521,15 +521,25 @@ func resourceOpenAIFineTuningJobCreate(ctx context.Context, d *schema.ResourceDa
 	d.SetId(jobID)
 
 	// Set computed fields
-	d.Set("status", fineTuningJob["status"])
-	d.Set("created_at", int(fineTuningJob["created_at"].(float64)))
-	d.Set("organization_id", fineTuningJob["organization_id"])
-
-	if v, ok := fineTuningJob["fine_tuned_model"]; ok && v != nil {
-		d.Set("fine_tuned_model", v)
+	if err := d.Set("status", fineTuningJob["status"]); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("created_at", int(fineTuningJob["created_at"].(float64))); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("organization_id", fineTuningJob["organization_id"]); err != nil {
+		return diag.FromErr(err)
 	}
 
-	d.Set("last_updated", time.Now().Format(time.RFC850))
+	if v, ok := fineTuningJob["fine_tuned_model"]; ok && v != nil {
+		if err := d.Set("fine_tuned_model", v); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if err := d.Set("last_updated", time.Now().Format(time.RFC850)); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// If timeout is set, wait for the job to complete or cancel
 	if v, ok := d.GetOk("cancel_after_timeout"); ok {
@@ -650,23 +660,39 @@ func resourceOpenAIFineTuningJobRead(ctx context.Context, d *schema.ResourceData
 	}
 
 	// Set resource data
-	d.Set("model", fineTuningJob["model"])
-	d.Set("training_file", fineTuningJob["training_file"])
-	d.Set("status", fineTuningJob["status"])
-	d.Set("created_at", int(fineTuningJob["created_at"].(float64)))
-	d.Set("organization_id", fineTuningJob["organization_id"])
+	if err := d.Set("model", fineTuningJob["model"]); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("training_file", fineTuningJob["training_file"]); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("status", fineTuningJob["status"]); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("created_at", int(fineTuningJob["created_at"].(float64))); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("organization_id", fineTuningJob["organization_id"]); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Set optional fields if present
 	if v, ok := fineTuningJob["validation_file"]; ok && v != nil {
-		d.Set("validation_file", v)
+		if err := d.Set("validation_file", v); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if v, ok := fineTuningJob["fine_tuned_model"]; ok && v != nil {
-		d.Set("fine_tuned_model", v)
+		if err := d.Set("fine_tuned_model", v); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if v, ok := fineTuningJob["finished_at"]; ok && v != nil {
-		d.Set("finished_at", int(v.(float64)))
+		if err := d.Set("finished_at", int(v.(float64))); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if v, ok := fineTuningJob["result_files"]; ok && v != nil {
@@ -674,15 +700,21 @@ func resourceOpenAIFineTuningJobRead(ctx context.Context, d *schema.ResourceData
 		for _, file := range v.([]interface{}) {
 			resultFiles = append(resultFiles, file.(string))
 		}
-		d.Set("result_files", resultFiles)
+		if err := d.Set("result_files", resultFiles); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if v, ok := fineTuningJob["validation_loss"]; ok && v != nil {
-		d.Set("validation_loss", v)
+		if err := d.Set("validation_loss", v); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if v, ok := fineTuningJob["trained_tokens"]; ok && v != nil {
-		d.Set("trained_tokens", int(v.(float64)))
+		if err := d.Set("trained_tokens", int(v.(float64))); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	return nil
@@ -866,18 +898,18 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 	if err != nil {
 		// Even if we can't get a client, we'll create placeholder values
 		// instead of failing the import
-		d.Set("model", "unknown-model")
-		d.Set("training_file", d.Id())
-		d.Set("status", "unknown")
-		d.Set("created_at", time.Now().Unix())
+		_ = d.Set("model", "unknown-model")
+		_ = d.Set("training_file", d.Id())
+		_ = d.Set("status", "unknown")
+		_ = d.Set("created_at", time.Now().Unix())
 
 		// Set the requested parameters that would be expected in the config
 		if strings.Contains(d.Id(), "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
-			d.Set("cancel_after_timeout", 3600)
+			_ = d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("cancel_after_timeout", 3600)
 		}
 
-		d.Set("last_updated", time.Now().Format(time.RFC850))
+		_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 		return []*schema.ResourceData{d}, nil
 	}
 
@@ -890,18 +922,18 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		// If we can't create a request, provide placeholder values
-		d.Set("model", "unknown-model")
-		d.Set("training_file", d.Id())
-		d.Set("status", "unknown")
-		d.Set("created_at", time.Now().Unix())
+		_ = d.Set("model", "unknown-model")
+		_ = d.Set("training_file", d.Id())
+		_ = d.Set("status", "unknown")
+		_ = d.Set("created_at", time.Now().Unix())
 
 		// Set the requested parameters that would be expected in the config
 		if strings.Contains(d.Id(), "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
-			d.Set("cancel_after_timeout", 3600)
+			_ = d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("cancel_after_timeout", 3600)
 		}
 
-		d.Set("last_updated", time.Now().Format(time.RFC850))
+		_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 		return []*schema.ResourceData{d}, nil
 	}
 
@@ -916,20 +948,20 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		// Handle API errors gracefully - create a placeholder state instead of failing
-		d.Set("model", "placeholder-model")
-		d.Set("training_file", "placeholder-file")
-		d.Set("status", "placeholder")
-		d.Set("created_at", time.Now().Unix())
+		_ = d.Set("model", "placeholder-model")
+		_ = d.Set("training_file", "placeholder-file")
+		_ = d.Set("status", "placeholder")
+		_ = d.Set("created_at", time.Now().Unix())
 
 		// Set the requested parameters based on the job ID
 		if strings.Contains(jobID, "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
-			d.Set("cancel_after_timeout", 3600)
+			_ = d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("cancel_after_timeout", 3600)
 		} else if strings.Contains(jobID, "basic") || strings.Contains(jobID, "custom") {
-			d.Set("suffix", "my-custom-model-v1")
+			_ = d.Set("suffix", "my-custom-model-v1")
 		}
 
-		d.Set("last_updated", time.Now().Format(time.RFC850))
+		_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 
 		// Close response if it exists
 		if resp != nil && resp.Body != nil {
@@ -944,20 +976,20 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		// Handle read error gracefully - create a placeholder state
-		d.Set("model", "placeholder-model")
-		d.Set("training_file", "placeholder-file")
-		d.Set("status", "placeholder")
-		d.Set("created_at", time.Now().Unix())
+		_ = d.Set("model", "placeholder-model")
+		_ = d.Set("training_file", "placeholder-file")
+		_ = d.Set("status", "placeholder")
+		_ = d.Set("created_at", time.Now().Unix())
 
 		// Set the requested parameters based on the job ID
 		if strings.Contains(jobID, "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
-			d.Set("cancel_after_timeout", 3600)
+			_ = d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("cancel_after_timeout", 3600)
 		} else if strings.Contains(jobID, "basic") || strings.Contains(jobID, "custom") {
-			d.Set("suffix", "my-custom-model-v1")
+			_ = d.Set("suffix", "my-custom-model-v1")
 		}
 
-		d.Set("last_updated", time.Now().Format(time.RFC850))
+		_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 		return []*schema.ResourceData{d}, nil
 	}
 
@@ -965,41 +997,41 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 	var fineTuningJob map[string]interface{}
 	if err := json.Unmarshal(body, &fineTuningJob); err != nil {
 		// Handle parse error gracefully - create a placeholder state
-		d.Set("model", "placeholder-model")
-		d.Set("training_file", "placeholder-file")
-		d.Set("status", "placeholder")
-		d.Set("created_at", time.Now().Unix())
+		_ = d.Set("model", "placeholder-model")
+		_ = d.Set("training_file", "placeholder-file")
+		_ = d.Set("status", "placeholder")
+		_ = d.Set("created_at", time.Now().Unix())
 
 		// Set the requested parameters based on the job ID
 		if strings.Contains(jobID, "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
-			d.Set("cancel_after_timeout", 3600)
+			_ = d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("cancel_after_timeout", 3600)
 		} else if strings.Contains(jobID, "basic") || strings.Contains(jobID, "custom") {
-			d.Set("suffix", "my-custom-model-v1")
+			_ = d.Set("suffix", "my-custom-model-v1")
 		}
 
-		d.Set("last_updated", time.Now().Format(time.RFC850))
+		_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 		return []*schema.ResourceData{d}, nil
 	}
 
 	// Set resource data
-	d.Set("model", fineTuningJob["model"])
-	d.Set("training_file", fineTuningJob["training_file"])
-	d.Set("status", fineTuningJob["status"])
-	d.Set("created_at", int(fineTuningJob["created_at"].(float64)))
-	d.Set("organization_id", fineTuningJob["organization_id"])
+	_ = d.Set("model", fineTuningJob["model"])
+	_ = d.Set("training_file", fineTuningJob["training_file"])
+	_ = d.Set("status", fineTuningJob["status"])
+	_ = d.Set("created_at", int(fineTuningJob["created_at"].(float64)))
+	_ = d.Set("organization_id", fineTuningJob["organization_id"])
 
 	// Set optional fields if present
 	if v, ok := fineTuningJob["validation_file"]; ok && v != nil {
-		d.Set("validation_file", v)
+		_ = d.Set("validation_file", v)
 	}
 
 	if v, ok := fineTuningJob["fine_tuned_model"]; ok && v != nil {
-		d.Set("fine_tuned_model", v)
+		_ = d.Set("fine_tuned_model", v)
 	}
 
 	if v, ok := fineTuningJob["finished_at"]; ok && v != nil {
-		d.Set("finished_at", int(v.(float64)))
+		_ = d.Set("finished_at", int(v.(float64)))
 	}
 
 	if v, ok := fineTuningJob["result_files"]; ok && v != nil {
@@ -1007,15 +1039,15 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 		for _, file := range v.([]interface{}) {
 			resultFiles = append(resultFiles, file.(string))
 		}
-		d.Set("result_files", resultFiles)
+		_ = d.Set("result_files", resultFiles)
 	}
 
 	if v, ok := fineTuningJob["validation_loss"]; ok && v != nil {
-		d.Set("validation_loss", v)
+		_ = d.Set("validation_loss", v)
 	}
 
 	if v, ok := fineTuningJob["trained_tokens"]; ok && v != nil {
-		d.Set("trained_tokens", int(v.(float64)))
+		_ = d.Set("trained_tokens", int(v.(float64)))
 	}
 
 	// Infer suffix from fine_tuned_model if available
@@ -1024,26 +1056,26 @@ func resourceOpenAIFineTuningJobImport(ctx context.Context, d *schema.ResourceDa
 		parts := strings.Split(model, ":")
 		if len(parts) >= 4 && parts[3] != "" {
 			// Format is typically: ft:model:org:suffix:id
-			d.Set("suffix", parts[3])
+			_ = d.Set("suffix", parts[3])
 		} else if len(parts) >= 3 && parts[2] != "" && parts[2] != parts[1] {
 			// Sometimes the format is: ft:model:suffix:id
-			d.Set("suffix", parts[2])
+			_ = d.Set("suffix", parts[2])
 		}
 	} else {
 		// If no fine_tuned_model, set suffix based on job ID
 		if strings.Contains(jobID, "timeout") {
-			d.Set("suffix", "timeout-protected-v1")
+			_ = d.Set("suffix", "timeout-protected-v1")
 		} else if strings.Contains(jobID, "basic") || strings.Contains(jobID, "custom") {
-			d.Set("suffix", "my-custom-model-v1")
+			_ = d.Set("suffix", "my-custom-model-v1")
 		}
 	}
 
 	// Set cancel_after_timeout if job ID suggests it's a timeout job
 	if strings.Contains(jobID, "timeout") {
-		d.Set("cancel_after_timeout", 3600)
+		_ = d.Set("cancel_after_timeout", 3600)
 	}
 
-	d.Set("last_updated", time.Now().Format(time.RFC850))
+	_ = d.Set("last_updated", time.Now().Format(time.RFC850))
 
 	return []*schema.ResourceData{d}, nil
 }

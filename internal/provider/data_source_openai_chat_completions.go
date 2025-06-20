@@ -205,7 +205,7 @@ func dataSourceOpenAIChatCompletionsRead(ctx context.Context, d *schema.Resource
 	if err != nil {
 		// Instead of failing, just return an empty list with a warning
 		d.SetId(fmt.Sprintf("chat_completions_%d", time.Now().Unix()))
-		d.Set("has_more", false)
+		_ = d.Set("has_more", false)
 		// Set empty chat_completions array
 		if err := d.Set("chat_completions", []map[string]interface{}{}); err != nil {
 			return diag.FromErr(err)
@@ -225,7 +225,9 @@ func dataSourceOpenAIChatCompletionsRead(ctx context.Context, d *schema.Resource
 	}
 
 	d.SetId(fmt.Sprintf("chat_completions_%d", time.Now().Unix()))
-	d.Set("has_more", response.HasMore)
+	if err := d.Set("has_more", response.HasMore); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Process chat completions
 	if len(response.Data) > 0 {

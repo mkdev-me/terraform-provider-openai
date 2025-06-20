@@ -113,7 +113,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 
 	// Set the ID in our state right away
 	d.SetId(rateLimitID)
-	d.Set("rate_limit_id", rateLimitID)
+	_ = d.Set("rate_limit_id", rateLimitID)
 
 	// Use the provider's API key
 
@@ -459,7 +459,7 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 	model := d.Get("model").(string)
 	rateLimitID := d.Id() // Use the ID directly
 
-	tflog.Info(ctx, fmt.Sprintf("[IMPORTANT] OpenAI API uses fields with '_per_1_minute' (with _1_), while Terraform uses '_per_minute'"))
+	tflog.Info(ctx, "[IMPORTANT] OpenAI API uses fields with '_per_1_minute' (with _1_), while Terraform uses '_per_minute'")
 	tflog.Info(ctx, fmt.Sprintf("[IMPORTANT] Current rate limits from API for model %s will be shown in debug logs", model))
 
 	// Read current rate limits from API for comparison
@@ -683,13 +683,13 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 // Helper function to set rate limit values in state
 func setRateLimitState(d *schema.ResourceData, rateLimit *client.RateLimit) {
 	// Set all values from the rate limit object to state
-	d.Set("model", rateLimit.Model)
-	d.Set("max_requests_per_minute", rateLimit.MaxRequestsPer1Minute)
-	d.Set("max_tokens_per_minute", rateLimit.MaxTokensPer1Minute)
-	d.Set("max_images_per_minute", rateLimit.MaxImagesPer1Minute)
-	d.Set("batch_1_day_max_input_tokens", rateLimit.Batch1DayMaxInputTokens)
-	d.Set("max_audio_megabytes_per_1_minute", rateLimit.MaxAudioMegabytesPer1Minute)
-	d.Set("max_requests_per_1_day", rateLimit.MaxRequestsPer1Day)
+	_ = d.Set("model", rateLimit.Model)
+	_ = d.Set("max_requests_per_minute", rateLimit.MaxRequestsPer1Minute)
+	_ = d.Set("max_tokens_per_minute", rateLimit.MaxTokensPer1Minute)
+	_ = d.Set("max_images_per_minute", rateLimit.MaxImagesPer1Minute)
+	_ = d.Set("batch_1_day_max_input_tokens", rateLimit.Batch1DayMaxInputTokens)
+	_ = d.Set("max_audio_megabytes_per_1_minute", rateLimit.MaxAudioMegabytesPer1Minute)
+	_ = d.Set("max_requests_per_1_day", rateLimit.MaxRequestsPer1Day)
 
 	// Keep the current ID
 	if rateLimit.ID != "" {

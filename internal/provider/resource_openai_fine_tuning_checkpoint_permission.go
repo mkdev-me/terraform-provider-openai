@@ -156,7 +156,7 @@ func resourceOpenAIFineTuningCheckpointPermissionCreate(ctx context.Context, d *
 
 				// Set created_at if available
 				if createdAt, ok := permission["created_at"].(float64); ok {
-					d.Set("created_at", int(createdAt))
+					_ = d.Set("created_at", int(createdAt))
 				}
 
 				return resourceOpenAIFineTuningCheckpointPermissionRead(ctx, d, m)
@@ -171,7 +171,7 @@ func resourceOpenAIFineTuningCheckpointPermissionCreate(ctx context.Context, d *
 
 		// Set created_at if available
 		if createdAt, ok := responseData["created_at"].(float64); ok {
-			d.Set("created_at", int(createdAt))
+			_ = d.Set("created_at", int(createdAt))
 		}
 
 		return resourceOpenAIFineTuningCheckpointPermissionRead(ctx, d, m)
@@ -295,15 +295,19 @@ func resourceOpenAIFineTuningCheckpointPermissionRead(ctx context.Context, d *sc
 	permissionID := d.Id()
 	for _, permission := range responseData.Data {
 		if permission.ID == permissionID {
-			d.Set("created_at", permission.CreatedAt)
+			_ = d.Set("created_at", permission.CreatedAt)
 
 			// Set project_ids as a list
 			projectIds := []string{permission.ProjectID}
-			d.Set("project_ids", projectIds)
+			if err := d.Set("project_ids", projectIds); err != nil {
+				return diag.FromErr(err)
+			}
 
 			// Set checkpoint_id if it's not already set
 			if !checkpointExists {
-				d.Set("checkpoint_id", checkpointID)
+				if err := d.Set("checkpoint_id", checkpointID); err != nil {
+					return diag.FromErr(err)
+				}
 			}
 
 			return nil

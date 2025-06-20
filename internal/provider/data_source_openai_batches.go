@@ -225,7 +225,7 @@ func dataSourceOpenAIBatchesRead(ctx context.Context, d *schema.ResourceData, m 
 		}
 
 		// Handle metadata
-		if batch.Metadata != nil && len(batch.Metadata) > 0 {
+		if len(batch.Metadata) > 0 {
 			metadataMap := make(map[string]string)
 			for k, v := range batch.Metadata {
 				switch val := v.(type) {
