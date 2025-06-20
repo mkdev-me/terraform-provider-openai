@@ -157,14 +157,15 @@ test_apply() {
 quick_test() {
     echo -e "${BLUE}Running quick verification test...${NC}"
     
-    local TEST_DIR=$(mktemp -d -t openai-test-XXXXXX)
+    local TEST_DIR="$SCRIPT_DIR/temp-quick-test-$$"
+    mkdir -p "$TEST_DIR"
     cd "$TEST_DIR"
     
     cat > main.tf << 'EOF'
 terraform {
   required_providers {
     openai = {
-      source  = "fjcorp/openai"
+      source  = "mkdev-me/openai"
       version = "1.0.0"
     }
   }
@@ -175,7 +176,7 @@ provider "openai" {}
 # Test project key
 resource "openai_embedding" "test" {
   model = "text-embedding-ada-002"
-  input = ["Quick test"]
+  input = jsonencode(["Quick test"])
 }
 
 # Test admin key (if available)
@@ -202,17 +203,19 @@ EOF
         admin_flag="-var=has_admin_key=true"
     fi
     
-    if terraform apply -auto-approve $admin_flag > /dev/null 2>&1; then
+    if terraform apply -auto-approve $admin_flag > /tmp/quick-test-apply.log 2>&1; then
         echo -e "${GREEN}✓ Quick test passed${NC}"
         terraform destroy -auto-approve $admin_flag > /dev/null 2>&1
     else
         echo -e "${RED}✗ Quick test failed${NC}"
-        cd /
+        echo "Error details:"
+        tail -20 /tmp/quick-test-apply.log | grep -E "(Error:|error:|failed)" || tail -10 /tmp/quick-test-apply.log
+        cd "$SCRIPT_DIR"
         rm -rf "$TEST_DIR"
         return 1
     fi
     
-    cd /
+    cd "$SCRIPT_DIR"
     rm -rf "$TEST_DIR"
     return 0
 }

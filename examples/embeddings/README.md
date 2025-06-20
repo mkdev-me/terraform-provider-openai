@@ -22,8 +22,8 @@ Embeddings are vector representations of text that capture their semantic meanin
 
 1. Make sure you have the OpenAI provider correctly installed:
    ```
-   mkdir -p ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_arm64
-   cp ~/path/to/binary/terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_arm64/
+   mkdir -p ~/.terraform.d/plugins/registry.terraform.io/mkdev-me/openai/1.0.0/darwin_arm64
+   cp ~/path/to/binary/terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/mkdev-me/openai/1.0.0/darwin_arm64/
    ```
 
 2. Configure the necessary environment variables:

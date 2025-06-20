@@ -174,5 +174,5 @@ When adding new examples:
 ## Support
 
 - [Documentation](../docs/)
-- [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- [GitHub Issues](https://github.com/mkdev-me/terraform-provider-openai/issues)
 - [API Reference](https://platform.openai.com/docs/api-reference)

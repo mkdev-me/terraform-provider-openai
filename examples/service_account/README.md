@@ -120,7 +120,7 @@ If you need to use the latest version of the provider or make custom modificatio
 ```bash
 cd /path/to/terraform-provider-openai
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o terraform-provider-openai cmd/main.go
-cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_arm64/
+cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/mkdev-me/openai/1.0.0/darwin_arm64/
 ```
 
 Then navigate to the example directory and apply:

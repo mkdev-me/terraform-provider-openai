@@ -1,4 +1,4 @@
-module github.com/fjcorp/terraform-provider-openai
+module github.com/mkdev-me/terraform-provider-openai
 
 go 1.24
 

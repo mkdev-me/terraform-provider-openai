@@ -4,7 +4,7 @@ GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
 DEV_HOSTNAME=github.com
 # For Terraform Registry
 REGISTRY_HOSTNAME=registry.terraform.io
-NAMESPACE=fjcorp
+NAMESPACE=mkdev-me
 NAME=openai
 BINARY=terraform-provider-${NAME}
 VERSION=1.0.0

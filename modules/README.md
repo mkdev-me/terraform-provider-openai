@@ -6,7 +6,7 @@ This directory contains reusable Terraform modules for common OpenAI resource pa
 
 ```hcl
 module "chat" {
-  source = "github.com/fjcorp/terraform-provider-openai//modules/chat_completion"
+  source = "github.com/mkdev-me/terraform-provider-openai//modules/chat_completion"
   
   model = "gpt-4"
   messages = [
@@ -202,7 +202,7 @@ module "project_access" {
 
 1. **Version Pinning**: Pin module versions in production
    ```hcl
-   source = "github.com/fjcorp/terraform-provider-openai//modules/chat_completion?ref=v1.0.0"
+   source = "github.com/mkdev-me/terraform-provider-openai//modules/chat_completion?ref=v1.0.0"
    ```
 
 2. **State Management**: Use remote state for team collaboration
@@ -271,7 +271,7 @@ Project assignments in invitations don't work through the API. Use the three-ste
 
 - [Examples](../examples/): Complete working examples
 - [Documentation](../docs/): Provider documentation
-- [Issues](https://github.com/fjcorp/terraform-provider-openai/issues): Report issues
+- [Issues](https://github.com/mkdev-me/terraform-provider-openai/issues): Report issues
 
 ## Contributing
 

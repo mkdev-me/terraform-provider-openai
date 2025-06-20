@@ -1,7 +1,7 @@
 # Terraform Provider for OpenAI
 
-[![Release](https://img.shields.io/github/v/release/fjcorp/terraform-provider-openai)](https://github.com/fjcorp/terraform-provider-openai/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/fjcorp/terraform-provider-openai)](https://goreportcard.com/report/github.com/fjcorp/terraform-provider-openai)
+[![Release](https://img.shields.io/github/v/release/mkdev-me/terraform-provider-openai)](https://github.com/mkdev-me/terraform-provider-openai/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mkdev-me/terraform-provider-openai)](https://goreportcard.com/report/github.com/mkdev-me/terraform-provider-openai)
 [![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 
 A comprehensive Terraform provider for managing OpenAI resources, enabling infrastructure-as-code management of OpenAI's API services including chat completions, assistants, fine-tuning, embeddings, and more.
@@ -43,7 +43,7 @@ A comprehensive Terraform provider for managing OpenAI resources, enabling infra
 terraform {
   required_providers {
     openai = {
-      source  = "fjcorp/openai"
+      source  = "mkdev-me/openai"
       version = "~> 0.1"
     }
   }
@@ -60,7 +60,7 @@ For development or if you need the latest unreleased version:
 
 ```bash
 # Clone the repository
-git clone https://github.com/fjcorp/terraform-provider-openai.git
+git clone https://github.com/mkdev-me/terraform-provider-openai.git
 cd terraform-provider-openai
 
 # Build and install in one command
@@ -75,7 +75,7 @@ For provider developers, this repository includes a comprehensive Makefile with 
 
 ```bash
 # Clone and setup
-git clone https://github.com/fjcorp/terraform-provider-openai.git
+git clone https://github.com/mkdev-me/terraform-provider-openai.git
 cd terraform-provider-openai
 
 # Install dependencies and build
@@ -219,7 +219,7 @@ terraform destroy
 terraform {
   required_providers {
     openai = {
-      source  = "fjcorp/openai"
+      source  = "mkdev-me/openai"
       version = "~> 0.1"
     }
   }
@@ -417,7 +417,7 @@ If you encounter API key issues:
 - [Examples](examples/): Complete working examples for all features
 
 ### Reference Documentation
-- [Terraform Registry Documentation](https://registry.terraform.io/providers/fjcorp/openai/latest/docs): Official provider documentation
+- [Terraform Registry Documentation](https://registry.terraform.io/providers/mkdev-me/openai/latest/docs): Official provider documentation
 - [Resources](docs/resources/): Comprehensive resource documentation
 - [Data Sources](docs/data-sources/): Data source documentation
 - [Modules](modules/): Reusable Terraform modules
@@ -439,7 +439,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 For issues, feature requests, or questions:
-- [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- [GitHub Issues](https://github.com/mkdev-me/terraform-provider-openai/issues)
 - [Documentation](docs/)
 - [Examples](examples/)
 

@@ -54,5 +54,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example configurations for common use cases
 - Reusable Terraform modules for common patterns
 
-[Unreleased]: https://github.com/fjcorp/terraform-provider-openai/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/fjcorp/terraform-provider-openai/releases/tag/v0.1.0
+[Unreleased]: https://github.com/mkdev-me/terraform-provider-openai/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mkdev-me/terraform-provider-openai/releases/tag/v0.1.0

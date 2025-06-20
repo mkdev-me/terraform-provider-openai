@@ -1,14 +1,10 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 
-	"github.com/fjcorp/terraform-provider-openai/internal/client"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -153,7 +149,7 @@ func resourceOpenAIEmbedding() *schema.Resource {
 // The function supports various embedding options and provides control over the embedding process.
 func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Obtener el cliente de OpenAI
-	client := meta.(*client.OpenAIClient)
+	client := meta.(*OpenAIClient)
 
 	// Preparar la petición con todos los campos
 	request := &EmbeddingRequest{
@@ -169,8 +165,8 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		// Si se pudo parsear como array, usarlo así
 		request.Input = inputArray
 	} else {
-		// De lo contrario, usar como string
-		request.Input = input
+		// De lo contrario, crear un array con un solo string
+		request.Input = []string{input}
 	}
 
 	// Añadir user si está presente
@@ -188,60 +184,16 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		request.Dimensions = dimensions.(int)
 	}
 
-	// Determinar la URL de la API
-	url := fmt.Sprintf("%s/v1/embeddings", client.APIURL)
+	// Use the client's DoRequest method
+	url := "/v1/embeddings"
 
-	// Crear petición HTTP
-	reqBody, err := json.Marshal(request)
+	// Make the API request using the client's DoRequest method
+	// DoRequest will handle JSON marshaling
+	respBody, err := client.DoRequest("POST", url, request)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error serializing embedding request: %s", err))
+		return diag.FromErr(fmt.Errorf("error creating embedding: %s", err))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-	}
-
-	// Establecer headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-
-	// Añadir Organization ID si está presente
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Añadir Project ID si está presente
-	if projectID, ok := d.GetOk("project_id"); ok {
-		req.Header.Set("OpenAI-Project", projectID.(string))
-	}
-
-	// Realizar la petición
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Leer la respuesta
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Verificar si hubo un error
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse struct {
-			Error struct {
-				Type    string `json:"type"`
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d, body: %s", err, resp.StatusCode, string(respBody)))
-		}
-		return diag.FromErr(fmt.Errorf("error creating embedding: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
 
 	// Parsear la respuesta
 	var embeddingResponse EmbeddingResponse

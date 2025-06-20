@@ -21,7 +21,7 @@ This example showcases:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/fjcorp/terraform-provider-openai.git
+   git clone https://github.com/mkdev-me/terraform-provider-openai.git
    cd terraform-provider-openai/examples/system_api
    ```
 

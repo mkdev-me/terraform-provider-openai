@@ -69,7 +69,7 @@ output "gpt4_limit" {
 
 ## Provider Compatibility
 
-This module requires the `fjcorp/openai` provider version `~> 1.0.0` and uses the now fully implemented `openai_rate_limit` resource.
+This module requires the `mkdev-me/openai` provider version `~> 1.0.0` and uses the now fully implemented `openai_rate_limit` resource.
 
 ## Variables
 

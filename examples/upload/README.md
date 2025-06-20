@@ -12,7 +12,7 @@ The example shows how to:
 ## Requirements
 
 - Terraform 1.0.0 or higher
-- OpenAI Provider (fjcorp/openai) 1.0.0 or higher
+- OpenAI Provider (mkdev-me/openai) 1.0.0 or higher
 - OpenAI API key with appropriate permissions (set via OPENAI_API_KEY environment variable)
 
 ## Usage

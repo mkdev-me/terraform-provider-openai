@@ -4,7 +4,7 @@ This module provides a simple way to generate embeddings using the OpenAI API. E
 
 ## Requirements
 
-- Have the Terraform provider for OpenAI installed (`fjcorp/openai`)
+- Have the Terraform provider for OpenAI installed (`mkdev-me/openai`)
 - A valid OpenAI API key
 
 ## Usage

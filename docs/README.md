@@ -56,7 +56,7 @@ If you're new to the OpenAI Terraform Provider, start here:
 
 ## Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- **Issues**: [GitHub Issues](https://github.com/mkdev-me/terraform-provider-openai/issues)
 - **Examples**: [Example Configurations](../examples/)
 - **API Reference**: [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
 

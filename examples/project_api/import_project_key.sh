@@ -125,7 +125,7 @@ cat > main.tf.tmp <<EOF
 terraform {
   required_providers {
     openai = {
-      source  = "fjcorp/openai"
+      source  = "mkdev-me/openai"
       version = "1.0.0"
     }
     null = {

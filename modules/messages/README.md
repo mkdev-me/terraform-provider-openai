@@ -94,7 +94,7 @@ output "message_attachments" {
 
 ## Dependencies
 
-This module relies on the `openai_message` resource from the `fjcorp/openai` provider.
+This module relies on the `openai_message` resource from the `mkdev-me/openai` provider.
 
 ## License
 
