@@ -48,4 +48,4 @@ output "model_count" {
 output "available_models" {
   description = "IDs of all available models"
   value       = [for model in data.openai_models.all.models : model.id]
-} 
+}

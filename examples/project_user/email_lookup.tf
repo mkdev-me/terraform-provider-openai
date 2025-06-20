@@ -6,7 +6,7 @@
 # 1. Retrieve project user information using email
 data "openai_project_user" "by_email" {
   project_id = openai_project.data_source_example.id
-  email      = "pablo@mkdev.me"  # Replace with a real email from your project
+  email      = "pablo@mkdev.me" # Replace with a real email from your project
 
   # Data source will only be evaluated after the user is added to the project
   depends_on = [openai_project_user.data_source_user]

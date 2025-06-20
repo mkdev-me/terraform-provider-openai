@@ -5,8 +5,8 @@
 
 # Retrieve organization user information using email
 data "openai_organization_user" "by_email" {
-  email   = "pablo+newtest7@mkdev.me"  # Replace with a real email from your organization
-  
+  email = "pablo+newtest7@mkdev.me" # Replace with a real email from your organization
+
   # Optional: Use a specific API key with sufficient permissions
   # api_key = var.openai_admin_key
 }
@@ -37,7 +37,7 @@ output "org_user_by_email_added_at" {
 
 # First, retrieve the user ID using the email lookup
 data "openai_organization_user" "find_by_email" {
-  email   = "pablo+newtest8@mkdev.me"  # Replace with a real email
+  email = "pablo+newtest8@mkdev.me" # Replace with a real email
 }
 
 # Then, use the retrieved user ID to create a new resource

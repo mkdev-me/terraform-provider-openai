@@ -54,27 +54,27 @@ variable "admin_key" {
 # 2. Automatically assign them to the specified projects
 resource "openai_invite" "new_user" {
   email = "pablo+terraformtest2@mkdev.me"
-  role  = "reader"  # Organization-level role
-  
+  role  = "reader" # Organization-level role
+
   # Use admin key explicitly from environment variable
   api_key = var.admin_key
 
   # Projects will be assigned automatically after invitation
   projects {
     id   = var.project1_id
-    role = "member"  # Project-level role
+    role = "member" # Project-level role
   }
 
   projects {
     id   = var.project2_id
-    role = "member"  # Project-level role
+    role = "member" # Project-level role
   }
 }
 
 # Example 2: Handle existing user (will skip invitation and assign to projects)
 resource "openai_invite" "existing_user" {
   email = "pablo+existingtest@mkdev.me"
-  role  = "reader"  # Organization-level role
+  role  = "reader" # Organization-level role
 
   projects {
     id   = var.project1_id
@@ -89,7 +89,7 @@ resource "openai_invite" "existing_user" {
 resource "openai_invite" "manual_user" {
   email = "pablo+manualtest@mkdev.me"
   role  = "reader"
-  
+
   # No projects specified here
 }
 
