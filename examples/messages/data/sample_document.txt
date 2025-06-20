@@ -1,0 +1,9 @@
+This is a sample document for testing OpenAI's Assistants API with files.
+
+It contains information that an Assistant might analyze:
+
+1. The capital of France is Paris
+2. The speed of light is approximately 299,792,458 meters per second
+3. Water boils at 100 degrees Celsius at standard atmospheric pressure
+4. The Earth orbits the Sun at an average distance of about 93 million miles
+5. The human body contains about 37 trillion cells

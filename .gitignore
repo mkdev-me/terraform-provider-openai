@@ -1,0 +1,152 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+.venv
+
+# Archivos específicos de Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+.terraform.lock.hcl
+**/.cursor/*
+
+# Excepción específica del proyecto
+terraform-provider-openai/examples/basic/terraform.tfvars
+
+# Archivos de respaldo generados por Terraform
+*.backup
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencias
+node_modules/
+jspm_packages/
+vendor/
+
+# Archivos de IDE y editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+.settings/
+
+# Archivos binarios
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Archivos temporales
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.recommenders
+
+# Distribuciones y compilaciones
+dist/
+build/
+out/
+target/
+
+# Variables de entorno y secretos
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Archivos de API Keys
+**/api_keys.txt
+**/*_key.txt
+**/secrets.yml
+
+# Directorio de caché de Go
+.go-cache/
+
+# Binarios compilados específicos
+terraform-provider-openai
+
+# Provider binaries
+terraform-provider-openai
+bin/
+
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+crash.log
+
+# Go files
+vendor/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.*
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+._.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Local environment files
+.env
+.env.local

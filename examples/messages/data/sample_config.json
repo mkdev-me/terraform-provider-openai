@@ -1,0 +1,15 @@
+{
+  "application": "OpenAI Terraform Example",
+  "version": "1.0.0",
+  "settings": {
+    "debug_mode": false,
+    "max_tokens": 500,
+    "temperature": 0.7,
+    "model": "gpt-4"
+  },
+  "features": [
+    "file_upload",
+    "message_creation",
+    "thread_management"
+  ]
+}
