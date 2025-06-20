@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_rate_limit"
+page_title: "OpenAI: openai_rate_limit Data Source"
 subcategory: "Rate Limits"
 description: |-
   Retrieves information about a specific rate limit for a model in an OpenAI project.

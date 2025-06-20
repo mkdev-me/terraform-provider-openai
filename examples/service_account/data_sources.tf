@@ -37,7 +37,6 @@ data "openai_project_service_account" "example" {
   count              = var.try_data_sources && var.try_create_service_account ? 1 : 0
   project_id         = local.project_id
   service_account_id = local.example_service_account_id
-  api_key            = var.openai_admin_key
 
   depends_on = [
     openai_project_service_account.demo
@@ -48,7 +47,6 @@ data "openai_project_service_account" "example" {
 data "openai_project_service_accounts" "all" {
   count      = var.try_data_sources ? 1 : 0
   project_id = local.project_id
-  api_key    = var.openai_admin_key
 }
 
 # Use the module in data source mode
@@ -57,8 +55,7 @@ module "service_account_readonly" {
   project_id         = local.project_id
   service_account_id = local.example_service_account_id
   use_data_source    = var.try_data_sources && var.try_create_service_account # Only use data source mode if explicitly requested and demo account exists
-  openai_admin_key   = var.openai_admin_key
-  name               = "Read-only Service Account" # Adding a name even in data source mode
+  name               = "Read-only Service Account"                            # Adding a name even in data source mode
 
   depends_on = [
     openai_project_service_account.demo

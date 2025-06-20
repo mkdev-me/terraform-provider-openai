@@ -51,13 +51,6 @@ func resourceOpenAIAdminAPIKey() *schema.Resource {
 				},
 				Description: "Scopes to assign to the API key (e.g., 'api.management.read', 'api.management.write')",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				ForceNew:    true,
-				Description: "Custom API key to use for this resource. If not provided, the provider's default API key will be used",
-			},
 			// Computed fields
 			"created_at": {
 				Type:        schema.TypeString,
@@ -81,7 +74,7 @@ func resourceOpenAIAdminAPIKey() *schema.Resource {
 
 // resourceOpenAIAdminAPIKeyCreate creates a new OpenAI admin API key
 func resourceOpenAIAdminAPIKeyCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(meta)
+	client, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -108,51 +101,21 @@ func resourceOpenAIAdminAPIKeyCreate(ctx context.Context, d *schema.ResourceData
 		}
 	}
 
-	// Create the API key
-	var apiKey *AdminAPIKeyResponse
+	// Create the API key using the provider's API key
+	resp, err := client.CreateAPIKey(name, expiresAt, scopes)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("error creating API key: %v", err))
+	}
 
-	if customAPIKey, ok := d.GetOk("api_key"); ok {
-		// Use custom API key if provided
-		// Save current API key, then restore it after the call
-		originalAPIKey := client.APIKey
-		client.APIKey = customAPIKey.(string)
-
-		resp, err := client.CreateAPIKey(name, expiresAt, scopes)
-
-		// Restore original API key
-		client.APIKey = originalAPIKey
-
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error creating API key: %v", err))
-		}
-
-		// Convert from client.AdminAPIKeyResponse to local AdminAPIKeyResponse
-		apiKey = &AdminAPIKeyResponse{
-			ID:        resp.ID,
-			Name:      resp.Name,
-			CreatedAt: resp.CreatedAt,
-			ExpiresAt: resp.ExpiresAt,
-			Object:    resp.Object,
-			Scopes:    resp.Scopes,
-			Key:       resp.Key,
-		}
-	} else {
-		// Use the default API key
-		resp, err := client.CreateAPIKey(name, expiresAt, scopes)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error creating API key: %v", err))
-		}
-
-		// Convert from client.AdminAPIKeyResponse to local AdminAPIKeyResponse
-		apiKey = &AdminAPIKeyResponse{
-			ID:        resp.ID,
-			Name:      resp.Name,
-			CreatedAt: resp.CreatedAt,
-			ExpiresAt: resp.ExpiresAt,
-			Object:    resp.Object,
-			Scopes:    resp.Scopes,
-			Key:       resp.Key,
-		}
+	// Convert from client.AdminAPIKeyResponse to local AdminAPIKeyResponse
+	apiKey := &AdminAPIKeyResponse{
+		ID:        resp.ID,
+		Name:      resp.Name,
+		CreatedAt: resp.CreatedAt,
+		ExpiresAt: resp.ExpiresAt,
+		Object:    resp.Object,
+		Scopes:    resp.Scopes,
+		Key:       resp.Key,
 	}
 
 	// Set the resource ID to the API key ID
@@ -191,7 +154,7 @@ func resourceOpenAIAdminAPIKeyCreate(ctx context.Context, d *schema.ResourceData
 
 // resourceOpenAIAdminAPIKeyRead reads an existing OpenAI admin API key
 func resourceOpenAIAdminAPIKeyRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(meta)
+	client, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -243,7 +206,7 @@ func resourceOpenAIAdminAPIKeyRead(ctx context.Context, d *schema.ResourceData, 
 
 // resourceOpenAIAdminAPIKeyDelete deletes an OpenAI admin API key
 func resourceOpenAIAdminAPIKeyDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(meta)
+	client, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}

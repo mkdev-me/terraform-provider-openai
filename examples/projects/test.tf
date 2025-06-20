@@ -2,7 +2,6 @@
 
 # Retrieve all projects using the projects data source
 data "openai_projects" "test_all_projects" {
-  admin_key = var.openai_admin_key
 }
 
 # Output results

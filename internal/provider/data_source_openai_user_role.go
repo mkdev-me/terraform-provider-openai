@@ -19,12 +19,6 @@ func dataSourceOpenAIUserRole() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the user to retrieve the role for",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"role": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -42,7 +36,7 @@ func dataSourceOpenAIUserRole() *schema.Resource {
 // dataSourceOpenAIUserRoleRead handles the read operation for the OpenAI user role data source.
 // It retrieves information about a specific user role from the OpenAI API.
 func dataSourceOpenAIUserRoleRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -52,14 +46,8 @@ func dataSourceOpenAIUserRoleRead(ctx context.Context, d *schema.ResourceData, m
 		return diag.FromErr(fmt.Errorf("user_id is required"))
 	}
 
-	// Get custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
-
-	// Retrieve the user information
-	user, exists, err := c.GetUser(userID, apiKey)
+	// Retrieve the user information using the provider's API key
+	user, exists, err := c.GetUser(userID)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error retrieving user: %s", err))
 	}

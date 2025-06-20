@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -34,14 +32,6 @@ func dataSourceOpenAIFineTuningCheckpointPermissions() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "Identifier for the last permission from the previous pagination request",
-			},
-			"admin_api_key": {
-				Type:        schema.TypeString,
-				Required:    false,
-				Optional:    true,
-				Sensitive:   true,
-				DefaultFunc: schema.EnvDefaultFunc("OPENAI_ADMIN_KEY", nil),
-				Description: "Admin API key to use for this operation instead of the provider's API key",
 			},
 			"permissions": {
 				Type:     schema.TypeList,
@@ -102,43 +92,6 @@ func dataSourceOpenAIFineTuningCheckpointPermissionsRead(ctx context.Context, d 
 		return diag.FromErr(err)
 	}
 
-	var adminKey string
-	var envKey string
-	var keySource string
-
-	// Check for admin key in resource config
-	adminKeyI, ok := d.GetOk("admin_api_key")
-	if ok && adminKeyI.(string) != "" {
-		adminKey = adminKeyI.(string)
-		keySource = "resource config"
-	} else {
-		// Try to get from environment variable
-		envKey = os.Getenv("OPENAI_ADMIN_KEY")
-		if envKey != "" {
-			adminKey = envKey
-			keySource = "environment variable OPENAI_ADMIN_KEY"
-		}
-	}
-
-	log.Printf("[DEBUG] admin_api_key exists in schema: %t", ok)
-	log.Printf("[DEBUG] admin_api_key from resource is empty: %t", adminKeyI == nil || adminKeyI.(string) == "")
-	log.Printf("[DEBUG] OPENAI_ADMIN_KEY environment variable is set: %t", envKey != "")
-	log.Printf("[DEBUG] OPENAI_ADMIN_KEY environment variable length: %d", len(envKey))
-	log.Printf("[DEBUG] Using admin key from: %s", keySource)
-
-	if adminKey == "" {
-		log.Printf("[DEBUG] No admin API key provided in resource or environment, will use API key from provider config")
-	} else {
-		// Mask most of the key but show first few chars for debugging
-		var maskedKey string
-		if len(adminKey) > 4 {
-			maskedKey = adminKey[:4] + "..."
-		} else {
-			maskedKey = "***"
-		}
-		log.Printf("[DEBUG] Using admin key: %s", maskedKey)
-	}
-
 	checkpointID := d.Get("checkpoint_id").(string)
 
 	// Build the query parameters
@@ -170,12 +123,8 @@ func dataSourceOpenAIFineTuningCheckpointPermissionsRead(ctx context.Context, d 
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 
-	// Set admin key
-	if adminKey != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", adminKey))
-	} else {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
-	}
+	// Use the provider's API key
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
 
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)

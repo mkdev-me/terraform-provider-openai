@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_speech_to_texts"
+page_title: "OpenAI: openai_speech_to_texts Data Source"
 subcategory: ""
 description: |-
   Data source for OpenAI speech-to-text conversions (Not supported by OpenAI API).

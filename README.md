@@ -1,74 +1,217 @@
 # Terraform Provider for OpenAI
 
-A comprehensive Terraform provider for managing OpenAI resources.
+[![Release](https://img.shields.io/github/v/release/fjcorp/terraform-provider-openai)](https://github.com/fjcorp/terraform-provider-openai/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fjcorp/terraform-provider-openai)](https://goreportcard.com/report/github.com/fjcorp/terraform-provider-openai)
+[![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+
+A comprehensive Terraform provider for managing OpenAI resources, enabling infrastructure-as-code management of OpenAI's API services including chat completions, assistants, fine-tuning, embeddings, and more.
 
 ## Features
 
-- **ChatGPT & GPT-4**: Create chat completions with the latest models
-- **File Management**: Upload, read, and delete files with import support
-- **Fine-Tuning**: Create and manage fine-tuning jobs with custom models
-- **Images**: Generate, edit, and create variations of images
-- **Embeddings**: Create embeddings for text and retrieve them
-- **Audio**: Convert speech to text and text to speech
-- **Moderation**: Detect harmful content in text
+### Core AI Capabilities
+- **Chat Completions**: Generate conversational responses with GPT-4, GPT-3.5-Turbo, and other models
+- **Assistants API**: Create and manage AI assistants with custom instructions and file knowledge
+- **Fine-Tuning**: Create custom models by fine-tuning base models on your data
+- **Embeddings**: Generate vector representations of text for semantic search and analysis
+- **Image Generation**: Create, edit, and generate variations of images using DALL-E
+- **Audio Processing**: Convert speech to text (transcription) and text to speech
+- **Moderation**: Detect potentially harmful content in text
+
+### Resource Management
+- **File Management**: Upload, organize, and manage files for training and assistants
+- **Vector Stores**: Create and manage vector databases for retrieval-augmented generation
+- **Batch Processing**: Process multiple requests efficiently with batch operations
+- **Thread Management**: Create and manage conversation threads for assistants
+
+### Administrative Features
 - **Organization Management**: Manage projects, users, and service accounts
-- **Model Responses**: Generate and retrieve responses with input data and comprehensive token usage statistics
-- **Rate Limits**: Manage and retrieve rate limits for models in your OpenAI projects
+- **API Key Management**: Handle project and admin API keys securely
+- **Rate Limit Control**: Configure and monitor rate limits for your projects
+- **Usage Tracking**: Monitor token usage and costs across resources
+
+## Requirements
+
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
+- [Go](https://golang.org/doc/install) >= 1.21 (for development)
+- OpenAI API Key
 
 ## Installation
 
-Since this provider is not yet officially available in the Terraform Registry, you'll need to build and install it locally:
+### Using Terraform Registry (Recommended)
+
+```hcl
+terraform {
+  required_providers {
+    openai = {
+      source  = "fjcorp/openai"
+      version = "~> 0.1"
+    }
+  }
+}
+
+provider "openai" {
+  api_key = var.openai_api_key
+}
+```
+
+### Manual Installation
+
+For development or if you need the latest unreleased version:
 
 ```bash
-# Clone the repository (if you haven't already)
+# Clone the repository
 git clone https://github.com/fjcorp/terraform-provider-openai.git
 cd terraform-provider-openai
 
+# Build and install in one command
+make install
+```
+
+## Development
+
+For provider developers, this repository includes a comprehensive Makefile with targets for building, testing, and managing the provider.
+
+### Quick Start for Developers
+
+```bash
+# Clone and setup
+git clone https://github.com/fjcorp/terraform-provider-openai.git
+cd terraform-provider-openai
+
+# Install dependencies and build
+make install
+
+# Run tests
+make test
+```
+
+### Available Make Targets
+
+#### Building and Installing
+```bash
 # Build the provider binary
-go build -o terraform-provider-openai 
+make build
 
+# Build and install the provider locally for testing
+make install
+
+# Build for multiple platforms (creates ./bin/ directory with cross-compiled binaries)
+make release
+
+# Clean up built binaries and temporary files
+make clean
 ```
 
-Then, create the appropriate plugin directory based on your operating system and architecture:
-
-### For macOS:
+#### Code Quality
 ```bash
-# Apple Silicon (M1/M2/M3)
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_arm64/
-cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_arm64/
+# Format Go code
+make fmt
 
-# Intel-based Mac
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_amd64/
-cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/darwin_amd64/
+# Run linting checks
+make lint
+
+# Run unit tests with coverage
+make test
+
+# Run acceptance tests (requires valid OpenAI API keys)
+make testacc
 ```
 
-### For Linux:
+#### Testing with Examples
+
+To test the provider with specific examples, navigate to the example directories:
+
 ```bash
-# AMD64 architecture (most common)
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/linux_amd64/
-cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/linux_amd64/
+# Test a specific example
+cd examples/chat_completion
+terraform init
+terraform plan
+terraform apply
 
-# ARM64 architecture
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/linux_arm64/
-cp terraform-provider-openai ~/.terraform.d/plugins/registry.terraform.io/fjcorp/openai/1.0.0/linux_arm64/
+# Or test another example
+cd ../assistants
+terraform init
+terraform plan
 ```
 
-### For Windows:
-```powershell
-# Create directory (PowerShell)
-New-Item -ItemType Directory -Force -Path "$env:APPDATA\terraform.d\plugins\registry.terraform.io\fjcorp\openai\1.0.0\windows_amd64"
+#### Development Workflow
 
-# Copy the executable
-Copy-Item "terraform-provider-openai.exe" -Destination "$env:APPDATA\terraform.d\plugins\registry.terraform.io\fjcorp\openai\1.0.0\windows_amd64\"
+```bash
+# 1. Make your changes to the provider code
+# 2. Format and test your code
+make fmt lint test
+
+# 3. Run acceptance tests (optional, requires API keys)
+make testacc
+
+# 4. Clean up when done
+make clean
 ```
 
-> **Note**: 
-> - The `1.0.0` in the path should match the version in your Terraform configuration.
-> - If you're unsure about your system's architecture, you can find it using:
->   - macOS/Linux: `uname -m` (x86_64 = amd64, arm64 = arm64)
->   - Windows: System Information or `systeminfo | findstr /C:"System Type"`
+#### Environment Variables for Testing
 
-After installing, you can use the provider in your Terraform configuration as shown in the Basic Usage section below.
+Set these environment variables for testing:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_ADMIN_KEY="your-admin-key"  # For admin operations
+export OPENAI_ORGANIZATION_ID="your-org-id"  # Optional
+```
+
+## Testing
+
+### Environment Setup
+
+Set the required environment variables:
+
+```bash
+# Option 1: Export directly
+export OPENAI_API_KEY="sk-proj-..."
+export OPENAI_ADMIN_KEY="sk-admin-..."  # Required for organization resources
+
+# Option 2: Use a .env file
+cat > .env << EOF
+OPENAI_API_KEY=sk-proj-...
+OPENAI_ADMIN_KEY=sk-admin-...
+EOF
+source .env
+```
+
+### Testing Examples
+
+Use the test script in `testing/`:
+
+```bash
+# Quick verification test
+./testing/test_examples.sh quick
+
+# Test all examples (plan only)
+./testing/test_examples.sh plan
+
+# Test a specific example (plan only)
+./testing/test_examples.sh plan image
+
+# Test with real resources (apply + destroy)
+./testing/test_examples.sh apply chat_completion
+
+# Test all examples with apply (WARNING: creates resources!)
+./testing/test_examples.sh apply
+
+# Clean up all terraform files
+./testing/test_examples.sh cleanup
+```
+
+### Manual Testing
+
+You can also test examples directly:
+
+```bash
+cd examples/chat_completion
+terraform init
+terraform plan
+terraform apply
+terraform destroy
+```
 
 ## Basic Usage
 
@@ -77,7 +220,7 @@ terraform {
   required_providers {
     openai = {
       source  = "fjcorp/openai"
-      version = "1.0.0"
+      version = "~> 0.1"
     }
   }
 }
@@ -268,47 +411,35 @@ If you encounter API key issues:
 
 ## Documentation
 
-- [Usage Guide](USAGE.md): Detailed usage instructions
-- [Implementation Details](IMPLEMENTATION.md): How the provider is implemented
-- [Contributing Guide](CONTRIBUTING.md): How to contribute
+### Getting Started
+- [Installation](#installation): Setup instructions
+- [Basic Usage](#basic-usage): Quick start guide
+- [Examples](examples/): Complete working examples for all features
+
+### Reference Documentation
+- [Terraform Registry Documentation](https://registry.terraform.io/providers/fjcorp/openai/latest/docs): Official provider documentation
+- [Resources](docs/resources/): Comprehensive resource documentation
+- [Data Sources](docs/data-sources/): Data source documentation
+- [Modules](modules/): Reusable Terraform modules
+
+### Guides and Support
+- [Authentication Guide](#authentication-and-api-key-requirements): API key setup and requirements
+- [Testing Guide](#testing): How to test the provider
+- [Development Guide](#development): For contributors
+- [Troubleshooting](docs/TROUBLESHOOTING.md): Common issues and solutions
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Thread Runs
+## Support
 
-The provider supports the `openai_thread_run` resource, which allows you to create a thread and start a run in a single operation. This simplifies the process of using OpenAI's Assistants API, combining two API calls into one Terraform resource.
+For issues, feature requests, or questions:
+- [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- [Documentation](docs/)
+- [Examples](examples/)
 
-### Example Usage
-
-```hcl
-resource "openai_thread_run" "example" {
-  assistant_id = openai_assistant.example.id
-  
-  thread {
-    messages {
-      role    = "user"
-      content = "Hello, can you help me with a question?"
-    }
-  }
-  
-  instructions = "You are a helpful assistant."
-  model        = "gpt-4o"
-}
-```
-
-You can also use it with an existing thread:
-
-```hcl
-resource "openai_thread_run" "on_existing" {
-  assistant_id       = openai_assistant.example.id
-  existing_thread_id = openai_thread.existing.id
-}
-```
-
-For more examples and detailed documentation, see:
-- [Thread Run Resource Documentation](docs/resources/thread_run.md)
-- [Thread Run Data Source Documentation](docs/data-sources/thread_run.md)
-- [Thread Run Module Documentation](modules/run/README.md)
-- [Thread Run Examples](examples/run/)

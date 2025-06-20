@@ -34,12 +34,6 @@ func dataSourceOpenAIAdminAPIKeys() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceOpenAIAdminAPIKeysRead,
 		Schema: map[string]*schema.Schema{
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Custom API key to use for this resource. If not provided, the provider's default API key will be used",
-			},
 			"limit": {
 				Type:        schema.TypeInt,
 				Optional:    true,
@@ -110,7 +104,7 @@ func dataSourceOpenAIAdminAPIKeys() *schema.Resource {
 // dataSourceOpenAIAdminAPIKeysRead handles the read operation for the OpenAI admin API keys data source.
 // It retrieves a list of all admin API keys from the OpenAI API.
 func dataSourceOpenAIAdminAPIKeysRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+	client, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -122,67 +116,29 @@ func dataSourceOpenAIAdminAPIKeysRead(ctx context.Context, d *schema.ResourceDat
 	// Set a unique ID for the resource
 	d.SetId(fmt.Sprintf("admin_api_keys_%d", time.Now().Unix()))
 
-	// Use custom API key if provided
-	var response *ListAPIKeysResponse
+	// Use the provider's API key
+	clientResponse, err := client.ListAPIKeys(limit, after)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("error listing admin API keys: %s", err))
+	}
 
-	if customAPIKey, ok := d.GetOk("api_key"); ok {
-		// Save current API key, then restore it after the call
-		originalAPIKey := client.APIKey
-		client.APIKey = customAPIKey.(string)
+	// Convert client response to our ListAPIKeysResponse
+	response := &ListAPIKeysResponse{
+		HasMore: clientResponse.HasMore,
+		Object:  clientResponse.Object,
+	}
 
-		clientResponse, err := client.ListAPIKeys(limit, after)
-
-		// Restore original API key
-		client.APIKey = originalAPIKey
-
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error listing admin API keys: %s", err))
-		}
-
-		// Convert client response to our ListAPIKeysResponse
-		response = &ListAPIKeysResponse{
-			HasMore: clientResponse.HasMore,
-			Object:  clientResponse.Object,
-		}
-
-		// Convert each API key in the response
-		response.Data = make([]AdminAPIKeyWithLastUsed, len(clientResponse.Data))
-		for i, key := range clientResponse.Data {
-			response.Data[i] = AdminAPIKeyWithLastUsed{
-				ID:         key.ID,
-				Name:       key.Name,
-				CreatedAt:  key.CreatedAt,
-				ExpiresAt:  key.ExpiresAt,
-				Object:     key.Object,
-				Scopes:     key.Scopes,
-				LastUsedAt: key.LastUsedAt,
-			}
-		}
-	} else {
-		// Use the default API key
-		clientResponse, err := client.ListAPIKeys(limit, after)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error listing admin API keys: %s", err))
-		}
-
-		// Convert client response to our ListAPIKeysResponse
-		response = &ListAPIKeysResponse{
-			HasMore: clientResponse.HasMore,
-			Object:  clientResponse.Object,
-		}
-
-		// Convert each API key in the response
-		response.Data = make([]AdminAPIKeyWithLastUsed, len(clientResponse.Data))
-		for i, key := range clientResponse.Data {
-			response.Data[i] = AdminAPIKeyWithLastUsed{
-				ID:         key.ID,
-				Name:       key.Name,
-				CreatedAt:  key.CreatedAt,
-				ExpiresAt:  key.ExpiresAt,
-				Object:     key.Object,
-				Scopes:     key.Scopes,
-				LastUsedAt: key.LastUsedAt,
-			}
+	// Convert each API key in the response
+	response.Data = make([]AdminAPIKeyWithLastUsed, len(clientResponse.Data))
+	for i, key := range clientResponse.Data {
+		response.Data[i] = AdminAPIKeyWithLastUsed{
+			ID:         key.ID,
+			Name:       key.Name,
+			CreatedAt:  key.CreatedAt,
+			ExpiresAt:  key.ExpiresAt,
+			Object:     key.Object,
+			Scopes:     key.Scopes,
+			LastUsedAt: key.LastUsedAt,
 		}
 	}
 

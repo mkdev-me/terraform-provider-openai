@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_audio_transcriptions"
+page_title: "OpenAI: openai_audio_transcriptions Data Source"
 subcategory: ""
 description: |-
   Data source for OpenAI audio transcriptions (Not supported by OpenAI API).

@@ -12,10 +12,9 @@ data "openai_admin_api_keys" "default" {
 #   after = "key_abc123" # Replace with an actual key ID from your account
 # }
 
-# List admin API keys using a custom API key for authentication
+# List admin API keys with custom limit
 data "openai_admin_api_keys" "custom_auth" {
-  api_key = var.openai_admin_key # Custom API key for authentication
-  limit   = 10
+  limit = 10
 }
 
 # Output: Total number of API keys from default query

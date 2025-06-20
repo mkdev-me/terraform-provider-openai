@@ -1,3 +1,0 @@
-{"custom_id": "embed-1", "method": "POST", "url": "/v1/embeddings", "body": {"model": "text-embedding-ada-002", "input": "The food was delicious and the service was excellent."}}
-{"custom_id": "embed-2", "method": "POST", "url": "/v1/embeddings", "body": {"model": "text-embedding-ada-002", "input": "I had a terrible experience at the restaurant."}}
-{"custom_id": "embed-3", "method": "POST", "url": "/v1/embeddings", "body": {"model": "text-embedding-ada-002", "input": "The price was reasonable for the quality of food."}}

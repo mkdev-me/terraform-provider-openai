@@ -71,6 +71,31 @@ func GetOpenAIClientWithProjectKey(m interface{}) (*client.OpenAIClient, error) 
 	return client.NewClient("", "", ""), nil
 }
 
+// GetOpenAIClientWithAdminKey returns a client configured with the admin API key
+// This is useful for resources that require admin-level API keys (like organization management)
+func GetOpenAIClientWithAdminKey(m interface{}) (*client.OpenAIClient, error) {
+	// Check if the meta is a provider client
+	if c, ok := m.(*OpenAIClient); ok {
+		log.Printf("[DEBUG] Getting client with admin API key")
+		// If admin API key is available, create a new client with it
+		if c.AdminAPIKey != "" {
+			log.Printf("[DEBUG] Using admin API key for request")
+			return client.NewClient(c.AdminAPIKey, c.OpenAIClient.OrganizationID, c.OpenAIClient.APIURL), nil
+		}
+		// Fall back to the project API key if no admin key
+		log.Printf("[DEBUG] No admin API key available, using project API key")
+		return c.OpenAIClient, nil
+	}
+
+	// Check if the meta is a client client
+	if c, ok := m.(*client.OpenAIClient); ok {
+		log.Printf("[DEBUG] Client is *client.OpenAIClient")
+		return c, nil
+	}
+
+	return client.NewClient("", "", ""), nil
+}
+
 // Provider returns a terraform.ResourceProvider that implements the OpenAI provider.
 // This provider allows Terraform to manage OpenAI resources including models, assistants,
 // files, and other OpenAI API resources.
@@ -384,15 +409,10 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.Errorf("invalid API URL: %v", err)
 	}
 
-	// Use admin_key if provided, otherwise use api_key
-	effectiveKey := apiKey
-	if adminKey != "" {
-		effectiveKey = adminKey
-	}
-
-	// Initialize OpenAI client
+	// Initialize OpenAI client with project API key by default
+	// The embedded client should use the project API key for standard operations
 	client := &OpenAIClient{
-		OpenAIClient:  client.NewClient(effectiveKey, organization, baseURL.String()),
+		OpenAIClient:  client.NewClient(apiKey, organization, baseURL.String()),
 		ProjectAPIKey: apiKey,
 		AdminAPIKey:   adminKey,
 	}

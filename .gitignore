@@ -150,3 +150,16 @@ Thumbs.db
 # Local environment files
 .env
 .env.local
+
+# Release-specific entries
+example.tf
+terraform.tfplan
+modules-dev/
+/pkg/
+website/.vagrant
+website/.bundle
+website/build
+website/node_modules
+.vagrant/
+*.iml
+website/vendor

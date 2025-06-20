@@ -9,13 +9,11 @@ terraform {
 }
 
 provider "openai" {
-  api_key = var.openai_admin_key
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
-variable "openai_admin_key" {
-  type      = string
-  sensitive = true
-}
 
 # IMPORTANT: This example uses a real email address
 # The user must already exist in your OpenAI organization
@@ -37,14 +35,12 @@ resource "openai_project" "example" {
 data "openai_organization_user" "user" {
   # Use the actual user ID retrieved from the API
   user_id = "user-yatSd6LuWvgeoqZbd89xzPlJ" # ID example
-  api_key = var.openai_admin_key
 }
 
 # Get all organization users to identify owners
 data "openai_organization_users" "all_users" {
   # Use a reasonable limit for your organization
-  limit   = 20
-  api_key = var.openai_admin_key
+  limit = 20
 }
 
 # Create a local variable to identify if the user is an organization owner
@@ -69,8 +65,6 @@ resource "openai_project_user" "project_user" {
   # For regular users, you can use either "owner" or "member"
   role = local.is_org_owner ? "owner" : "owner" # Change the second value to "member" for non-owners
 
-  api_key = var.openai_admin_key
-
   depends_on = [openai_project.example]
 }
 
@@ -82,8 +76,6 @@ resource "openai_project_user" "additional_project" {
   # IMPORTANT: For organization owners, always use "owner" role
   # For regular users, you can use either "owner" or "member"
   role = local.is_org_owner ? "owner" : "member"
-
-  api_key = var.openai_admin_key
 
   depends_on = [openai_project.additional]
 }

@@ -49,13 +49,6 @@ func resourceOpenAIFineTuningCheckpointPermission() *schema.Resource {
 				Computed:    true,
 				Description: "Unix timestamp of when the permission was created",
 			},
-			"admin_api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				ForceNew:    true,
-				Description: "Admin API key to use for this operation instead of the provider's API key",
-			},
 		},
 	}
 }
@@ -100,11 +93,8 @@ func resourceOpenAIFineTuningCheckpointPermissionCreate(ctx context.Context, d *
 		return diag.FromErr(err)
 	}
 
-	// Check if we have an admin API key specified in the resource config
+	// Use the provider's API key
 	apiKey := client.APIKey
-	if adminKey, ok := d.GetOk("admin_api_key"); ok && adminKey.(string) != "" {
-		apiKey = adminKey.(string)
-	}
 
 	// Ensure we have an API key
 	if apiKey == "" {
@@ -241,14 +231,9 @@ func resourceOpenAIFineTuningCheckpointPermissionRead(ctx context.Context, d *sc
 		return diag.Errorf("checkpoint_id is required")
 	}
 
-	// Check if we have an admin API key specified in the resource config
+	// Use the provider's API key
 	apiKey := client.APIKey
-	if adminKey, ok := d.GetOk("admin_api_key"); ok && adminKey.(string) != "" {
-		fmt.Printf("[DEBUG] Using admin API key from resource config for reading\n")
-		apiKey = adminKey.(string)
-	} else {
-		fmt.Printf("[DEBUG] Using API key from provider config for reading\n")
-	}
+	fmt.Printf("[DEBUG] Using API key from provider config for reading\n")
 
 	// Ensure we have an API key
 	if apiKey == "" {
@@ -339,14 +324,9 @@ func resourceOpenAIFineTuningCheckpointPermissionDelete(ctx context.Context, d *
 	checkpointID := d.Get("checkpoint_id").(string)
 	permissionID := d.Id()
 
-	// Check if we have an admin API key specified in the resource config
+	// Use the provider's API key
 	apiKey := client.APIKey
-	if adminKey, ok := d.GetOk("admin_api_key"); ok && adminKey.(string) != "" {
-		fmt.Printf("[DEBUG] Using admin API key from resource config for deletion\n")
-		apiKey = adminKey.(string)
-	} else {
-		fmt.Printf("[DEBUG] Using API key from provider config for deletion\n")
-	}
+	fmt.Printf("[DEBUG] Using API key from provider config for deletion\n")
 
 	apiURL := fmt.Sprintf("%s/fine_tuning/checkpoints/%s/permissions/%s", client.APIURL, checkpointID, permissionID)
 	req, err := http.NewRequestWithContext(ctx, "DELETE", apiURL, nil)

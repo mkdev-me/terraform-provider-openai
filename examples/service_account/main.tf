@@ -8,22 +8,12 @@ terraform {
 }
 
 provider "openai" {
-  # Explicitly use the admin key (NOT a project-specific API key)
-  # This must be an organization admin key with appropriate scopes
-  api_key      = var.openai_admin_key
-  organization = "org-1EsPkYLMfoxjbeprzDHij2rI"
-
-  # By setting the API URL explicitly, we ensure we're using the admin API
-  # This helps avoid issues with any OPENAI_API_KEY environment variables
-  api_url = "https://api.openai.com/v1"
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 # Define the Admin API Key variable
-variable "openai_admin_key" {
-  description = "OpenAI Admin API Key with api.organization.projects.service_accounts.write scope"
-  type        = string
-  sensitive   = true
-}
 
 # Add a variable to control whether to try creating a service account
 variable "try_create_service_account" {

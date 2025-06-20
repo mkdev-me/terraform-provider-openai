@@ -38,12 +38,6 @@ func dataSourceOpenAIAudioTranslations() *schema.Resource {
 				Optional:    true,
 				Description: "The ID of the project associated with the audio translations. If not specified, the API key's default project will be used.",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Project-specific API key to use for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"model": {
 				Type:         schema.TypeString,
 				Optional:     true,

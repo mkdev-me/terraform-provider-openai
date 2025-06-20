@@ -206,10 +206,6 @@ resource "openai_fine_tuning_checkpoint_permission" "checkpoint_permission" {
   checkpoint_id = var.checkpoint_id
   project_ids   = [var.project_id]
 
-  # The admin_api_key will be explicitly passed to the resource
-  # and used in the API call instead of the provider's API key
-  admin_api_key = var.admin_api_key
-
   # Import hint: 
   # terraform import -var="admin_api_key=$OPENAI_ADMIN_KEY" -var="checkpoint_id=your-checkpoint-id" -var="project_id=your-project-id" -var="use_admin_key=true" openai_fine_tuning_checkpoint_permission.checkpoint_permission[0] cp_permission_id
 

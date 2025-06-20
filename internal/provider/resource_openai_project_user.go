@@ -42,22 +42,6 @@ func resourceOpenAIProjectUser() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{"owner", "member"}, false),
 				Description:  "The role to assign to the user (owner or member)",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "API key specific to this project. If not provided, the provider's default API key will be used.",
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Always suppress the diff for the API key
-					return true
-				},
-				// This ensures the API key never gets stored in the state file
-				StateFunc: func(val interface{}) string {
-					// Return empty string instead of the actual API key
-					return ""
-				},
-			},
 			"email": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -75,7 +59,7 @@ func resourceOpenAIProjectUser() *schema.Resource {
 // resourceOpenAIProjectUserCreate adds a user to an OpenAI project.
 // It requires the project_id, user_id, and role to be specified.
 func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -88,16 +72,9 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 	id := fmt.Sprintf("%s:%s", projectID, userID)
 	d.SetId(id)
 
-	// Use the project-specific API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for adding user to project")
-	}
-
 	// First check if the user is already in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s already exists in project %s", userID, projectID))
-	existingUser, exists, err := c.FindProjectUser(projectID, userID, apiKey)
+	existingUser, exists, err := c.FindProjectUser(projectID, userID)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 		return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -127,14 +104,14 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 
 	// Add the user to the project
 	tflog.Debug(ctx, fmt.Sprintf("Adding user %s to project %s with role %s", userID, projectID, role))
-	projectUser, err := c.AddProjectUser(projectID, userID, role, apiKey)
+	projectUser, err := c.AddProjectUser(projectID, userID, role)
 	if err != nil {
 		// Check if error is because user already exists
 		if strings.Contains(err.Error(), "already exists in project") {
 			tflog.Info(ctx, fmt.Sprintf("User %s already exists in project, continuing: %s", userID, err))
 
 			// Try to get user details again
-			existingUser, exists, findErr := c.FindProjectUser(projectID, userID, apiKey)
+			existingUser, exists, findErr := c.FindProjectUser(projectID, userID)
 			if findErr == nil && exists {
 				// Update the Terraform state with values from the existing user
 				if err := d.Set("email", existingUser.Email); err != nil {
@@ -173,18 +150,13 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 		return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
 	}
 
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
-	}
-
 	return diag.Diagnostics{}
 }
 
 // resourceOpenAIProjectUserRead retrieves information about a user in a project.
 // This implementation now tries to verify if the user exists in the project.
 func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -192,25 +164,13 @@ func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, 
 	projectID := d.Get("project_id").(string)
 	userID := d.Get("user_id").(string)
 
-	// Use the project-specific API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for reading user from project")
-	}
-
 	// Check if the user exists in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
-	existingUser, exists, err := c.FindProjectUser(projectID, userID, apiKey)
+	existingUser, exists, err := c.FindProjectUser(projectID, userID)
 	if err != nil {
 		// If it's a permissions error, just keep the state
 		if strings.Contains(err.Error(), "insufficient permissions") {
 			tflog.Warn(ctx, fmt.Sprintf("Permission error reading user from project, using local state: %s", err))
-
-			// Even in case of error, ensure API key is not stored
-			if err := d.Set("api_key", ""); err != nil {
-				return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
-			}
 
 			return diag.Diagnostics{}
 		}
@@ -252,18 +212,13 @@ func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, 
 	// This ensures that the Terraform config remains the source of truth
 	// If you want to synchronize with the API state, use terraform import
 
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
-	}
-
 	return diag.Diagnostics{}
 }
 
 // resourceOpenAIProjectUserUpdate updates a user's role in a project.
 // Only the role can be updated, as other attributes like user_id and project_id require recreating the resource.
 func resourceOpenAIProjectUserUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -277,17 +232,10 @@ func resourceOpenAIProjectUserUpdate(ctx context.Context, d *schema.ResourceData
 	userID := d.Get("user_id").(string)
 	role := d.Get("role").(string)
 
-	// Use the project-specific API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for updating user in project")
-	}
-
 	// First check: Is this user an organization owner?
 	// Get information about the user in the organization first
 	// This is a preventive check, as attempting to change the role of an org owner will fail
-	orgUser, exists, err := c.GetUser(userID, apiKey)
+	orgUser, exists, err := c.GetUser(userID)
 	if err == nil && exists && orgUser.Role == "owner" {
 		// This is an organization owner, they can't have their project role changed from owner
 		tflog.Error(ctx, fmt.Sprintf("Cannot change role for user %s (email: %s) because they are an organization owner. "+
@@ -308,7 +256,7 @@ func resourceOpenAIProjectUserUpdate(ctx context.Context, d *schema.ResourceData
 	tflog.Info(ctx, fmt.Sprintf("Updating user %s in project %s to role %s via API call", userID, projectID, role))
 
 	// Call the API to update the user's role
-	updatedUser, err := c.UpdateProjectUser(projectID, userID, role, apiKey)
+	updatedUser, err := c.UpdateProjectUser(projectID, userID, role)
 	if err != nil {
 		// Handle specific error for organization owners
 		if strings.Contains(err.Error(), "owner of the organization") ||
@@ -357,18 +305,13 @@ func resourceOpenAIProjectUserUpdate(ctx context.Context, d *schema.ResourceData
 		return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
 	}
 
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
-	}
-
 	return diag.Diagnostics{}
 }
 
 // resourceOpenAIProjectUserDelete removes a user from a project.
 // It now makes an actual API call to remove the user, with appropriate error handling.
 func resourceOpenAIProjectUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -376,16 +319,9 @@ func resourceOpenAIProjectUserDelete(ctx context.Context, d *schema.ResourceData
 	projectID := d.Get("project_id").(string)
 	userID := d.Get("user_id").(string)
 
-	// Use the project-specific API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for removing user from project")
-	}
-
 	// Attempt to remove the user from the project
 	tflog.Debug(ctx, fmt.Sprintf("Removing user %s from project %s", userID, projectID))
-	err = c.RemoveProjectUser(projectID, userID, apiKey)
+	err = c.RemoveProjectUser(projectID, userID)
 	if err != nil {
 		// Check if this is a case where the user is an organization owner
 		if strings.Contains(err.Error(), "owner of the organization") {
@@ -412,18 +348,13 @@ func resourceOpenAIProjectUserDelete(ctx context.Context, d *schema.ResourceData
 	// Remove from Terraform state
 	d.SetId("")
 
-	// Even though we're removing the resource, ensure the API key is cleared from state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
-	}
-
 	return diag.Diagnostics{}
 }
 
 // resourceOpenAIProjectUserImport imports an existing project user into Terraform state.
 // The ID should be in the format "project_id:user_id".
 func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +377,7 @@ func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData
 	}
 
 	// Find the user in the project to get additional details
-	existingUser, exists, err := c.FindProjectUser(projectID, userID, "")
+	existingUser, exists, err := c.FindProjectUser(projectID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving project user: %s", err)
 	}
@@ -464,11 +395,6 @@ func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData
 	}
 	if err := d.Set("added_at", existingUser.AddedAt); err != nil {
 		return nil, fmt.Errorf("error setting added_at: %s", err)
-	}
-
-	// Explicitly ensure the api_key is empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return nil, fmt.Errorf("error resetting api_key: %s", err)
 	}
 
 	return []*schema.ResourceData{d}, nil

@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_rate_limit"
+page_title: "OpenAI: openai_rate_limit Resource"
 subcategory: "Rate Limits"
 description: |-
   Manages rate limits for an OpenAI project and model combination.

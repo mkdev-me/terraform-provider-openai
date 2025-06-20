@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_audio_translation"
+page_title: "OpenAI: openai_audio_translation Data Source"
 subcategory: ""
 description: |-
   Data source for an OpenAI audio translation.

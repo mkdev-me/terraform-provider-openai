@@ -1,11 +1,13 @@
 TEST?=$$(go list ./... | grep -v 'vendor')
-SWEEP?=all
-SWEEP_DIR?=./internal
-HOSTNAME=github.com
+GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
+# For local development
+DEV_HOSTNAME=github.com
+# For Terraform Registry
+REGISTRY_HOSTNAME=registry.terraform.io
 NAMESPACE=fjcorp
 NAME=openai
 BINARY=terraform-provider-${NAME}
-VERSION=0.1.0
+VERSION=1.0.0
 OS_ARCH=darwin_arm64
 
 default: install
@@ -30,13 +32,12 @@ release:
 	GOOS=windows GOARCH=amd64 go build -o ./bin/${BINARY}_${VERSION}_windows_amd64
 
 install: build
-	mkdir -p ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
-	cp ${BINARY} ~/.terraform.d/plugins/${HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
+	mkdir -p ~/.terraform.d/plugins/${REGISTRY_HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
+	cp ${BINARY} ~/.terraform.d/plugins/${REGISTRY_HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
-# For Terraform 0.12.x compatibility
-install012: build
-	mkdir -p ~/.terraform.d/plugins/${OS_ARCH}/
-	cp ${BINARY} ~/.terraform.d/plugins/${OS_ARCH}/terraform-provider-${NAME}_v${VERSION}
+install-dev: build
+	mkdir -p ~/.terraform.d/plugins/${DEV_HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
+	cp ${BINARY} ~/.terraform.d/plugins/${DEV_HOSTNAME}/${NAMESPACE}/${NAME}/${VERSION}/${OS_ARCH}
 
 fmt:
 	@echo "==> Fixing source code with gofmt..."
@@ -54,40 +55,6 @@ testacc:
 
 clean:
 	rm -f ${BINARY}
-	rm -vrf examples/.terraform /tmp/terraform-provider-openai.log
+	rm -rf ./bin
 
-# These targets are used for running/testing the provider with example configurations
-apply: install _terraform_cleanup _terraform_init _terraform_apply _terraform_log
-plan: install _terraform_cleanup _terraform_init _terraform_plan _terraform_log
-destroy: install _terraform_cleanup _terraform_init _terraform_destroy _terraform_log
-
-_terraform_cleanup:
-	# Cleanup last run
-	rm -vrf examples/.terraform /tmp/terraform-provider-openai.log
-_terraform_init:
-	# Initialize terraform
-	(cd examples && terraform init)
-_terraform_log:
-	# Print the debug log
-	cat /tmp/terraform-provider-openai.log 2>/dev/null || echo "No log file found"
-_terraform_apply:
-	(cd examples && OPENAI_PROVIDER_DEBUG=1 terraform apply) || true
-_terraform_plan:
-	(cd examples && OPENAI_PROVIDER_DEBUG=1 terraform plan)
-_terraform_destroy:
-	(cd examples && OPENAI_PROVIDER_DEBUG=1 terraform destroy)
-
-# Test with different Terraform versions using Docker
-terraform012:
-	docker build . --build-arg version=0.12.29 -t terraform-0.12-provider-openai
-	docker run terraform-0.12-provider-openai plan
-
-terraform013:
-	docker build . --build-arg version=0.13.5 -t terraform-0.13-provider-openai
-	docker run terraform-0.13-provider-openai plan
-
-terraform014:
-	docker build . --build-arg version=0.14.2 -t terraform-0.14-provider-openai
-	docker run terraform-0.14-provider-openai plan
-
-.PHONY: build fmt lint test testacc install install012 clean release plan apply destroy _terraform_cleanup _terraform_init _terraform_log _terraform_apply _terraform_plan _terraform_destroy 
+.PHONY: build fmt lint test testacc install install-dev clean release 

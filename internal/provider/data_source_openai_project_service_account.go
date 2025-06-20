@@ -26,12 +26,6 @@ func dataSourceOpenAIProjectServiceAccount() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the service account to retrieve",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Custom API key to use for this resource. If not provided, the provider's default API key will be used",
-			},
 			"name": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -61,7 +55,7 @@ func dataSourceOpenAIProjectServiceAccount() *schema.Resource {
 
 // dataSourceOpenAIProjectServiceAccountRead reads an existing OpenAI project service account
 func dataSourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -70,7 +64,6 @@ func dataSourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.Re
 	// Get input values
 	projectID := d.Get("project_id").(string)
 	serviceAccountID := d.Get("service_account_id").(string)
-	apiKey := d.Get("api_key").(string)
 
 	// Get the service account
 	tflog.Debug(ctx, "Reading OpenAI project service account", map[string]interface{}{
@@ -78,7 +71,7 @@ func dataSourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.Re
 		"service_account_id": serviceAccountID,
 	})
 
-	serviceAccount, err := c.GetProjectServiceAccount(projectID, serviceAccountID, apiKey)
+	serviceAccount, err := c.GetProjectServiceAccount(projectID, serviceAccountID)
 	if err != nil {
 		// Handle permission errors gracefully
 		if strings.Contains(err.Error(), "insufficient permissions") || strings.Contains(err.Error(), "Missing scopes") {

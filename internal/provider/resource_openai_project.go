@@ -67,7 +67,7 @@ func resourceOpenAIProject() *schema.Resource {
 // resourceOpenAIProjectCreate handles the creation of a new OpenAI project.
 func resourceOpenAIProjectCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Get the client from the provider meta
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -93,7 +93,7 @@ func resourceOpenAIProjectCreate(ctx context.Context, d *schema.ResourceData, me
 // resourceOpenAIProjectRead retrieves the current state of an OpenAI project.
 func resourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Get the client from the provider meta
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -149,7 +149,7 @@ func resourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, meta
 // resourceOpenAIProjectUpdate modifies an existing OpenAI project.
 func resourceOpenAIProjectUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Get the client from the provider meta
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -173,7 +173,7 @@ func resourceOpenAIProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 // resourceOpenAIProjectDelete removes an OpenAI project.
 func resourceOpenAIProjectDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Get the client from the provider meta
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -194,7 +194,7 @@ func resourceOpenAIProjectDelete(ctx context.Context, d *schema.ResourceData, me
 // resourceOpenAIProjectImport imports an existing OpenAI project into Terraform state.
 func resourceOpenAIProjectImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	// Get the client from the provider meta
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return nil, err
 	}

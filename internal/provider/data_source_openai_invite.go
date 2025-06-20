@@ -19,12 +19,6 @@ func dataSourceOpenAIInvite() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the invitation to retrieve",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"email": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -76,7 +70,7 @@ func dataSourceOpenAIInvite() *schema.Resource {
 // dataSourceOpenAIInviteRead handles the read operation for the OpenAI invite data source.
 // It retrieves information about a specific invitation from the OpenAI API.
 func dataSourceOpenAIInviteRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -86,14 +80,8 @@ func dataSourceOpenAIInviteRead(ctx context.Context, d *schema.ResourceData, m i
 		return diag.FromErr(fmt.Errorf("invite_id is required"))
 	}
 
-	// Get custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
-
-	// Retrieve the invitation
-	invite, err := c.GetInvite(inviteID, apiKey)
+	// Retrieve the invitation using the provider's API key
+	invite, err := c.GetInvite(inviteID)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error retrieving invitation: %s", err))
 	}

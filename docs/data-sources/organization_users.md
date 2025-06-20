@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_organization_users"
+page_title: "OpenAI: openai_organization_users Data Source"
 subcategory: "Organization Users"
 description: |-
   Retrieves information about users in an OpenAI organization.

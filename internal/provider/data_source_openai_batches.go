@@ -31,12 +31,6 @@ func dataSourceOpenAIBatches() *schema.Resource {
 				Optional:    true,
 				Description: "The ID of the project associated with the batch jobs. If not specified, the API key's default project will be used.",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Project-specific API key to use for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"batches": {
 				Type:     schema.TypeList,
 				Computed: true,
@@ -130,12 +124,8 @@ func dataSourceOpenAIBatchesRead(ctx context.Context, d *schema.ResourceData, m 
 		projectID = v.(string)
 	}
 
-	// Get custom API key if provided
+	// Use the provider's API key
 	apiKey := client.APIKey
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for reading batches")
-	}
 
 	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/batches", client.APIURL)

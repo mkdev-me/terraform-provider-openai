@@ -33,13 +33,6 @@ func resourceOpenAIProjectServiceAccount() *schema.Resource {
 				ForceNew:    true,
 				Description: "The name of the service account",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				ForceNew:    true,
-				Description: "Custom API key to use for this resource. If not provided, the provider's default API key will be used",
-			},
 			"service_account_id": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -77,7 +70,7 @@ func resourceOpenAIProjectServiceAccount() *schema.Resource {
 
 // resourceOpenAIProjectServiceAccountCreate creates a new OpenAI project service account
 func resourceOpenAIProjectServiceAccountCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -86,15 +79,13 @@ func resourceOpenAIProjectServiceAccountCreate(ctx context.Context, d *schema.Re
 	// Get values from schema
 	projectID := d.Get("project_id").(string)
 	name := d.Get("name").(string)
-	apiKey := d.Get("api_key").(string)
-
 	// Create the service account
 	tflog.Debug(ctx, "Creating OpenAI project service account", map[string]interface{}{
 		"project_id": projectID,
 		"name":       name,
 	})
 
-	serviceAccount, err := c.CreateProjectServiceAccount(projectID, name, apiKey)
+	serviceAccount, err := c.CreateProjectServiceAccount(projectID, name)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating project service account: %w", err))
 	}
@@ -130,7 +121,7 @@ func resourceOpenAIProjectServiceAccountCreate(ctx context.Context, d *schema.Re
 
 // resourceOpenAIProjectServiceAccountRead reads an existing OpenAI project service account
 func resourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -144,7 +135,6 @@ func resourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.Reso
 
 	projectID := idParts[0]
 	serviceAccountID := idParts[1]
-	apiKey := d.Get("api_key").(string)
 
 	// Get the service account
 	tflog.Debug(ctx, "Reading OpenAI project service account", map[string]interface{}{
@@ -152,7 +142,7 @@ func resourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.Reso
 		"service_account_id": serviceAccountID,
 	})
 
-	serviceAccount, err := c.GetProjectServiceAccount(projectID, serviceAccountID, apiKey)
+	serviceAccount, err := c.GetProjectServiceAccount(projectID, serviceAccountID)
 	if err != nil {
 		// Check if the error is a 404, which means the service account is gone
 		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
@@ -196,7 +186,7 @@ func resourceOpenAIProjectServiceAccountRead(ctx context.Context, d *schema.Reso
 
 // resourceOpenAIProjectServiceAccountDelete deletes an OpenAI project service account
 func resourceOpenAIProjectServiceAccountDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -210,7 +200,6 @@ func resourceOpenAIProjectServiceAccountDelete(ctx context.Context, d *schema.Re
 
 	projectID := idParts[0]
 	serviceAccountID := idParts[1]
-	apiKey := d.Get("api_key").(string)
 
 	// Delete the service account
 	tflog.Debug(ctx, "Deleting OpenAI project service account", map[string]interface{}{
@@ -218,7 +207,7 @@ func resourceOpenAIProjectServiceAccountDelete(ctx context.Context, d *schema.Re
 		"service_account_id": serviceAccountID,
 	})
 
-	err = c.DeleteProjectServiceAccount(projectID, serviceAccountID, apiKey)
+	err = c.DeleteProjectServiceAccount(projectID, serviceAccountID)
 	if err != nil {
 		// If the service account is already gone, just log a warning
 		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {

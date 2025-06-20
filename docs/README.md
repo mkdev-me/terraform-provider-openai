@@ -1,34 +1,72 @@
-# Documentation Directory
+# OpenAI Terraform Provider Documentation
 
-This directory contains comprehensive documentation for the OpenAI Terraform Provider.
+Welcome to the comprehensive documentation for the OpenAI Terraform Provider. This documentation covers all aspects of using and contributing to the provider.
 
-## Structure
+## Documentation Structure
 
-- **`data-sources/`**: Documentation for all data sources provided by this provider
-- **`resources/`**: Documentation for all resources provided by this provider
-- **`TROUBLESHOOTING.md`**: Common issues and their solutions
-- **`ORGANIZATION_USERS.md`**: Managing organization users
-- **`DEPENDENCY_MANAGEMENT.md`**: Managing dependencies for the provider
-- **`IMPLEMENTATION_SUMMARY.md`**: Overview of implementation details
-- **`PROJECTS.md`**: Working with OpenAI projects
-- **`DEVELOPMENT.md`**: Guide for developers contributing to this provider
-- **`IMPORT_LIMITATIONS.md`**: Important limitations when importing resources
-- **`openai_fine_tuning_resources.md`**: Detailed documentation about fine-tuning resources
+### API Reference
+- **[`resources/`](resources/)**: Complete documentation for all Terraform resources
+- **[`data-sources/`](data-sources/)**: Complete documentation for all data sources
 
-## Using This Documentation
+### Guides and Tutorials
+- **[`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)**: Solutions for common issues and error messages
+- **[`PROJECTS.md`](PROJECTS.md)**: Guide to working with OpenAI projects
+- **[`ORGANIZATION_USERS.md`](ORGANIZATION_USERS.md)**: Managing organization users and permissions
+- **[`openai_fine_tuning_resources.md`](openai_fine_tuning_resources.md)**: Comprehensive guide to fine-tuning resources
+- **[`IMPORT_LIMITATIONS.md`](IMPORT_LIMITATIONS.md)**: Important information about resource import limitations
 
-The documentation is organized to help you:
+### Developer Documentation
+- **[`DEVELOPMENT.md`](DEVELOPMENT.md)**: Contributing guide for developers
+- **[`DEPENDENCY_MANAGEMENT.md`](DEPENDENCY_MANAGEMENT.md)**: Managing provider dependencies
+- **[`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md)**: Technical implementation details
 
-1. Understand available resources and data sources
-2. Find implementation details
-3. Troubleshoot common issues
-4. Learn best practices for using the provider
+## Quick Start
+
+If you're new to the OpenAI Terraform Provider, start here:
+
+1. **[Installation Guide](../README.md#installation)**: Set up the provider
+2. **[Basic Usage](../README.md#basic-usage)**: Your first configuration
+3. **[Examples](../examples/)**: Working examples for all features
+4. **[Authentication](../README.md#authentication-and-api-key-requirements)**: API key setup
+
+## Finding Information
+
+### By Feature
+- **Chat & Completions**: See [chat_completion](resources/chat_completion.md), [completion](resources/completion.md)
+- **Assistants**: See [assistant](resources/assistant.md), [thread](resources/thread.md), [run](resources/run.md)
+- **Fine-Tuning**: See [fine_tuning_job](resources/fine_tuning_job.md), [Fine-Tuning Guide](openai_fine_tuning_resources.md)
+- **Files & Storage**: See [file](resources/file.md), [vector_store](resources/vector_store.md)
+- **Images**: See [image_generation](resources/image_generation.md), [image_edit](resources/image_edit.md)
+- **Audio**: See [audio_transcription](resources/audio_transcription.md), [text_to_speech](resources/text_to_speech.md)
+- **Administration**: See [project](resources/project.md), [project_user](resources/project_user.md)
+
+### By Task
+- **Import existing resources**: See [Import Limitations](IMPORT_LIMITATIONS.md)
+- **Manage API keys**: See [project_api_key](data-sources/project_api_key.md)
+- **Set rate limits**: See [rate_limit](resources/rate_limit.md)
+- **Work with organizations**: See [Organization Users Guide](ORGANIZATION_USERS.md)
+
+## Best Practices
+
+1. **Security**: Never commit API keys to version control
+2. **State Management**: Use remote state for team collaboration
+3. **Resource Organization**: Group related resources in modules
+4. **Error Handling**: Implement proper error handling and retries
+5. **Cost Management**: Monitor token usage and set appropriate limits
+
+## Getting Help
+
+- **Issues**: [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- **Examples**: [Example Configurations](../examples/)
+- **API Reference**: [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)
 
 ## Contributing
 
-To contribute to the documentation:
+We welcome contributions to improve this documentation:
 
-1. Follow the formatting style of existing documents
-2. Include examples where appropriate
-3. Keep explanations clear and concise
-4. Update the relevant sections when adding new features 
+1. **Format**: Use clear, consistent Markdown formatting
+2. **Examples**: Include practical, working examples
+3. **Accuracy**: Ensure technical accuracy and test all examples
+4. **Clarity**: Write for both beginners and experienced users
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete contribution guide. 

@@ -19,7 +19,6 @@ resource "openai_project_user" "data_source_user" {
 # 1. Retrieve organization user information using the data source
 data "openai_organization_user" "user_info" {
   user_id = "user-yatSd6LuWvgeoqZbd89xzPlJ" # Real user ID from your organization
-  api_key = var.openai_admin_key            # Pass the admin key with proper permissions
 }
 
 # 2. Retrieve project user information using the data source
@@ -41,8 +40,7 @@ data "openai_project_users" "all_project_users" {
 
 # 4. Retrieve all organization users using the data source
 data "openai_organization_users" "all_org_users" {
-  limit   = 20
-  api_key = var.openai_admin_key # Pass the admin key with proper permissions
+  limit = 20
 }
 
 # 5. Use the project_user module in list mode

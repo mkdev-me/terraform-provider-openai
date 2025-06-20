@@ -56,14 +56,12 @@ resource "openai_project_user" "user" {
   project_id = var.project_id
   user_id    = var.user_id
   role       = var.role
-  api_key    = var.openai_admin_key
 }
 
 # Retrieve all project users (when in list mode)
 data "openai_project_users" "all" {
   count      = var.list_mode ? 1 : 0
   project_id = var.project_id
-  api_key    = var.openai_admin_key
 }
 
 # Outputs for single user mode

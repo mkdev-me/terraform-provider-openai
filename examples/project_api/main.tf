@@ -39,11 +39,6 @@ terraform {
 # Input Variables
 # ------------------------------
 # Admin API key for authenticating with OpenAI
-variable "openai_admin_key" {
-  type        = string
-  description = "OpenAI Admin API key (requires administrative permissions)"
-  sensitive   = true # Marks as sensitive to hide in logs and console output
-}
 
 # Optional: ID of an existing API key to look up
 variable "existing_api_key_id" {
@@ -56,7 +51,9 @@ variable "existing_api_key_id" {
 # ------------------------------
 # Configure the OpenAI Provider with the admin API key
 provider "openai" {
-  admin_key = var.openai_admin_key # Authentication using the provided admin API key
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 # Resources
@@ -75,14 +72,12 @@ data "openai_project_api_key" "specific_key" {
   count      = var.existing_api_key_id != "" ? 1 : 0 # Conditional creation
   project_id = openai_project.example.id             # ID of the project
   api_key_id = var.existing_api_key_id               # ID of the specific API key to retrieve
-  admin_key  = var.openai_admin_key                  # Admin key for authentication
 }
 
 # 2. RETRIEVE ALL API KEYS FOR THE PROJECT
 # This data source retrieves all API keys for the specified project
 data "openai_project_api_keys" "all_keys" {
   project_id = openai_project.example.id # ID of the project
-  admin_key  = var.openai_admin_key      # Admin key for authentication
 }
 
 # Outputs

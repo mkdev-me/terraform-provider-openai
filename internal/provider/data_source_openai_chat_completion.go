@@ -62,12 +62,6 @@ func dataSourceOpenAIChatCompletion() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the chat completion to retrieve (format: chatcmpl-xxx)",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"id": {
 				Type:        schema.TypeString,
 				Computed:    true,

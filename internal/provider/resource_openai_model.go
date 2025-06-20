@@ -51,22 +51,6 @@ func resourceOpenAIModel() *schema.Resource {
 				ForceNew:    true,
 				Description: "The ID of the model (e.g., gpt-4, gpt-3.5-turbo, etc.)",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				ForceNew:    true,
-				Description: "Project API key for authentication. If not provided, the provider's default API key will be used.",
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Always suppress the diff for the API key
-					return true
-				},
-				// This ensures the API key never gets stored in the state file
-				StateFunc: func(val interface{}) string {
-					// Return empty string instead of the actual API key
-					return ""
-				},
-			},
 			"owned_by": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -173,7 +157,7 @@ func resourceOpenAIModelCreate(ctx context.Context, d *schema.ResourceData, m in
 
 // resourceOpenAIModelRead reads the model information from OpenAI API
 func resourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClientWithProjectKey(m)
+	client, err := GetOpenAIClient(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -184,11 +168,8 @@ func resourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("model ID is empty")
 	}
 
-	// Get custom API key if provided
+	// Use the provider's API key
 	apiKey := client.APIKey
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
 
 	// Construct the API URL
 	url := fmt.Sprintf("%s/v1/models/%s", client.APIURL, modelID)
@@ -203,7 +184,7 @@ func resourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Add headers with the appropriate API key
+	// Add headers with the provider's API key
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
@@ -276,11 +257,6 @@ func resourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m inte
 		permissions = append(permissions, permMap)
 	}
 	if err := d.Set("permission", permissions); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
 		return diag.FromErr(err)
 	}
 

@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_text_to_speech"
+page_title: "OpenAI: openai_text_to_speech Data Source"
 subcategory: ""
 description: |-
   Data source for an OpenAI text-to-speech audio file.

@@ -28,21 +28,6 @@ func dataSourceOpenAIOrganizationUser() *schema.Resource {
 				Description:  "The email address of the user to retrieve",
 				AtLeastOneOf: []string{"user_id", "email"},
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Always suppress the diff for the API key
-					return true
-				},
-				// This ensures the API key never gets stored in the state file
-				StateFunc: func(val interface{}) string {
-					// Return empty string instead of the actual API key
-					return ""
-				},
-			},
 			"name": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -65,15 +50,9 @@ func dataSourceOpenAIOrganizationUser() *schema.Resource {
 // dataSourceOpenAIOrganizationUserRead handles the read operation for the OpenAI organization user data source.
 // It retrieves information about a specific user from the OpenAI API.
 func dataSourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
-	}
-
-	// Extract API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
 	}
 
 	var user *client.User
@@ -85,8 +64,8 @@ func dataSourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.Resourc
 		userID := userID.(string)
 		tflog.Debug(ctx, fmt.Sprintf("Retrieving user with ID: %s", userID))
 
-		// Call the API to get the user
-		user, exists, err = c.GetUser(userID, apiKey)
+		// Call the API to get the user using the provider's API key
+		user, exists, err = c.GetUser(userID)
 		if err != nil {
 			return diag.Errorf("error retrieving user by ID: %s", err)
 		}
@@ -99,8 +78,8 @@ func dataSourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.Resourc
 		email := email.(string)
 		tflog.Debug(ctx, fmt.Sprintf("Retrieving user with email: %s", email))
 
-		// Call the API to find the user by email
-		user, exists, err = c.FindUserByEmail(email, apiKey)
+		// Call the API to find the user by email using the provider's API key
+		user, exists, err = c.FindUserByEmail(email)
 		if err != nil {
 			return diag.Errorf("error retrieving user by email: %s", err)
 		}
@@ -137,11 +116,6 @@ func dataSourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.Resourc
 
 	if err := d.Set("added_at", user.AddedAt); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
-	}
-
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
 	}
 
 	return nil

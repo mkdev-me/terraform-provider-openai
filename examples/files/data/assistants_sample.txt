@@ -1,8 +1,0 @@
-This is a sample text file for use with OpenAI Assistants API.
-
-It contains information about world capitals:
-- France: Paris
-- Italy: Rome
-- Japan: Tokyo
-- Spain: Madrid
-- Germany: Berlin

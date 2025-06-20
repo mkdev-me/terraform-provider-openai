@@ -7,16 +7,11 @@ terraform {
   }
 }
 
-provider "openai" {
-  # This MUST be an admin API key with administrative permissions
-  # The API key is loaded from the OPENAI_ADMIN_KEY environment variable
-  admin_key = var.openai_admin_key
-}
 
-variable "openai_admin_key" {
-  type        = string
-  description = "OpenAI Admin API key (requires administrative permissions)"
-  sensitive   = true
+provider "openai" {
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 # Simple project example

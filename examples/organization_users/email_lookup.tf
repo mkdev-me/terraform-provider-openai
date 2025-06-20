@@ -6,9 +6,6 @@
 # Retrieve organization user information using email
 data "openai_organization_user" "by_email" {
   email = "pablo+newtest7@mkdev.me" # Replace with a real email from your organization
-
-  # Optional: Use a specific API key with sufficient permissions
-  # api_key = var.openai_admin_key
 }
 
 # Outputs from the organization user data source

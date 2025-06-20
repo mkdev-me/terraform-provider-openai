@@ -51,7 +51,6 @@ data "openai_project_service_account" "this" {
   count              = var.use_data_source ? 1 : 0
   project_id         = var.project_id
   service_account_id = var.service_account_id != null ? var.service_account_id : ""
-  api_key            = var.openai_admin_key
 }
 
 # Otherwise, create a new service account - but only if name is provided
@@ -59,7 +58,6 @@ resource "openai_project_service_account" "this" {
   count      = (!var.use_data_source && var.name != null && var.name != "") ? 1 : 0
   project_id = var.project_id
   name       = var.name
-  api_key    = var.openai_admin_key
 }
 
 # Local variables to handle both data source and resource outputs

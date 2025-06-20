@@ -1,5 +1,5 @@
 ---
-page_title: "openai_fine_tuning_checkpoint_permission Resource - terraform-provider-openai"
+page_title: "OpenAI: openai_fine_tuning_checkpoint_permission Resource"
 subcategory: ""
 description: |-
   Manages permissions for fine-tuning checkpoints, allowing you to share checkpoints with other organizations.

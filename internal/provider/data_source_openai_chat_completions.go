@@ -24,12 +24,6 @@ func dataSourceOpenAIChatCompletions() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceOpenAIChatCompletionsRead,
 		Schema: map[string]*schema.Schema{
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"after": {
 				Type:        schema.TypeString,
 				Optional:    true,

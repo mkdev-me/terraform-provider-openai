@@ -65,7 +65,7 @@ func dataSourceOpenAIProjects() *schema.Resource {
 // dataSourceOpenAIProjectsRead handles the read operation for the OpenAI projects data source.
 // It retrieves the list of available projects from the OpenAI API and updates the Terraform state.
 func dataSourceOpenAIProjectsRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+	client, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}

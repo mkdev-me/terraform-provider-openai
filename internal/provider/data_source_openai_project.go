@@ -92,7 +92,7 @@ func dataSourceOpenAIProject() *schema.Resource {
 // dataSourceOpenAIProjectRead handles the read operation for the OpenAI project data source.
 // It retrieves information about a specific project from the OpenAI API.
 func dataSourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+	client, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}

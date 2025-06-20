@@ -31,12 +31,6 @@ func resourceOpenAIUserRole() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{"owner", "member"}, false),
 				Description:  "The role to assign to the user (owner or member)",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"email": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -47,7 +41,7 @@ func resourceOpenAIUserRole() *schema.Resource {
 }
 
 func resourceOpenAIUserRoleCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -58,13 +52,8 @@ func resourceOpenAIUserRoleCreate(ctx context.Context, d *schema.ResourceData, m
 	// Set the ID to be the user_id since this is a user-specific resource
 	d.SetId(userID)
 
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
-
 	// Check if user exists and get current role
-	user, exists, err := c.GetUser(userID, apiKey)
+	user, exists, err := c.GetUser(userID)
 	if err != nil {
 		return diag.Errorf("Error checking user: %s", err)
 	}
@@ -75,7 +64,7 @@ func resourceOpenAIUserRoleCreate(ctx context.Context, d *schema.ResourceData, m
 
 	// Update the user's role if it's different
 	if user.Role != role {
-		updatedUser, err := c.UpdateUserRole(userID, role, apiKey)
+		updatedUser, err := c.UpdateUserRole(userID, role)
 		if err != nil {
 			return diag.Errorf("Error updating user role: %s", err)
 		}
@@ -89,18 +78,13 @@ func resourceOpenAIUserRoleCreate(ctx context.Context, d *schema.ResourceData, m
 }
 
 func resourceOpenAIUserRoleRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	userID := d.Id()
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
-
-	user, exists, err := c.GetUser(userID, apiKey)
+	user, exists, err := c.GetUser(userID)
 	if err != nil {
 		return diag.Errorf("Error reading user: %s", err)
 	}
@@ -121,7 +105,7 @@ func resourceOpenAIUserRoleRead(ctx context.Context, d *schema.ResourceData, m i
 }
 
 func resourceOpenAIUserRoleUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -132,12 +116,8 @@ func resourceOpenAIUserRoleUpdate(ctx context.Context, d *schema.ResourceData, m
 
 	userID := d.Id()
 	role := d.Get("role").(string)
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
 
-	updatedUser, err := c.UpdateUserRole(userID, role, apiKey)
+	updatedUser, err := c.UpdateUserRole(userID, role)
 	if err != nil {
 		return diag.Errorf("Error updating user role: %s", err)
 	}
@@ -158,7 +138,7 @@ func resourceOpenAIUserRoleDelete(ctx context.Context, d *schema.ResourceData, m
 // resourceOpenAIUserRoleImport imports an existing user role into Terraform state.
 // The ID should be the user_id.
 func resourceOpenAIUserRoleImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +151,7 @@ func resourceOpenAIUserRoleImport(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	// Get the user details from the API
-	user, exists, err := c.GetUser(userID, "")
+	user, exists, err := c.GetUser(userID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving user: %s", err)
 	}

@@ -25,10 +25,9 @@ terraform {
 }
 
 provider "openai" {
-  # To use this example, you need to provide an API key with administrative permissions
-  # Either through the OPENAI_API_KEY environment variable
-  # or configured here (not recommended for security reasons)
-  api_key = var.openai_admin_api_key
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 # Variable for enabling/disabling organization user functionality
@@ -132,8 +131,3 @@ output "organization_users_status" {
   description = "Status of the organization users functionality"
 }
 
-variable "openai_admin_api_key" {
-  description = "OpenAI Admin API Key with organization management permissions"
-  type        = string
-  sensitive   = true
-}

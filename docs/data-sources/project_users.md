@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_project_users"
+page_title: "OpenAI: openai_project_users Data Source"
 subcategory: "Project Users"
 description: |-
   Retrieves a list of all users in a specific OpenAI project.

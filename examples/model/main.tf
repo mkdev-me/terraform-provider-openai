@@ -14,19 +14,15 @@ provider "openai" {
 # Example 1: Retrieve information about a specific model using provider API key
 data "openai_model" "gpt4o" {
   model_id = "gpt-4o"
-  # No need to specify api_key here as we're using admin_key in the provider
 }
 
-# Example 2: Retrieve information about a specific model using project admin key
+# Example 2: Retrieve information about a specific model (alternate example)
 data "openai_model" "gpt4o_project" {
   model_id = "gpt-4o"
-  # No need to specify api_key here as we're using admin_key in the provider
 }
 
 # Example 3: Retrieve information about all available models
-data "openai_models" "all" {
-  # No need to specify api_key here as we're using admin_key in the provider
-}
+data "openai_models" "all" {}
 
 # Variables for sensitive information that shouldn't be hardcoded
 

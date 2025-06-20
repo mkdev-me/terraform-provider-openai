@@ -9,14 +9,12 @@ resource "openai_project" "example" {
 # Retrieve information about the project using the data source
 data "openai_project" "project_info" {
   project_id = openai_project.example.id
-  admin_key  = var.openai_admin_key
   depends_on = [openai_project.example]
 }
 
 # Retrieve all projects using the projects data source
 data "openai_projects" "all_projects" {
   depends_on = [openai_project.example]
-  admin_key  = var.openai_admin_key
 }
 
 # Outputs

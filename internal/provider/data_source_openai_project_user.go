@@ -33,21 +33,6 @@ func dataSourceOpenAIProjectUser() *schema.Resource {
 				Description:  "The email address of the user to retrieve",
 				AtLeastOneOf: []string{"user_id", "email"},
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Always suppress the diff for the API key
-					return true
-				},
-				// This ensures the API key never gets stored in the state file
-				StateFunc: func(val interface{}) string {
-					// Return empty string instead of the actual API key
-					return ""
-				},
-			},
 			"role": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -65,7 +50,7 @@ func dataSourceOpenAIProjectUser() *schema.Resource {
 // dataSourceOpenAIProjectUserRead handles the read operation for the OpenAI project user data source.
 // It retrieves information about a specific user in a project from the OpenAI API.
 func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -73,13 +58,6 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 	projectID := d.Get("project_id").(string)
 	if projectID == "" {
 		return diag.FromErr(fmt.Errorf("project_id is required"))
-	}
-
-	// Get custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for reading project user")
 	}
 
 	var projectUser *client.ProjectUser
@@ -95,8 +73,8 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
 
-		// Check if the user exists in the project
-		projectUser, exists, err = c.FindProjectUser(projectID, userID, apiKey)
+		// Check if the user exists in the project using the provider's API key
+		projectUser, exists, err = c.FindProjectUser(projectID, userID)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 			return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -117,8 +95,8 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user with email %s exists in project %s", email, projectID))
 
-		// Check if the user exists in the project by email
-		projectUser, exists, err = c.FindProjectUserByEmail(projectID, email, apiKey)
+		// Check if the user exists in the project by email using the provider's API key
+		projectUser, exists, err = c.FindProjectUserByEmail(projectID, email)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists by email: %v", err))
 			return diag.Errorf("Error checking if user exists in project by email: %s", err)
@@ -151,11 +129,6 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 
 	if err := d.Set("added_at", projectUser.AddedAt); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
-	}
-
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
 	}
 
 	return nil

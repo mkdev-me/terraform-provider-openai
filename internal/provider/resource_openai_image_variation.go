@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -176,7 +177,11 @@ func resourceOpenAIImageVariationCreate(ctx context.Context, d *schema.ResourceD
 	}
 	defer imageFile.Close()
 
-	imagePart, err := writer.CreateFormFile("image", filepath.Base(imagePath))
+	// Create a custom form field with explicit content type for PNG
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, filepath.Base(imagePath)))
+	h.Set("Content-Type", "image/png")
+	imagePart, err := writer.CreatePart(h)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating form file: %v", err))
 	}

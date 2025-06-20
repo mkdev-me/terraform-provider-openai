@@ -16,6 +16,9 @@ terraform {
 # Configure the OpenAI Provider
 provider "openai" {
   # API key is taken from OPENAI_API_KEY environment variable
+  # For testing: uncomment and add your keys
+  # api_key   = "sk-proj-..."
+  # admin_key = "sk-admin-..."
 }
 
 # Local variables

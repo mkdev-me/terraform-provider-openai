@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_batches"
+page_title: "OpenAI: openai_batches Data Source"
 subcategory: "Batches"
 description: |-
   Retrieves a list of all batch jobs for an OpenAI project.

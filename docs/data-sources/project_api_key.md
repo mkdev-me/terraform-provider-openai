@@ -1,5 +1,5 @@
 ---
-page_title: "OpenAI: openai_project_api_key"
+page_title: "OpenAI: openai_project_api_key Data Source"
 subcategory: "Project API Keys"
 description: |-
   Retrieves information about a specific API key within an OpenAI project.

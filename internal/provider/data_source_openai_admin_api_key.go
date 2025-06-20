@@ -30,12 +30,6 @@ func dataSourceOpenAIAdminAPIKey() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the admin API key to retrieve",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Custom API key to use for this resource. If not provided, the provider's default API key will be used",
-			},
 			"name": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -71,7 +65,7 @@ func dataSourceOpenAIAdminAPIKey() *schema.Resource {
 // dataSourceOpenAIAdminAPIKeyRead handles the read operation for the OpenAI admin API key data source.
 // It retrieves information about a specific admin API key from the OpenAI API.
 func dataSourceOpenAIAdminAPIKeyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+	client, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -84,54 +78,24 @@ func dataSourceOpenAIAdminAPIKeyRead(ctx context.Context, d *schema.ResourceData
 	// Set the ID to the API key ID
 	d.SetId(apiKeyID)
 
-	// Use custom API key if provided
-	if customAPIKey, ok := d.GetOk("api_key"); ok {
-		// Save current API key, then restore it after the call
-		originalAPIKey := client.APIKey
-		client.APIKey = customAPIKey.(string)
+	// Use the provider's API key
+	clientAPIKey, err := client.GetAPIKey(apiKeyID)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("error retrieving admin API key: %s", err))
+	}
 
-		clientAPIKey, err := client.GetAPIKey(apiKeyID)
+	// Convert client.AdminAPIKey to our AdminAPIKey
+	apiKey := &AdminAPIKey{
+		ID:        clientAPIKey.ID,
+		Name:      clientAPIKey.Name,
+		CreatedAt: clientAPIKey.CreatedAt,
+		ExpiresAt: clientAPIKey.ExpiresAt,
+		Object:    clientAPIKey.Object,
+		Scopes:    clientAPIKey.Scopes,
+	}
 
-		// Restore original API key
-		client.APIKey = originalAPIKey
-
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error retrieving admin API key: %s", err))
-		}
-
-		// Convert client.AdminAPIKey to our AdminAPIKey
-		apiKey := &AdminAPIKey{
-			ID:        clientAPIKey.ID,
-			Name:      clientAPIKey.Name,
-			CreatedAt: clientAPIKey.CreatedAt,
-			ExpiresAt: clientAPIKey.ExpiresAt,
-			Object:    clientAPIKey.Object,
-			Scopes:    clientAPIKey.Scopes,
-		}
-
-		if err := setAdminAPIKeyAttributes(d, apiKey); err != nil {
-			return diag.FromErr(err)
-		}
-	} else {
-		// Use the default API key
-		clientAPIKey, err := client.GetAPIKey(apiKeyID)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error retrieving admin API key: %s", err))
-		}
-
-		// Convert client.AdminAPIKey to our AdminAPIKey
-		apiKey := &AdminAPIKey{
-			ID:        clientAPIKey.ID,
-			Name:      clientAPIKey.Name,
-			CreatedAt: clientAPIKey.CreatedAt,
-			ExpiresAt: clientAPIKey.ExpiresAt,
-			Object:    clientAPIKey.Object,
-			Scopes:    clientAPIKey.Scopes,
-		}
-
-		if err := setAdminAPIKeyAttributes(d, apiKey); err != nil {
-			return diag.FromErr(err)
-		}
+	if err := setAdminAPIKeyAttributes(d, apiKey); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return diag.Diagnostics{}

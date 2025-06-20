@@ -23,7 +23,6 @@ variable "try_data_sources" {
 data "openai_rate_limits" "all_limits" {
   count      = var.try_data_sources ? 1 : 0
   project_id = var.project_id
-  api_key    = var.openai_api_key
 }
 
 # Retrieve rate limit for the DALL-E 3 model specifically
@@ -31,7 +30,6 @@ data "openai_rate_limit" "dalle3_limit" {
   count      = var.try_data_sources ? 1 : 0
   project_id = var.project_id
   model      = "dall-e-3"
-  api_key    = var.openai_api_key
 }
 
 # Output example: get DALL-E 3 limits using the data source

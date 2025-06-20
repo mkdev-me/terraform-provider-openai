@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -195,7 +196,11 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 	}
 	defer imageFile.Close()
 
-	imagePart, err := writer.CreateFormFile("image", filepath.Base(imagePath))
+	// Create a custom form field with explicit content type for PNG
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, filepath.Base(imagePath)))
+	h.Set("Content-Type", "image/png")
+	imagePart, err := writer.CreatePart(h)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating form file: %v", err))
 	}
@@ -217,7 +222,11 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 		}
 		defer maskFile.Close()
 
-		maskPart, err := writer.CreateFormFile("mask", filepath.Base(maskPath.(string)))
+		// Create a custom form field with explicit content type for PNG
+		mh := make(textproto.MIMEHeader)
+		mh.Set("Content-Disposition", fmt.Sprintf(`form-data; name="mask"; filename="%s"`, filepath.Base(maskPath.(string))))
+		mh.Set("Content-Type", "image/png")
+		maskPart, err := writer.CreatePart(mh)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error creating form file for mask: %v", err))
 		}

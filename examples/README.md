@@ -1,200 +1,178 @@
-# OpenAI Provider Examples
+# OpenAI Terraform Provider Examples
 
-This directory contains examples demonstrating how to use the Terraform OpenAI Provider.
+This directory contains comprehensive examples demonstrating how to use the OpenAI Terraform Provider for various use cases.
 
-## Example Categories
+## Prerequisites
 
-| Category | Description |
-|----------|-------------|
-| [Upload](./upload/) | Examples for uploading and importing files using the OpenAI API |
-| [Files](./files/) | Comprehensive file management examples |
-| [Fine Tuning](./fine_tuning/) | Creating and managing fine-tuning jobs |
-| [Chat Completion](./chat_completion/) | Working with chat completions |
-| [Model Response](./model_response/) | Managing model responses |
-| [Audio](./audio/) | Working with audio transcription and text-to-speech |
-| [Embeddings](./embeddings/) | Creating and using embeddings |
-| [Image](./image/) | Image generation and manipulation |
-| [Moderation](./moderation/) | Content moderation examples |
-| [Projects](./projects/) | Managing OpenAI projects |
-| [Vector Store](./vector_store/) | Working with vector stores |
-| [Batch](./batch/) | Batch processing examples |
-| [Rate Limit](./rate_limit/) | Rate limiting examples |
-| [System API](./system_api/) | Working with system APIs |
-| [Service Account](./service_account/) | Managing service accounts |
-| [Project API](./project_api/) | Working with project APIs |
-| [Project User](./project_user/) | Managing project users |
-| [Organization Users](./organization_users/) | Managing organization users |
-| [Invite](./invite/) | Handling invites |
-
-## Featured Examples
-
-### File Upload & Import Example
-
-The [upload](./upload/) example demonstrates how to create and import OpenAI files for fine-tuning and other purposes. It showcases:
-
-- Creating new file uploads
-- Importing existing files into Terraform
-- Managing file lifecycle
-- Handling file metadata
-
-This is particularly useful when you need to manage files that were created outside of Terraform or when migrating existing OpenAI resources to Terraform management.
-
-```bash
-# Create a new file
-cd examples/upload
-terraform init
-terraform apply
-
-# Import an existing file
-terraform import module.fine_tune_upload.openai_file.file file-abc123
-```
-
-### Other Key Examples
-
-- **Fine Tuning Jobs**: Learn how to create fine-tuning jobs with custom models
-- **Chat Completions**: Examples of chat completion API usage
-- **Batch Processing**: Handling large-scale batch operations
-- **Project Management**: Managing OpenAI projects and permissions
+- Terraform >= 1.0
+- OpenAI API key with appropriate permissions
+- For organization features: Admin API key
 
 ## Getting Started
 
-Each example directory contains:
-- A `README.md` with specific instructions
-- Terraform configuration files (`.tf`)
-- Sample data files where applicable
+1. **Set up authentication**:
+   ```bash
+   export OPENAI_API_KEY="sk-proj-..."
+   export OPENAI_ADMIN_KEY="sk-..."  # For organization features
+   ```
 
-To run an example:
+2. **Navigate to an example**:
+   ```bash
+   cd examples/chat_completion
+   ```
 
-1. Navigate to the example directory
-2. Set the `OPENAI_API_KEY` environment variable
-3. Run `terraform init` and `terraform apply`
+3. **Initialize and apply**:
+   ```bash
+   terraform init
+   terraform apply
+   ```
 
-## Example Directory Structure
+## Available Examples
 
-```
-examples/
-├── upload/           # File upload and import examples
-├── files/            # File management examples
-├── fine_tuning/      # Fine-tuning examples
-└── ...               # Other example categories
-```
+### Core AI Features
 
-## Notes
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [chat_completion](./chat_completion/) | Chat completions with GPT models | Basic chat, function calling, streaming |
+| [assistants](./assistants/) | AI assistants with custom instructions | Assistant creation, file knowledge, tools |
+| [embeddings](./embeddings/) | Text embeddings for semantic search | Vector generation, similarity search |
+| [fine_tuning](./fine_tuning/) | Custom model training | Training job creation, checkpoint management |
+| [model_response](./model_response/) | Model responses with detailed metrics | Token usage, cost tracking |
 
-- Examples assume you have Terraform installed and an OpenAI API key
-- Some examples require specific permissions on your OpenAI account
-- All examples use environment variables for authentication
+### Content Generation
 
-## Contributing
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [image](./image/) | Image generation with DALL-E | Generation, editing, variations |
+| [audio](./audio/) | Audio processing | Speech-to-text, text-to-speech |
+| [moderation](./moderation/) | Content moderation | Safety checks, policy compliance |
 
-If you have additional examples or improvements, please submit a pull request!
+### Data Management
 
-## Examples
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [files](./files/) | File management | Upload, import, organization |
+| [upload](./upload/) | File upload workflows | Bulk upload, import existing |
+| [vector_store](./vector_store/) | Vector databases | RAG implementation, file indexing |
+| [batch](./batch/) | Batch operations | Bulk processing, async jobs |
 
-The following examples are available:
+### Administrative
 
-### Model
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [projects](./projects/) | Project management | Project creation, configuration |
+| [project_user](./project_user/) | User access control | Role assignment, permissions |
+| [organization_users](./organization_users/) | Organization management | User listing, filtering |
+| [invite](./invite/) | User invitations | Invite workflow, role setup |
+| [rate_limit](./rate_limit/) | API rate limiting | Limit configuration, monitoring |
 
-The `model` directory demonstrates how to use the `openai_model` and `openai_models` data sources to retrieve information about OpenAI models. It shows how to:
+### API Management
 
-- Retrieve information about a specific model
-- Retrieve a list of all available models
-- Use Terraform outputs to display model information
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [project_api](./project_api/) | Project API keys | Key management, rotation |
+| [system_api](./system_api/) | System API configuration | Admin key management |
+| [service_account](./service_account/) | Service accounts | Automated access, key management |
 
-## Invitation Workflow Issues and Solutions
+### Advanced Examples
 
-The examples in the `invite/` directory demonstrate how to handle several challenges with the OpenAI invitation process:
+| Example | Description | Key Features |
+|---------|-------------|--------------|
+| [threads](./threads/) | Conversation threads | Thread management, message history |
+| [messages](./messages/) | Message management | Thread messages, attachments |
+| [run](./run/) | Assistant execution | Run management, tool execution |
 
-### Known Issues
+## Authentication Configuration
 
-1. **Project Assignment Not Applied**: When sending invitations with project assignments, the OpenAI API **does not actually apply** the project assignments when users accept, even though the API accepts the projects block in the request.
-
-2. **Deletion of Accepted Invitations**: The OpenAI API does not allow deleting invitations that have already been accepted. Attempting to delete an accepted invitation will result in an error.
-
-3. **Finding User IDs After Acceptance**: After a user accepts an invitation, you need their user ID to add them to projects, but this requires an extra lookup step.
-
-### Solutions
-
-The `invite/` example implements several solutions:
-
-1. **Two-Step User Addition Process**:
-   - First invite the user to the organization (without relying on project assignments)
-   - After they accept, use the `openai_organization_users` data source to find their ID
-   - Add them to projects using the `openai_project_user` resource
-
-2. **Handling Accepted Invitation Deletion**:
-   - The provider code has been updated to handle "already accepted" errors during deletion
-   - Alternatively, you can remove invitations from Terraform state when they're accepted
-
-3. **Automating User ID Lookup**:
-   - The example demonstrates using map lookups and `locals` to automatically find user IDs based on email addresses
-
-For a complete workflow implementation, see the [invite example](/examples/invite/).
-
-## API Key Configuration
-
-All examples in this directory require an OpenAI API key to function properly. You have several options for providing this API key:
-
-### 1. Using Environment Variables (Recommended for Local Development)
-
-Set the `OPENAI_API_KEY` environment variable before running terraform commands:
+### Environment Variables (Recommended)
 
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
-terraform apply
+export OPENAI_API_KEY="sk-proj-..."      # Project API key
+export OPENAI_ADMIN_KEY="sk-..."         # Admin key for org features
+export OPENAI_ORGANIZATION_ID="org-..."  # Optional org ID
 ```
 
-### 2. Using Provider Configuration (Recommended for CI/CD)
-
-Update the provider block in your configuration to accept an API key:
+### Provider Configuration
 
 ```hcl
 provider "openai" {
-  api_key = var.openai_api_key  # If not set, falls back to OPENAI_API_KEY environment variable
-}
-
-variable "openai_api_key" {
-  description = "OpenAI API Key"
-  type        = string
-  sensitive   = true
-  # Default to environment variable if not explicitly set
-  default     = ""
+  api_key   = var.openai_api_key
+  admin_key = var.openai_admin_key
 }
 ```
 
-Then you can pass the API key via command line or a .tfvars file:
-
-```bash
-terraform apply -var="openai_api_key=your-api-key-here"
-```
-
-Or with a terraform.tfvars file:
-```
-openai_api_key = "your-api-key-here"
-```
-
-### 3. Using Resource-Level API Keys (For Project-Specific Resources)
-
-Some resources and data sources support setting an API key directly on the resource:
+### Resource-Level Override
 
 ```hcl
-data "openai_model" "gpt4" {
-  model_id = "gpt-4"
-  api_key  = var.project_api_key  # Override the provider's default API key
+resource "openai_chat_completion" "example" {
+  api_key = var.specific_project_key  # Override provider default
+  model   = "gpt-4"
+  # ...
 }
 ```
 
-This is particularly useful when you need to access resources from different projects using different API keys.
+## Common Patterns
 
-### Troubleshooting API Key Issues
+### Error Handling
 
-If you encounter errors like:
+Most examples include error handling patterns:
+
+```hcl
+resource "openai_file" "training" {
+  filename = "training.jsonl"
+  purpose  = "fine-tune"
+  content  = file("${path.module}/data/training.jsonl")
+  
+  lifecycle {
+    prevent_destroy = true  # Prevent accidental deletion
+  }
+}
 ```
-Error: Error retrieving model: API error: Incorrect API key provided: ''. You can find your API key at https://platform.openai.com/account/api-keys.
+
+### Output Management
+
+Examples demonstrate useful outputs:
+
+```hcl
+output "assistant_id" {
+  value       = openai_assistant.example.id
+  description = "The ID of the created assistant"
+}
+
+output "total_tokens" {
+  value       = openai_chat_completion.example.usage.total_tokens
+  description = "Total tokens used"
+}
 ```
 
-This indicates your API key is not being properly recognized. Try these solutions:
+## Testing Examples
 
-1. Verify the environment variable is correctly set: `echo $OPENAI_API_KEY`
-2. Set the API key directly in your provider or resource configuration
-3. Ensure your API key has the necessary permissions for the resources you're trying to access
+Use the provided test script:
+
+```bash
+# Test all examples (plan only)
+./testing/test_examples.sh plan
+
+# Test specific example
+./testing/test_examples.sh plan chat_completion
+
+# Apply and destroy (creates real resources)
+./testing/test_examples.sh apply chat_completion
+```
+
+## Contributing
+
+When adding new examples:
+
+1. Create a new directory with a descriptive name
+2. Include a comprehensive README.md
+3. Provide working Terraform configuration
+4. Add sample data files if needed
+5. Include outputs demonstrating the results
+6. Test thoroughly before submitting
+
+## Support
+
+- [Documentation](../docs/)
+- [GitHub Issues](https://github.com/fjcorp/terraform-provider-openai/issues)
+- [API Reference](https://platform.openai.com/docs/api-reference)

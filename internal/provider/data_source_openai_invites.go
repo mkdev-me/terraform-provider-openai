@@ -18,12 +18,6 @@ func dataSourceOpenAIInvites() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceOpenAIInvitesRead,
 		Schema: map[string]*schema.Schema{
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-			},
 			"invites": {
 				Type:     schema.TypeList,
 				Computed: true,
@@ -89,15 +83,9 @@ func dataSourceOpenAIInvites() *schema.Resource {
 // dataSourceOpenAIInvitesRead handles the read operation for the OpenAI invites data source.
 // It retrieves a list of all pending invitations from the OpenAI API.
 func dataSourceOpenAIInvitesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
-	}
-
-	// Get custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
 	}
 
 	// Set a unique ID for the data source
@@ -107,7 +95,7 @@ func dataSourceOpenAIInvitesRead(ctx context.Context, d *schema.ResourceData, m 
 	var invitesResponse *client.ListInvitesResponse
 	err = retry.RetryContext(ctx, 1*time.Minute, func() *retry.RetryError {
 		var err error
-		invitesResponse, err = c.ListInvites(apiKey)
+		invitesResponse, err = c.ListInvites()
 		if err != nil {
 			// Check specifically for timeout-related errors
 			if strings.Contains(err.Error(), "timeout") ||

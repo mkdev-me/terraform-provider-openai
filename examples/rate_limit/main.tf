@@ -9,8 +9,9 @@ terraform {
 }
 
 provider "openai" {
-  organization = "fodoj"
-  admin_key    = var.openai_admin_key
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 variable "project_id" {
@@ -25,10 +26,6 @@ variable "ignore_rate_limit_warning" {
   default     = true # Set to true by default to make deletion testing easier
 }
 
-variable "openai_admin_key" {
-  description = "The OpenAI admin API key"
-  type        = string
-}
 
 # When using openai_rate_limit resources, it's important to understand what happens during deletion.
 # When you run "terraform destroy", the provider will:

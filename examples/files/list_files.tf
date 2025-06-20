@@ -46,7 +46,7 @@ output "assistant_files_count" {
 # Calculate file sizes
 output "total_bytes_used" {
   description = "Total storage used by all files (in bytes)"
-  value       = sum([for file in data.openai_files.all.files : file.bytes])
+  value       = length(data.openai_files.all.files) > 0 ? sum([for file in data.openai_files.all.files : tonumber(file.bytes)]) : 0
 }
 
 # Group files by purpose

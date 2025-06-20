@@ -69,12 +69,6 @@ func resourceOpenAIRateLimit() *schema.Resource {
 				Optional:    true,
 				Description: "Maximum number of requests per day.",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key to use for this specific resource instead of the provider-level API key.",
-			},
 			"rate_limit_id": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -97,7 +91,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 	var diags diag.Diagnostics
 
 	// Setup the client
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
@@ -121,12 +115,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 	d.SetId(rateLimitID)
 	d.Set("rate_limit_id", rateLimitID)
 
-	// Get the API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using resource-specific API key")
-	}
+	// Use the provider's API key
 
 	// Prepare parameters for updating the rate limit
 	var maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute,
@@ -167,7 +156,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 	// Update the rate limit (this is effectively the create operation)
 	tflog.Debug(ctx, fmt.Sprintf("Calling API to create/update rate limit for model %s", model))
 
-	_, updateErr := c.UpdateRateLimitWithKey(
+	_, updateErr := c.UpdateRateLimit(
 		projectID,
 		model,
 		maxRequestsPerMinute,
@@ -176,7 +165,6 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 		batch1DayMaxInputTokens,
 		maxAudioMegabytesPer1Minute,
 		maxRequestsPer1Day,
-		apiKey,
 	)
 
 	if updateErr != nil {
@@ -198,7 +186,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 		}
 
 		// For other errors, try to read existing values
-		rateLimit, readErr := c.GetRateLimitWithKey(projectID, model, apiKey)
+		rateLimit, readErr := c.GetRateLimit(projectID, model)
 		if readErr != nil {
 			// If both update and read fail, return the update error
 			return diag.FromErr(fmt.Errorf("failed to create rate limit: %w", updateErr))
@@ -240,7 +228,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	// Creation was successful, now read back the values to ensure state consistency
-	rateLimit, readErr := c.GetRateLimitWithKey(projectID, model, apiKey)
+	rateLimit, readErr := c.GetRateLimit(projectID, model)
 	if readErr != nil {
 		// If we can't read, use config values and add a warning
 		tflog.Warn(ctx, fmt.Sprintf("Created rate limit but couldn't read it back: %v", readErr))
@@ -287,7 +275,7 @@ func resourceOpenAIRateLimitCreate(ctx context.Context, d *schema.ResourceData, 
 // It reads the rate limit details including the requests, tokens, and images per minute values,
 // and updates the Terraform state accordingly.
 func resourceOpenAIRateLimitRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
@@ -310,26 +298,20 @@ func resourceOpenAIRateLimitRead(ctx context.Context, d *schema.ResourceData, me
 		return diag.Diagnostics{}
 	}
 
-	// Use the project-specific API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		fmt.Printf("[TF-READ-DEBUG] Using project-specific API key for reading rate limit\n")
-	} else {
-		fmt.Printf("[TF-READ-DEBUG] Using default API key from provider configuration\n")
-	}
+	// Use the provider's API key
+	fmt.Printf("[TF-READ-DEBUG] Using default API key from provider configuration\n")
 
 	// IMPORTANT: First try with just the model name, as the OpenAI API actually uses model names
 	// not the IDs with project suffixes that we generate for Terraform state management
 	fmt.Printf("[TF-READ-DEBUG] First trying GetRateLimitWithKey with model name: %s\n", model)
-	rateLimit, err := c.GetRateLimitWithKey(projectID, model, apiKey)
+	rateLimit, err := c.GetRateLimit(projectID, model)
 
 	// If we can't find it with the model name, try with the full ID as fallback
 	if err != nil {
 		fmt.Printf("[TF-READ-DEBUG] Failed to get rate limit with model name: %v\n", err)
 		fmt.Printf("[TF-READ-DEBUG] Now trying with full rate limit ID: %s\n", rateLimitID)
 
-		rateLimit, err = c.GetRateLimitWithKey(projectID, rateLimitID, apiKey)
+		rateLimit, err = c.GetRateLimit(projectID, rateLimitID)
 		if err != nil {
 			// Log the complete error for debugging
 			fmt.Printf("[TF-READ-DEBUG] Also failed with full ID: %v\n", err)
@@ -465,16 +447,12 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 	var diags diag.Diagnostics
 
 	// Get the API client
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
 
-	// Get the API key for this resource
-	var apiKey string
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-	}
+	// Use the provider's API key
 
 	// Get resource parameters
 	projectID := d.Get("project_id").(string)
@@ -485,7 +463,7 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 	tflog.Info(ctx, fmt.Sprintf("[IMPORTANT] Current rate limits from API for model %s will be shown in debug logs", model))
 
 	// Read current rate limits from API for comparison
-	currentRateLimit, err := c.GetRateLimitWithKey(projectID, model, apiKey)
+	currentRateLimit, err := c.GetRateLimit(projectID, model)
 	if err == nil {
 		tflog.Debug(ctx, fmt.Sprintf("Current API rate limits for %s: MaxReq=%d, MaxTokens=%d, MaxImages=%d",
 			model, currentRateLimit.MaxRequestsPer1Minute, currentRateLimit.MaxTokensPer1Minute, currentRateLimit.MaxImagesPer1Minute))
@@ -557,7 +535,7 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 		projectID, model, rateLimitID))
 
 	// Use model when passing to API functions, not the rate limit ID
-	rateLimit, err := c.UpdateRateLimitWithKey(
+	rateLimit, err := c.UpdateRateLimit(
 		projectID,
 		model,
 		maxRequestsPerMinute,
@@ -566,7 +544,6 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 		batch1DayMaxInputTokens,
 		maxAudioMegabytesPer1Minute,
 		maxRequestsPer1Day,
-		apiKey,
 	)
 
 	if err != nil {
@@ -640,7 +617,7 @@ func resourceOpenAIRateLimitUpdate(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	// Read the rate limit again to verify changes were applied
-	updatedRateLimit, err := c.GetRateLimitWithKey(projectID, model, apiKey)
+	updatedRateLimit, err := c.GetRateLimit(projectID, model)
 	if err == nil {
 		tflog.Info(ctx, fmt.Sprintf("Rate limit after update API call for %s: MaxReq=%d, MaxTokens=%d, MaxImages=%d",
 			model, updatedRateLimit.MaxRequestsPer1Minute, updatedRateLimit.MaxTokensPer1Minute, updatedRateLimit.MaxImagesPer1Minute))
@@ -739,8 +716,8 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 	fmt.Printf("[TF-DELETE-DEBUG] Resource ID: %s\n", d.Id())
 
 	// Get the client from the provider configuration
-	// Fix: Use GetOpenAIClient helper function instead of direct type assertion
-	client, err := GetOpenAIClient(meta)
+	// Fix: Use GetOpenAIClientWithAdminKey helper function for admin operations
+	client, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
@@ -758,26 +735,16 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 	resourceID := d.Id()
 	fmt.Printf("[TF-DELETE-DEBUG] Resource ID (full): %s\n", resourceID)
 
-	// Get the API key if provided
-	apiKey := d.Get("api_key").(string)
-	if apiKey == "" {
-		apiKey = client.APIKey
-		fmt.Printf("[TF-DELETE-DEBUG] No custom API key provided, using client default\n")
-	} else {
-		maskedKey := "*****"
-		if len(apiKey) > 5 {
-			maskedKey = apiKey[:5] + "*****"
-		}
-		fmt.Printf("[TF-DELETE-DEBUG] Using custom API key (masked): %s\n", maskedKey)
-	}
+	// Use the provider's API key
+	fmt.Printf("[TF-DELETE-DEBUG] Using provider's API key\n")
 
 	// Try to get the existing rate limit before deleting
 	fmt.Printf("[TF-DELETE-DEBUG] Checking if rate limit exists before deletion\n")
-	existingRateLimit, getRLErr := client.GetRateLimitWithKey(projectID, model, apiKey)
+	existingRateLimit, getRLErr := client.GetRateLimit(projectID, model)
 	if getRLErr != nil {
 		fmt.Printf("[TF-DELETE-DEBUG] Error getting existing rate limit: %v\n", getRLErr)
 		// Try with the full ID as fallback
-		existingRateLimit, getRLErr = client.GetRateLimitWithKey(projectID, resourceID, apiKey)
+		existingRateLimit, getRLErr = client.GetRateLimit(projectID, resourceID)
 		if getRLErr != nil {
 			fmt.Printf("[TF-DELETE-DEBUG] Also failed with full ID: %v\n", getRLErr)
 		}
@@ -794,7 +761,7 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 	fmt.Printf("[TF-DELETE-DEBUG] Calling DeleteRateLimitWithKey with: projectID=%s, model=%s\n",
 		projectID, model)
 
-	err = client.DeleteRateLimitWithKey(projectID, model, apiKey)
+	err = client.DeleteRateLimit(projectID, model)
 	if err != nil {
 		fmt.Printf("[TF-DELETE-DEBUG] Error deleting rate limit: %v\n", err)
 		fmt.Printf("[TF-DELETE-DEBUG] Error type: %T\n", err)
@@ -803,7 +770,7 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 
 		// Try with the full ID as fallback
 		fmt.Printf("[TF-DELETE-DEBUG] Trying again with full resource ID: %s\n", resourceID)
-		err = client.DeleteRateLimitWithKey(projectID, resourceID, apiKey)
+		err = client.DeleteRateLimit(projectID, resourceID)
 		if err != nil {
 			fmt.Printf("[TF-DELETE-DEBUG] Also failed with full ID: %v\n", err)
 
@@ -815,7 +782,7 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 				if strings.Contains(err.Error(), "permission to delete") {
 					// Get the rate limit again to see if it still exists with original values
 					fmt.Printf("[TF-DELETE-DEBUG] Checking if rate limit still exists after deletion attempt\n")
-					rateLimit, getRLErr := client.GetRateLimitWithKey(projectID, model, apiKey)
+					rateLimit, getRLErr := client.GetRateLimit(projectID, model)
 					if getRLErr == nil && rateLimit != nil {
 						// The rate limit still exists, but we can consider it "deleted" from Terraform's perspective
 						fmt.Printf("[TF-DELETE-DEBUG] Rate limit still exists but marking as deleted in Terraform state\n")
@@ -841,7 +808,7 @@ func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, 
 
 	// Verify if rate limit was actually deleted/reset by checking the API again
 	fmt.Printf("[TF-DELETE-DEBUG] Verifying rate limit state after deletion\n")
-	verifyRateLimit, verifyErr := client.GetRateLimitWithKey(projectID, model, apiKey)
+	verifyRateLimit, verifyErr := client.GetRateLimit(projectID, model)
 	if verifyErr != nil {
 		fmt.Printf("[TF-DELETE-DEBUG] Error verifying rate limit state: %v\n", verifyErr)
 	} else if verifyRateLimit != nil {
@@ -935,9 +902,9 @@ func resourceOpenAIRateLimitImport(ctx context.Context, d *schema.ResourceData, 
 	tflog.Debug(ctx, fmt.Sprintf("Extracted model: %s from rate limit ID: %s", model, rateLimitID))
 
 	// Fetch the rate limit data from the API
-	// The GetRateLimitWithKey function will handle the URL formatting correctly
+	// The GetRateLimit function will handle the URL formatting correctly
 	// Use the full rate limit ID for exact matching
-	rateLimit, err := c.GetRateLimitWithKey(projectID, rateLimitID, "")
+	rateLimit, err := c.GetRateLimit(projectID, rateLimitID)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("Error retrieving rate limit from API: %v", err))
 		return nil, fmt.Errorf("error retrieving rate limit from API: %w", err)

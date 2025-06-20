@@ -20,21 +20,6 @@ func dataSourceOpenAIProjectUsers() *schema.Resource {
 				Required:    true,
 				Description: "The ID of the project to retrieve users from",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "API key for authentication. If not provided, the provider's default API key will be used.",
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Always suppress the diff for the API key
-					return true
-				},
-				// This ensures the API key never gets stored in the state file
-				StateFunc: func(val interface{}) string {
-					// Return empty string instead of the actual API key
-					return ""
-				},
-			},
 			"users": {
 				Type:     schema.TypeList,
 				Computed: true,
@@ -100,7 +85,7 @@ func dataSourceOpenAIProjectUsers() *schema.Resource {
 // dataSourceOpenAIProjectUsersRead handles the read operation for the OpenAI project users data source.
 // It retrieves a list of all users in a specific project from the OpenAI API.
 func dataSourceOpenAIProjectUsersRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClient(m)
+	c, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -113,16 +98,9 @@ func dataSourceOpenAIProjectUsersRead(ctx context.Context, d *schema.ResourceDat
 	// Set the ID to the project_id
 	d.SetId(projectID)
 
-	// Get custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using custom API key for listing project users")
-	}
-
 	// List all users in the project
 	tflog.Debug(ctx, fmt.Sprintf("Listing users in project %s", projectID))
-	usersList, err := c.ListProjectUsers(projectID, apiKey)
+	usersList, err := c.ListProjectUsers(projectID)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("Error listing users: %v", err))
 		return diag.Errorf("Error listing users in project: %s", err)
@@ -176,11 +154,6 @@ func dataSourceOpenAIProjectUsersRead(ctx context.Context, d *schema.ResourceDat
 
 	if err := d.Set("member_ids", memberIDs); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting member_ids: %s", err))
-	}
-
-	// Explicitly set the api_key to empty in the state
-	if err := d.Set("api_key", ""); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to reset api_key: %v", err))
 	}
 
 	return nil

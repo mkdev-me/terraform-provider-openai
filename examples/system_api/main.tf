@@ -20,7 +20,9 @@ terraform {
 
 # Configure the OpenAI Provider
 provider "openai" {
-  api_key = var.openai_admin_key
+  # API keys are automatically loaded from environment variables:
+  # - OPENAI_API_KEY for project operations
+  # - OPENAI_ADMIN_KEY for admin operations
 }
 
 #------------------------------------------------------------------------------
@@ -53,14 +55,12 @@ resource "time_sleep" "wait_for_api_key" {
 data "openai_admin_api_key" "test_key_data" {
   depends_on = [time_sleep.wait_for_api_key]
   api_key_id = openai_admin_api_key.test_key.id
-  api_key    = var.openai_admin_key # Admin API key for authentication
 }
 
 # List all admin API keys
 data "openai_admin_api_keys" "all_keys" {
   depends_on = [time_sleep.wait_for_api_key]
-  api_key    = var.openai_admin_key # Admin API key for authentication
-  limit      = 10                   # Limit the number of keys returned
+  limit      = 10 # Limit the number of keys returned
 }
 
 #------------------------------------------------------------------------------
@@ -111,4 +111,4 @@ output "all_admin_key_names" {
 output "api_key_file_path" {
   description = "Path to the file containing the API key"
   value       = local_file.api_key_file.filename
-} 
+}

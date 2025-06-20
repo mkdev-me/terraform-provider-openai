@@ -528,7 +528,7 @@ type UsersResponse struct {
 // Returns:
 //   - A UsersResponse object containing the list of users
 //   - An error if the operation failed
-func (c *OpenAIClient) ListUsers(after string, limit int, emails []string, customAPIKey string) (*UsersResponse, error) {
+func (c *OpenAIClient) ListUsers(after string, limit int, emails []string) (*UsersResponse, error) {
 	// Build query parameters
 	queryParams := url.Values{}
 	if after != "" {
@@ -552,17 +552,8 @@ func (c *OpenAIClient) ListUsers(after string, limit int, emails []string, custo
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Listing organization users\n")
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodGet, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodGet, url, nil)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error listing users: %w", err)
 	}
@@ -580,18 +571,17 @@ func (c *OpenAIClient) ListUsers(after string, limit int, emails []string, custo
 //
 // Parameters:
 //   - email: The email address of the user to find
-//   - customAPIKey: Optional API key to use for this request
 //
 // Returns:
 //   - The found User if it exists
 //   - A boolean indicating if the user was found
 //   - An error if the operation failed
-func (c *OpenAIClient) FindUserByEmail(email string, customAPIKey string) (*User, bool, error) {
+func (c *OpenAIClient) FindUserByEmail(email string) (*User, bool, error) {
 	// Create a list with just the one email we're looking for
 	emails := []string{email}
 
 	// Use the ListUsers function to filter by email
-	usersResponse, err := c.ListUsers("", 1, emails, customAPIKey)
+	usersResponse, err := c.ListUsers("", 1, emails)
 	if err != nil {
 		return nil, false, fmt.Errorf("error finding user by email: %w", err)
 	}
@@ -614,23 +604,15 @@ func (c *OpenAIClient) FindUserByEmail(email string, customAPIKey string) (*User
 }
 
 // GetUser retrieves a user by ID
-func (c *OpenAIClient) GetUser(userID string, apiKey string) (*User, bool, error) {
+func (c *OpenAIClient) GetUser(userID string) (*User, bool, error) {
 	// Construct the correct URL using the API format
 	url := fmt.Sprintf("/v1/organization/users/%s", userID)
 
 	// Debug the request
 	fmt.Printf("[DEBUG] Getting user with ID: %s\n", userID)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if apiKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey("GET", url, nil, apiKey)
-	} else {
-		// Use default API key
-		respBody, err = c.DoRequest("GET", url, nil)
-	}
+	// Make the request
+	respBody, err := c.DoRequest("GET", url, nil)
 
 	// Handle 404 errors to indicate user not found
 	if err != nil {
@@ -650,7 +632,7 @@ func (c *OpenAIClient) GetUser(userID string, apiKey string) (*User, bool, error
 }
 
 // UpdateUserRole updates a user's role
-func (c *OpenAIClient) UpdateUserRole(userID string, role string, apiKey string) (*User, error) {
+func (c *OpenAIClient) UpdateUserRole(userID string, role string) (*User, error) {
 	// Prepare request body
 	body := map[string]string{
 		"role": role,
@@ -662,17 +644,8 @@ func (c *OpenAIClient) UpdateUserRole(userID string, role string, apiKey string)
 	// Debug the request
 	fmt.Printf("[DEBUG] Updating user %s to role %s\n", userID, role)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if apiKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey("POST", url, body, apiKey)
-	} else {
-		// Use default API key
-		respBody, err = c.DoRequest("POST", url, body)
-	}
-
+	// Make the request
+	respBody, err := c.DoRequest("POST", url, body)
 	if err != nil {
 		return nil, fmt.Errorf("error updating user role: %w", err)
 	}
@@ -765,9 +738,214 @@ func (c *OpenAIClient) DoRequest(method, path string, body interface{}) ([]byte,
 	return responseBody, nil
 }
 
-// doRequest is kept for backward compatibility but delegates to doRequestWithCustomAPIKey
+// doRequest performs an HTTP request with the given method, path, and body using the client's API key
 func (c *OpenAIClient) doRequest(method, path string, body interface{}) ([]byte, error) {
-	return c.doRequestWithCustomAPIKey(method, path, body, c.APIKey)
+	fmt.Printf("[REQUEST-DEBUG] ========== HTTP REQUEST DEBUG ==========\n")
+	fmt.Printf("[REQUEST-DEBUG] Method: %s, Path: %s\n", method, path)
+	fmt.Printf("[REQUEST-DEBUG] API URL: %s\n", c.APIURL)
+	fmt.Printf("[REQUEST-DEBUG] Organization ID: %s\n", c.OrganizationID)
+
+	// DEBUG: Check what the API key looks like
+	if c.APIKey != "" {
+		if len(c.APIKey) > 15 {
+			fmt.Printf("[API-KEY-DEBUG] Key prefix: %s...\n", c.APIKey[:15])
+			if !strings.HasPrefix(c.APIKey, "sk-") {
+				fmt.Printf("[API-KEY-DEBUG] WARNING: API key doesn't start with 'sk-'!\n")
+			}
+		} else {
+			fmt.Printf("[API-KEY-DEBUG] Key is too short: %d chars\n", len(c.APIKey))
+		}
+	} else {
+		fmt.Printf("[API-KEY-DEBUG] No API key configured\n")
+	}
+
+	// Test network connectivity first
+	connectivityErr := c.TestNetworkConnectivity()
+	if connectivityErr != nil {
+		fmt.Printf("[REQUEST-DEBUG] Network connectivity test failed: %v\n", connectivityErr)
+		// Continue anyway, but log the warning
+		fmt.Printf("[REQUEST-DEBUG] Proceeding with request despite connectivity test failure\n")
+	} else {
+		fmt.Printf("[REQUEST-DEBUG] Network connectivity test passed\n")
+	}
+
+	// Network environment debugging
+	fmt.Printf("[NETWORK-DEBUG] Go Version: %s\n", runtime.Version())
+	fmt.Printf("[NETWORK-DEBUG] GODEBUG env: %s\n", os.Getenv("GODEBUG"))
+
+	// Check if we can resolve api.openai.com directly
+	ips, resolveErr := net.LookupIP("api.openai.com")
+	if resolveErr != nil {
+		fmt.Printf("[NETWORK-DEBUG] DNS resolution error: %v\n", resolveErr)
+	} else {
+		fmt.Printf("[NETWORK-DEBUG] Resolved IPs for api.openai.com: %v\n", ips)
+	}
+
+	// Construct the full URL using SafeJoinURL for proper path handling
+	fullURL := SafeJoinURL(c.APIURL, path)
+	fmt.Printf("[REQUEST-DEBUG] Final full URL: %s\n", fullURL)
+
+	// Parse the URL to check its components
+	parsedURL, parseErr := url.Parse(fullURL)
+	if parseErr != nil {
+		fmt.Printf("[NETWORK-DEBUG] URL parse error: %v\n", parseErr)
+	} else {
+		fmt.Printf("[NETWORK-DEBUG] URL scheme: %s, host: %s, path: %s\n",
+			parsedURL.Scheme, parsedURL.Host, parsedURL.Path)
+	}
+
+	// Create a buffer for the body if provided
+	var bodyBuffer io.Reader
+	if body != nil {
+		bodyJSON, err := json.Marshal(body)
+		if err != nil {
+			fmt.Printf("[REQUEST-DEBUG] Error marshaling body: %v\n", err)
+			return nil, fmt.Errorf("error marshaling request body: %v", err)
+		}
+		bodyBuffer = bytes.NewBuffer(bodyJSON)
+		fmt.Printf("[REQUEST-DEBUG] Request body: %s\n", string(bodyJSON))
+	} else {
+		fmt.Printf("[REQUEST-DEBUG] No request body provided\n")
+	}
+
+	// Create the request
+	req, err := http.NewRequest(method, fullURL, bodyBuffer)
+	if err != nil {
+		fmt.Printf("[REQUEST-DEBUG] Error creating request: %v\n", err)
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	maskedKey := "*****"
+	if len(c.APIKey) > 5 {
+		maskedKey = c.APIKey[:5] + "*****"
+	}
+	fmt.Printf("[REQUEST-DEBUG] Using API key (masked): %s\n", maskedKey)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
+
+	if c.OrganizationID != "" {
+		req.Header.Set("OpenAI-Organization", c.OrganizationID)
+		fmt.Printf("[REQUEST-DEBUG] Set OpenAI-Organization header: %s\n", c.OrganizationID)
+	}
+
+	// Additional useful headers for debugging
+	req.Header.Set("User-Agent", "Terraform-Provider-OpenAI/1.0")
+
+	// Print all headers for debugging (excluding auth token)
+	fmt.Printf("[REQUEST-DEBUG] Request headers:\n")
+	for key, values := range req.Header {
+		if key != "Authorization" {
+			fmt.Printf("[REQUEST-DEBUG]   %s: %s\n", key, values)
+		} else {
+			// For Authorization, print just the Bearer prefix and first few chars
+			authValue := values[0]
+			if len(authValue) > 15 {
+				fmt.Printf("[REQUEST-DEBUG]   %s: Bearer %s...\n", key, authValue[7:15])
+			} else {
+				fmt.Printf("[REQUEST-DEBUG]   %s: [REDACTED]\n", key)
+			}
+		}
+	}
+
+	// Make the request
+	fmt.Printf("[REQUEST-DEBUG] Sending HTTP request...\n")
+
+	// Check HTTP client configuration
+	if c.HTTPClient == nil {
+		fmt.Printf("[NETWORK-DEBUG] HTTPClient is nil, creating default client\n")
+		c.HTTPClient = &http.Client{
+			Timeout: 60 * time.Second,
+			Transport: &http.Transport{
+				TLSHandshakeTimeout: 10 * time.Second,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+			},
+		}
+	} else {
+		fmt.Printf("[NETWORK-DEBUG] Using existing HTTPClient with timeout: %v\n", c.HTTPClient.Timeout)
+		if transport, ok := c.HTTPClient.Transport.(*http.Transport); ok {
+			fmt.Printf("[NETWORK-DEBUG] Transport: MaxIdleConns=%d, IdleConnTimeout=%v\n",
+				transport.MaxIdleConns, transport.IdleConnTimeout)
+		}
+	}
+
+	// Start a timer to measure request duration
+	startTime := time.Now()
+
+	// Do the HTTP request with more error context
+	resp, err := c.HTTPClient.Do(req)
+	requestDuration := time.Since(startTime)
+	fmt.Printf("[NETWORK-DEBUG] Request took %v\n", requestDuration)
+
+	if err != nil {
+		fmt.Printf("[NETWORK-DEBUG] HTTP request error type: %T\n", err)
+		fmt.Printf("[NETWORK-DEBUG] Error details: %v\n", err)
+
+		// Try to determine if it's a DNS error
+		if urlErr, ok := err.(*url.Error); ok {
+			fmt.Printf("[NETWORK-DEBUG] URL error: %v\n", urlErr)
+			if dnsErr, ok := urlErr.Err.(*net.DNSError); ok {
+				fmt.Printf("[NETWORK-DEBUG] DNS error: %v, Name: %s, Server: %s, IsTimeout: %v, IsTemporary: %v\n",
+					dnsErr, dnsErr.Name, dnsErr.Server, dnsErr.IsTimeout, dnsErr.IsTemporary)
+			}
+		}
+
+		fmt.Printf("[REQUEST-DEBUG] Error making request: %v\n", err)
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("[REQUEST-DEBUG] Error reading response body: %v\n", err)
+		return nil, fmt.Errorf("error reading response: %w", err)
+	}
+
+	// Print response details
+	fmt.Printf("[REQUEST-DEBUG] Response status: %d %s\n", resp.StatusCode, resp.Status)
+	fmt.Printf("[REQUEST-DEBUG] Response headers:\n")
+	for key, values := range resp.Header {
+		fmt.Printf("[REQUEST-DEBUG]   %s: %s\n", key, values)
+	}
+
+	// Print the response body (limit it for very large responses)
+	if len(responseBody) > 0 {
+		previewLength := 500
+		if len(responseBody) < previewLength {
+			fmt.Printf("[REQUEST-DEBUG] Full response body: %s\n", string(responseBody))
+		} else {
+			fmt.Printf("[REQUEST-DEBUG] Response body preview (first %d bytes): %s...\n",
+				previewLength, string(responseBody[:previewLength]))
+		}
+	} else {
+		fmt.Printf("[REQUEST-DEBUG] Empty response body\n")
+	}
+
+	// Check for error status codes
+	if resp.StatusCode >= 400 {
+		fmt.Printf("[REQUEST-DEBUG] Error status code detected: %d\n", resp.StatusCode)
+
+		var errorResp ErrorResponse
+		if err := json.Unmarshal(responseBody, &errorResp); err != nil {
+			fmt.Printf("[REQUEST-DEBUG] Failed to parse error response: %v\n", err)
+			fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
+			return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(responseBody))
+		}
+
+		fmt.Printf("[REQUEST-DEBUG] Error message: %s\n", errorResp.Error.Message)
+		fmt.Printf("[REQUEST-DEBUG] Error type: %s\n", errorResp.Error.Type)
+		fmt.Printf("[REQUEST-DEBUG] Error code: %s\n", errorResp.Error.Code)
+		fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
+		return nil, fmt.Errorf("API error: %s", errorResp.Error.Message)
+	}
+
+	fmt.Printf("[REQUEST-DEBUG] Request successful\n")
+	fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
+	return responseBody, nil
 }
 
 // ListProjects retrieves a list of projects
@@ -1093,29 +1271,15 @@ func (c *OpenAIClient) CreateRateLimit(projectID, resourceType, limitType string
 // Returns:
 //   - A RateLimit object with details about the requested rate limit
 //   - An error if the operation failed or the rate limit doesn't exist
-func (c *OpenAIClient) GetRateLimit(projectID, rateLimitID string) (*RateLimit, error) {
-	return c.GetRateLimitWithKey(projectID, rateLimitID, "")
-}
-
-// GetRateLimitWithKey retrieves a rate limit from a project using a custom API key.
-//
-// Parameters:
-//   - projectID: The ID of the project the rate limit belongs to
-//   - modelOrRateLimitID: Either a model name (e.g. "gpt-4") or a rate limit ID (e.g. "rl-gpt-4" or "rl-gpt-4-projectsuffix")
-//   - customAPIKey: Optional API key to use for this request instead of the client's default API key
-//
-// Returns:
-//   - A RateLimit object with details about the rate limit
-//   - An error if the operation failed or the rate limit doesn't exist
-func (c *OpenAIClient) GetRateLimitWithKey(projectID, modelOrRateLimitID, customAPIKey string) (*RateLimit, error) {
+func (c *OpenAIClient) GetRateLimit(projectID, modelOrRateLimitID string) (*RateLimit, error) {
 	// Debug: Input parameters
-	fmt.Printf("[DEBUG] GetRateLimitWithKey called with:\n")
+	fmt.Printf("[DEBUG] GetRateLimit called with:\n")
 	fmt.Printf("  - Project ID: %s\n", projectID)
 	fmt.Printf("  - Model or Rate Limit ID: %s\n", modelOrRateLimitID)
 
 	// Step 1: List all rate limits for the project
 	fmt.Printf("[DEBUG] Listing all rate limits for project %s\n", projectID)
-	rateLimits, err := c.ListRateLimitsWithKey(projectID, customAPIKey)
+	rateLimits, err := c.ListRateLimits(projectID)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to list rate limits: %v\n", err)
 		return nil, fmt.Errorf("failed to list rate limits: %w", err)
@@ -1206,26 +1370,21 @@ func containsProjectSuffix(s string) bool {
 }
 
 // UpdateRateLimit modifies an existing rate limit for a project.
-func (c *OpenAIClient) UpdateRateLimit(projectID, rateLimitID string, maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute, batch1DayMaxInputTokens, maxAudioMegabytesPer1Minute, maxRequestsPer1Day *int) (*RateLimit, error) {
-	return c.UpdateRateLimitWithKey(projectID, rateLimitID, maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute, batch1DayMaxInputTokens, maxAudioMegabytesPer1Minute, maxRequestsPer1Day, "")
-}
-
-// UpdateRateLimitWithKey modifies an existing rate limit for a project using a custom API key.
-func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID string, maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute, batch1DayMaxInputTokens, maxAudioMegabytesPer1Minute, maxRequestsPer1Day *int, customAPIKey string) (*RateLimit, error) {
+func (c *OpenAIClient) UpdateRateLimit(projectID, modelOrRateLimitID string, maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute, batch1DayMaxInputTokens, maxAudioMegabytesPer1Minute, maxRequestsPer1Day *int) (*RateLimit, error) {
 	// Debug: Input parameters
-	fmt.Printf("[UPDATE-RL-DEBUG] ========== UpdateRateLimitWithKey DEBUG ==========\n")
+	fmt.Printf("[UPDATE-RL-DEBUG] ========== UpdateRateLimit DEBUG ==========\n")
 	fmt.Printf("[UPDATE-RL-DEBUG] ProjectID: %s\n", projectID)
 	fmt.Printf("[UPDATE-RL-DEBUG] ModelOrRateLimitID: %s\n", modelOrRateLimitID)
 
 	// Step 1: List all rate limits and find the one we want to update
 	fmt.Printf("[UPDATE-RL-DEBUG] Listing all rate limits to find target rate limit\n")
-	rateLimits, err := c.ListRateLimitsWithKey(projectID, customAPIKey)
+	rateLimits, err := c.ListRateLimits(projectID)
 	if err != nil {
 		fmt.Printf("[UPDATE-RL-DEBUG] Failed to list rate limits: %v\n", err)
 		return nil, fmt.Errorf("failed to list rate limits: %w", err)
 	}
 
-	// Search logic similar to GetRateLimitWithKey
+	// Search logic similar to GetRateLimit
 	model := ""
 	searchID := modelOrRateLimitID
 
@@ -1301,7 +1460,7 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 
 	if targetRateLimit == nil {
 		fmt.Printf("[UPDATE-RL-DEBUG] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimitWithKey DEBUG ==========\n\n")
+		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 		return nil, fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
 			projectID, modelOrRateLimitID)
 	}
@@ -1353,9 +1512,6 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 
 	// Debug: Output the actual API key being used (first/last 4 chars)
 	apiKeyToUse := c.APIKey
-	if customAPIKey != "" {
-		apiKeyToUse = customAPIKey
-	}
 	maskedKey := ""
 	if len(apiKeyToUse) > 8 {
 		maskedKey = apiKeyToUse[:4] + "..." + apiKeyToUse[len(apiKeyToUse)-4:]
@@ -1365,18 +1521,11 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 	fmt.Printf("[UPDATE-RL-DEBUG] Using API key: %s\n", maskedKey)
 
 	// Send POST request to update the rate limit - OpenAI API requires POST, not PUT for this endpoint
-	var body []byte
-	if customAPIKey != "" {
-		fmt.Printf("[UPDATE-RL-DEBUG] Using custom API key for request\n")
-		body, err = c.doRequestWithCustomAPIKey(http.MethodPost, path, req, customAPIKey)
-	} else {
-		fmt.Printf("[UPDATE-RL-DEBUG] Using default API key for request\n")
-		body, err = c.doRequest(http.MethodPost, path, req)
-	}
-
+	fmt.Printf("[UPDATE-RL-DEBUG] Using default API key for request\n")
+	body, err := c.doRequest(http.MethodPost, path, req)
 	if err != nil {
 		fmt.Printf("[UPDATE-RL-DEBUG] Update rate limit request failed: %v\n", err)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimitWithKey DEBUG ==========\n\n")
+		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 		return nil, err
 	}
 
@@ -1387,7 +1536,7 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 	var rateLimit RateLimit
 	if err := json.Unmarshal(body, &rateLimit); err != nil {
 		fmt.Printf("[UPDATE-RL-DEBUG] Failed to unmarshal rate limit response: %v\n", err)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimitWithKey DEBUG ==========\n\n")
+		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 		return nil, fmt.Errorf("failed to unmarshal rate limit response: %v", err)
 	}
 
@@ -1412,7 +1561,7 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 	}
 
 	fmt.Printf("[UPDATE-RL-DEBUG] Final rate limit object: %+v\n", rateLimit)
-	fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimitWithKey DEBUG ==========\n\n")
+	fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 	return &rateLimit, nil
 }
 
@@ -1425,8 +1574,162 @@ func (c *OpenAIClient) UpdateRateLimitWithKey(projectID, modelOrRateLimitID stri
 //
 // Returns:
 //   - An error if the operation failed
-func (c *OpenAIClient) DeleteRateLimit(projectID, rateLimitID string) error {
-	return c.DeleteRateLimitWithKey(projectID, rateLimitID, "")
+func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) error {
+	// Note: OpenAI doesn't support DELETE operations on rate limits.
+	// Instead we "reset" them to default values.
+	fmt.Printf("[DELETE-RL-DEBUG] ========== DeleteRateLimit DEBUG ==========\n")
+	fmt.Printf("[DELETE-RL-DEBUG] ProjectID: %s\n", projectID)
+	fmt.Printf("[DELETE-RL-DEBUG] ModelOrRateLimitID: %s\n", modelOrRateLimitID)
+
+	// Step 1: List all rate limits and find the one we want to reset
+	fmt.Printf("[DELETE-RL-DEBUG] Listing all rate limits to find target rate limit\n")
+	rateLimits, err := c.ListRateLimits(projectID)
+	if err != nil {
+		fmt.Printf("[DELETE-RL-DEBUG] Failed to list rate limits: %v\n", err)
+		return fmt.Errorf("failed to list rate limits: %w", err)
+	}
+
+	// Search logic similar to GetRateLimit
+	model := ""
+	searchID := modelOrRateLimitID
+
+	if !strings.HasPrefix(modelOrRateLimitID, "rl-") {
+		// If it doesn't have "rl-" prefix, it's a model name
+		model = modelOrRateLimitID
+		searchID = "rl-" + modelOrRateLimitID
+		fmt.Printf("[DELETE-RL-DEBUG] Searching by MODEL: %s (ID would be %s)\n", model, searchID)
+	} else {
+		// It has the prefix, treat it as an ID but also extract the model
+		// Try to extract model name from the ID
+		parts := strings.Split(modelOrRateLimitID[3:], "-")
+		if len(parts) >= 1 {
+			model = parts[0]
+			if len(parts) > 1 {
+				// For multi-part model names like "gpt-4o-mini"
+				if !containsProjectSuffix(parts[len(parts)-1]) {
+					model = strings.Join(parts, "-")
+				} else {
+					model = strings.Join(parts[:len(parts)-1], "-")
+				}
+			}
+		}
+		fmt.Printf("[DELETE-RL-DEBUG] Searching by ID: %s (extracted model: %s)\n", searchID, model)
+	}
+
+	// Find the target rate limit
+	var targetRateLimit *RateLimit
+
+	// 1. Try exact ID match first
+	for _, rl := range rateLimits.Data {
+		if rl.ID == searchID {
+			fmt.Printf("[DELETE-RL-DEBUG] Found exact ID match: %s (Model: %s)\n", rl.ID, rl.Model)
+			targetRateLimit = &rl
+			break
+		}
+	}
+
+	// 2. Try ID prefix match (accounts for project-specific suffixes)
+	if targetRateLimit == nil {
+		for _, rl := range rateLimits.Data {
+			if strings.HasPrefix(rl.ID, searchID+"-") || rl.ID == searchID {
+				fmt.Printf("[DELETE-RL-DEBUG] Found ID prefix match: %s (Model: %s)\n", rl.ID, rl.Model)
+				targetRateLimit = &rl
+				break
+			}
+		}
+	}
+
+	// 3. Try model name match as fallback
+	if targetRateLimit == nil && model != "" {
+		for _, rl := range rateLimits.Data {
+			if rl.Model == model {
+				fmt.Printf("[DELETE-RL-DEBUG] Found by model name match: %s (ID: %s)\n", rl.Model, rl.ID)
+				targetRateLimit = &rl
+				break
+			}
+		}
+	}
+
+	// 4. Last resort: try partial model matching for compound model names
+	if targetRateLimit == nil && model != "" && strings.Contains(model, "-") {
+		modelBase := strings.Split(model, "-")[0]
+		for _, rl := range rateLimits.Data {
+			if strings.HasPrefix(rl.Model, modelBase) {
+				fmt.Printf("[DELETE-RL-DEBUG] Found by partial model name match: %s matches base %s (ID: %s)\n",
+					rl.Model, modelBase, rl.ID)
+				targetRateLimit = &rl
+				break
+			}
+		}
+	}
+
+	if targetRateLimit == nil {
+		fmt.Printf("[DELETE-RL-DEBUG] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
+		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
+		return fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
+			projectID, modelOrRateLimitID)
+	}
+
+	// Now we have the target rate limit, construct the URL for update
+	effectiveRateLimitID := targetRateLimit.ID
+	effectiveModel := targetRateLimit.Model
+	fmt.Printf("[DELETE-RL-DEBUG] Found rate limit to reset: %s (Model: %s)\n", effectiveRateLimitID, effectiveModel)
+
+	// Construct the direct path with the rate limit ID included
+	path := fmt.Sprintf("/organization/projects/%s/rate_limits/%s", projectID, effectiveRateLimitID)
+	fmt.Printf("[DELETE-RL-DEBUG] Using path for reset: %s\n", path)
+
+	// Get default values for this model
+	defaultValues := getDefaultRateLimitValues(effectiveModel)
+	fmt.Printf("[DELETE-RL-DEBUG] Default values for model %s: %+v\n", effectiveModel, defaultValues)
+
+	// Create the request body with default values
+	req := map[string]interface{}{
+		"max_requests_per_1_minute": defaultValues.MaxRequestsPer1Minute,
+		"max_tokens_per_1_minute":   defaultValues.MaxTokensPer1Minute,
+	}
+
+	// Add optional fields if they exist in the default values
+	if defaultValues.MaxImagesPer1Minute > 0 {
+		req["max_images_per_1_minute"] = defaultValues.MaxImagesPer1Minute
+	}
+	if defaultValues.MaxAudioMegabytesPer1Minute > 0 {
+		req["max_audio_megabytes_per_1_minute"] = defaultValues.MaxAudioMegabytesPer1Minute
+	}
+	if defaultValues.Batch1DayMaxInputTokens > 0 {
+		req["batch_1_day_max_input_tokens"] = defaultValues.Batch1DayMaxInputTokens
+	}
+	if defaultValues.MaxRequestsPer1Day > 0 {
+		req["max_requests_per_1_day"] = defaultValues.MaxRequestsPer1Day
+	}
+
+	// Log the request for debugging
+	reqJson, _ := json.Marshal(req)
+	fmt.Printf("[DELETE-RL-DEBUG] Request body with default values: %s\n", string(reqJson))
+
+	// Debug: Output the actual API key being used (first/last 4 chars)
+	apiKeyToUse := c.APIKey
+	maskedKey := ""
+	if len(apiKeyToUse) > 8 {
+		maskedKey = apiKeyToUse[:4] + "..." + apiKeyToUse[len(apiKeyToUse)-4:]
+	} else {
+		maskedKey = "***"
+	}
+	fmt.Printf("[DELETE-RL-DEBUG] Using API key: %s\n", maskedKey)
+
+	// Send POST request to reset the rate limit to default values
+	fmt.Printf("[DELETE-RL-DEBUG] Using default API key for request\n")
+	body, err := c.doRequest(http.MethodPost, path, req)
+	if err != nil {
+		fmt.Printf("[DELETE-RL-DEBUG] Reset rate limit request failed: %v\n", err)
+		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
+		return err
+	}
+
+	// Debug: Log the response
+	fmt.Printf("[DELETE-RL-DEBUG] Response from OpenAI API: %s\n", string(body))
+	fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
+	return nil
 }
 
 // AddProjectUser adds a user to a project.
@@ -1441,7 +1744,7 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, rateLimitID string) error {
 // Returns:
 //   - A ProjectUser object with details about the added user
 //   - An error if the operation failed
-func (c *OpenAIClient) AddProjectUser(projectID, userID, role string, customAPIKey string) (*ProjectUser, error) {
+func (c *OpenAIClient) AddProjectUser(projectID, userID, role string) (*ProjectUser, error) {
 	// Validate role
 	if role != "owner" && role != "member" {
 		return nil, fmt.Errorf("invalid role: %s (must be 'owner' or 'member')", role)
@@ -1459,17 +1762,8 @@ func (c *OpenAIClient) AddProjectUser(projectID, userID, role string, customAPIK
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Adding user %s to project %s with role %s\n", userID, projectID, role)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodPost, url, req, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodPost, url, req)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodPost, url, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1483,249 +1777,24 @@ func (c *OpenAIClient) AddProjectUser(projectID, userID, role string, customAPIK
 	return &projectUser, nil
 }
 
-// DoRequestWithCustomAPIKey performs a request with a custom API key
-func (c *OpenAIClient) DoRequestWithCustomAPIKey(method, path string, body interface{}, customAPIKey string) ([]byte, error) {
-	fmt.Printf("[REQUEST-DEBUG] ========== HTTP REQUEST DEBUG ==========\n")
-	fmt.Printf("[REQUEST-DEBUG] Method: %s, Path: %s\n", method, path)
-	fmt.Printf("[REQUEST-DEBUG] API URL: %s\n", c.APIURL)
-	fmt.Printf("[REQUEST-DEBUG] Organization ID: %s\n", c.OrganizationID)
-
-	// DEBUG: Check what the API key looks like
-	if customAPIKey != "" {
-		if len(customAPIKey) > 15 {
-			fmt.Printf("[API-KEY-DEBUG] Key prefix: %s...\n", customAPIKey[:15])
-			if !strings.HasPrefix(customAPIKey, "sk-") {
-				fmt.Printf("[API-KEY-DEBUG] WARNING: API key doesn't start with 'sk-'!\n")
-			}
-		} else {
-			fmt.Printf("[API-KEY-DEBUG] Key is too short: %d chars\n", len(customAPIKey))
-		}
-	} else {
-		fmt.Printf("[API-KEY-DEBUG] No custom API key provided\n")
-	}
-
-	// Test network connectivity first
-	connectivityErr := c.TestNetworkConnectivity()
-	if connectivityErr != nil {
-		fmt.Printf("[REQUEST-DEBUG] Network connectivity test failed: %v\n", connectivityErr)
-		// Continue anyway, but log the warning
-		fmt.Printf("[REQUEST-DEBUG] Proceeding with request despite connectivity test failure\n")
-	} else {
-		fmt.Printf("[REQUEST-DEBUG] Network connectivity test passed\n")
-	}
-
-	// Network environment debugging
-	fmt.Printf("[NETWORK-DEBUG] Go Version: %s\n", runtime.Version())
-	fmt.Printf("[NETWORK-DEBUG] GODEBUG env: %s\n", os.Getenv("GODEBUG"))
-
-	// Check if we can resolve api.openai.com directly
-	ips, resolveErr := net.LookupIP("api.openai.com")
-	if resolveErr != nil {
-		fmt.Printf("[NETWORK-DEBUG] DNS resolution error: %v\n", resolveErr)
-	} else {
-		fmt.Printf("[NETWORK-DEBUG] Resolved IPs for api.openai.com: %v\n", ips)
-	}
-
-	// Construct the full URL using SafeJoinURL for proper path handling
-	fullURL := SafeJoinURL(c.APIURL, path)
-	fmt.Printf("[REQUEST-DEBUG] Final full URL: %s\n", fullURL)
-
-	// Parse the URL to check its components
-	parsedURL, parseErr := url.Parse(fullURL)
-	if parseErr != nil {
-		fmt.Printf("[NETWORK-DEBUG] URL parse error: %v\n", parseErr)
-	} else {
-		fmt.Printf("[NETWORK-DEBUG] URL scheme: %s, host: %s, path: %s\n",
-			parsedURL.Scheme, parsedURL.Host, parsedURL.Path)
-	}
-
-	// Create a buffer for the body if provided
-	var bodyBuffer io.Reader
-	if body != nil {
-		bodyJSON, err := json.Marshal(body)
-		if err != nil {
-			fmt.Printf("[REQUEST-DEBUG] Error marshaling body: %v\n", err)
-			return nil, fmt.Errorf("error marshaling request body: %v", err)
-		}
-		bodyBuffer = bytes.NewBuffer(bodyJSON)
-		fmt.Printf("[REQUEST-DEBUG] Request body: %s\n", string(bodyJSON))
-	} else {
-		fmt.Printf("[REQUEST-DEBUG] No request body provided\n")
-	}
-
-	// Create the request
-	req, err := http.NewRequest(method, fullURL, bodyBuffer)
-	if err != nil {
-		fmt.Printf("[REQUEST-DEBUG] Error creating request: %v\n", err)
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	maskedKey := "*****"
-	if len(customAPIKey) > 5 {
-		maskedKey = customAPIKey[:5] + "*****"
-	}
-	fmt.Printf("[REQUEST-DEBUG] Using API key (masked): %s\n", maskedKey)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", customAPIKey))
-
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
-		fmt.Printf("[REQUEST-DEBUG] Set OpenAI-Organization header: %s\n", c.OrganizationID)
-	}
-
-	// Additional useful headers for debugging
-	req.Header.Set("User-Agent", "Terraform-Provider-OpenAI/1.0")
-
-	// Print all headers for debugging (excluding auth token)
-	fmt.Printf("[REQUEST-DEBUG] Request headers:\n")
-	for key, values := range req.Header {
-		if key != "Authorization" {
-			fmt.Printf("[REQUEST-DEBUG]   %s: %s\n", key, values)
-		} else {
-			// For Authorization, print just the Bearer prefix and first few chars
-			authValue := values[0]
-			if len(authValue) > 15 {
-				fmt.Printf("[REQUEST-DEBUG]   %s: Bearer %s...\n", key, authValue[7:15])
-			} else {
-				fmt.Printf("[REQUEST-DEBUG]   %s: [REDACTED]\n", key)
-			}
-		}
-	}
-
-	// Make the request
-	fmt.Printf("[REQUEST-DEBUG] Sending HTTP request...\n")
-
-	// Check HTTP client configuration
-	if c.HTTPClient == nil {
-		fmt.Printf("[NETWORK-DEBUG] HTTPClient is nil, creating default client\n")
-		c.HTTPClient = &http.Client{
-			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
-				TLSHandshakeTimeout: 10 * time.Second,
-				DialContext: (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-			},
-		}
-	} else {
-		fmt.Printf("[NETWORK-DEBUG] Using existing HTTPClient with timeout: %v\n", c.HTTPClient.Timeout)
-		if transport, ok := c.HTTPClient.Transport.(*http.Transport); ok {
-			fmt.Printf("[NETWORK-DEBUG] Transport: MaxIdleConns=%d, IdleConnTimeout=%v\n",
-				transport.MaxIdleConns, transport.IdleConnTimeout)
-		}
-	}
-
-	// Start a timer to measure request duration
-	startTime := time.Now()
-
-	// Do the HTTP request with more error context
-	resp, err := c.HTTPClient.Do(req)
-	requestDuration := time.Since(startTime)
-	fmt.Printf("[NETWORK-DEBUG] Request took %v\n", requestDuration)
-
-	if err != nil {
-		fmt.Printf("[NETWORK-DEBUG] HTTP request error type: %T\n", err)
-		fmt.Printf("[NETWORK-DEBUG] Error details: %v\n", err)
-
-		// Try to determine if it's a DNS error
-		if urlErr, ok := err.(*url.Error); ok {
-			fmt.Printf("[NETWORK-DEBUG] URL error: %v\n", urlErr)
-			if dnsErr, ok := urlErr.Err.(*net.DNSError); ok {
-				fmt.Printf("[NETWORK-DEBUG] DNS error: %v, Name: %s, Server: %s, IsTimeout: %v, IsTemporary: %v\n",
-					dnsErr, dnsErr.Name, dnsErr.Server, dnsErr.IsTimeout, dnsErr.IsTemporary)
-			}
-		}
-
-		fmt.Printf("[REQUEST-DEBUG] Error making request: %v\n", err)
-		return nil, fmt.Errorf("error making request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("[REQUEST-DEBUG] Error reading response body: %v\n", err)
-		return nil, fmt.Errorf("error reading response: %w", err)
-	}
-
-	// Print response details
-	fmt.Printf("[REQUEST-DEBUG] Response status: %d %s\n", resp.StatusCode, resp.Status)
-	fmt.Printf("[REQUEST-DEBUG] Response headers:\n")
-	for key, values := range resp.Header {
-		fmt.Printf("[REQUEST-DEBUG]   %s: %s\n", key, values)
-	}
-
-	// Print the response body (limit it for very large responses)
-	if len(responseBody) > 0 {
-		previewLength := 500
-		if len(responseBody) < previewLength {
-			fmt.Printf("[REQUEST-DEBUG] Full response body: %s\n", string(responseBody))
-		} else {
-			fmt.Printf("[REQUEST-DEBUG] Response body preview (first %d bytes): %s...\n",
-				previewLength, string(responseBody[:previewLength]))
-		}
-	} else {
-		fmt.Printf("[REQUEST-DEBUG] Empty response body\n")
-	}
-
-	// Check for error status codes
-	if resp.StatusCode >= 400 {
-		fmt.Printf("[REQUEST-DEBUG] Error status code detected: %d\n", resp.StatusCode)
-
-		var errorResp ErrorResponse
-		if err := json.Unmarshal(responseBody, &errorResp); err != nil {
-			fmt.Printf("[REQUEST-DEBUG] Failed to parse error response: %v\n", err)
-			fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
-			return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(responseBody))
-		}
-
-		fmt.Printf("[REQUEST-DEBUG] Error message: %s\n", errorResp.Error.Message)
-		fmt.Printf("[REQUEST-DEBUG] Error type: %s\n", errorResp.Error.Type)
-		fmt.Printf("[REQUEST-DEBUG] Error code: %s\n", errorResp.Error.Code)
-		fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
-		return nil, fmt.Errorf("API error: %s", errorResp.Error.Message)
-	}
-
-	fmt.Printf("[REQUEST-DEBUG] Request successful\n")
-	fmt.Printf("[REQUEST-DEBUG] ========== END HTTP REQUEST DEBUG ==========\n")
-	return responseBody, nil
-}
-
-// For backward compatibility, keep the unexported version that delegates to the exported one
-func (c *OpenAIClient) doRequestWithCustomAPIKey(method, path string, body interface{}, customAPIKey string) ([]byte, error) {
-	return c.DoRequestWithCustomAPIKey(method, path, body, customAPIKey)
-}
-
 // ListProjectUsers retrieves all users in a project.
 // This function provides a way to check if a user is already in a project.
 //
 // Parameters:
 //   - projectID: The ID of the project to list users from
-//   - customAPIKey: Optional API key to use for this request instead of the client's default API key
 //
 // Returns:
 //   - A ProjectUserList object with all users in the project
 //   - An error if the operation failed
-func (c *OpenAIClient) ListProjectUsers(projectID string, customAPIKey string) (*ProjectUserList, error) {
+func (c *OpenAIClient) ListProjectUsers(projectID string) (*ProjectUserList, error) {
 	// Construct the URL for the request
 	url := fmt.Sprintf("/v1/organization/projects/%s/users", projectID)
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Listing users for project %s\n", projectID)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodGet, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodGet, url, nil)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1745,15 +1814,14 @@ func (c *OpenAIClient) ListProjectUsers(projectID string, customAPIKey string) (
 // Parameters:
 //   - projectID: The ID of the project to check
 //   - userID: The ID of the user to find
-//   - customAPIKey: Optional API key to use for this request
 //
 // Returns:
 //   - The found ProjectUser if it exists
 //   - A boolean indicating if the user was found
 //   - An error if the operation failed
-func (c *OpenAIClient) FindProjectUser(projectID, userID string, customAPIKey string) (*ProjectUser, bool, error) {
+func (c *OpenAIClient) FindProjectUser(projectID, userID string) (*ProjectUser, bool, error) {
 	// Get all users in the project
-	userList, err := c.ListProjectUsers(projectID, customAPIKey)
+	userList, err := c.ListProjectUsers(projectID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1775,15 +1843,14 @@ func (c *OpenAIClient) FindProjectUser(projectID, userID string, customAPIKey st
 // Parameters:
 //   - projectID: The ID of the project to check
 //   - email: The email address of the user to find
-//   - customAPIKey: Optional API key to use for this request
 //
 // Returns:
 //   - The found ProjectUser if it exists
 //   - A boolean indicating if the user was found
 //   - An error if the operation failed
-func (c *OpenAIClient) FindProjectUserByEmail(projectID, email string, customAPIKey string) (*ProjectUser, bool, error) {
+func (c *OpenAIClient) FindProjectUserByEmail(projectID, email string) (*ProjectUser, bool, error) {
 	// Get all users in the project
-	userList, err := c.ListProjectUsers(projectID, customAPIKey)
+	userList, err := c.ListProjectUsers(projectID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -1805,27 +1872,18 @@ func (c *OpenAIClient) FindProjectUserByEmail(projectID, email string, customAPI
 // Parameters:
 //   - projectID: The ID of the project to remove the user from
 //   - userID: The ID of the user to remove
-//   - customAPIKey: Optional API key to use for this request instead of the client's default API key
 //
 // Returns:
 //   - An error if the operation failed
-func (c *OpenAIClient) RemoveProjectUser(projectID, userID string, customAPIKey string) error {
+func (c *OpenAIClient) RemoveProjectUser(projectID, userID string) error {
 	// Construct the URL for the request
 	url := fmt.Sprintf("/v1/organization/projects/%s/users/%s", projectID, userID)
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Removing user %s from project %s\n", userID, projectID)
 
-	// Make the request with custom API key if provided
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		_, err = c.doRequestWithCustomAPIKey(http.MethodDelete, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		_, err = c.doRequest(http.MethodDelete, url, nil)
-	}
-
+	// Make the request
+	_, err := c.doRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
@@ -1845,12 +1903,11 @@ type UpdateProjectUserRequest struct {
 //   - projectID: The ID of the project
 //   - userID: The ID of the user to update
 //   - role: The new role to assign ("owner" or "member")
-//   - customAPIKey: Optional API key to use for this request
 //
 // Returns:
 //   - A ProjectUser object with updated details
 //   - An error if the operation failed
-func (c *OpenAIClient) UpdateProjectUser(projectID, userID, role string, customAPIKey string) (*ProjectUser, error) {
+func (c *OpenAIClient) UpdateProjectUser(projectID, userID, role string) (*ProjectUser, error) {
 	// Validate role
 	if role != "owner" && role != "member" {
 		return nil, fmt.Errorf("invalid role: %s (must be 'owner' or 'member')", role)
@@ -1867,17 +1924,8 @@ func (c *OpenAIClient) UpdateProjectUser(projectID, userID, role string, customA
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Updating user %s in project %s to role %s\n", userID, projectID, role)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodPost, url, req, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodPost, url, req)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodPost, url, req)
 	if err != nil {
 		return nil, err
 	}
@@ -1894,7 +1942,7 @@ func (c *OpenAIClient) UpdateProjectUser(projectID, userID, role string, customA
 // CreateProjectServiceAccount creates a new service account in a project
 // Service accounts are bot users that are not associated with a real user
 // and do not have the limitation of being removed when a user leaves an organization
-func (c *OpenAIClient) CreateProjectServiceAccount(projectID, name string, customAPIKey string) (*ProjectServiceAccount, error) {
+func (c *OpenAIClient) CreateProjectServiceAccount(projectID, name string) (*ProjectServiceAccount, error) {
 	// Correct URL format based on the API endpoint structure
 	url := fmt.Sprintf("/v1/organization/projects/%s/service_accounts", projectID)
 
@@ -1906,17 +1954,8 @@ func (c *OpenAIClient) CreateProjectServiceAccount(projectID, name string, custo
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Creating service account '%s' in project %s\n", name, projectID)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodPost, url, req, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodPost, url, req)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodPost, url, req)
 	if err != nil {
 		return nil, fmt.Errorf("error creating project service account: %w", err)
 	}
@@ -1931,24 +1970,15 @@ func (c *OpenAIClient) CreateProjectServiceAccount(projectID, name string, custo
 }
 
 // GetProjectServiceAccount retrieves information about a specific service account in a project
-func (c *OpenAIClient) GetProjectServiceAccount(projectID, serviceAccountID string, customAPIKey string) (*ProjectServiceAccount, error) {
+func (c *OpenAIClient) GetProjectServiceAccount(projectID, serviceAccountID string) (*ProjectServiceAccount, error) {
 	// Correct URL format based on the API endpoint structure
 	url := fmt.Sprintf("/v1/organization/projects/%s/service_accounts/%s", projectID, serviceAccountID)
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Getting service account %s from project %s\n", serviceAccountID, projectID)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodGet, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodGet, url, nil)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error getting project service account: %w", err)
 	}
@@ -1963,24 +1993,15 @@ func (c *OpenAIClient) GetProjectServiceAccount(projectID, serviceAccountID stri
 }
 
 // ListProjectServiceAccounts retrieves all service accounts in a project
-func (c *OpenAIClient) ListProjectServiceAccounts(projectID string, customAPIKey string) (*ProjectServiceAccountList, error) {
+func (c *OpenAIClient) ListProjectServiceAccounts(projectID string) (*ProjectServiceAccountList, error) {
 	// Correct URL format based on the API endpoint structure
 	url := fmt.Sprintf("/v1/organization/projects/%s/service_accounts", projectID)
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Listing service accounts for project %s\n", projectID)
 
-	// Make the request with custom API key if provided
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		respBody, err = c.doRequestWithCustomAPIKey(http.MethodGet, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		respBody, err = c.doRequest(http.MethodGet, url, nil)
-	}
-
+	// Make the request
+	respBody, err := c.doRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error listing project service accounts: %w", err)
 	}
@@ -1995,23 +2016,15 @@ func (c *OpenAIClient) ListProjectServiceAccounts(projectID string, customAPIKey
 }
 
 // DeleteProjectServiceAccount removes a service account from a project
-func (c *OpenAIClient) DeleteProjectServiceAccount(projectID, serviceAccountID string, customAPIKey string) error {
+func (c *OpenAIClient) DeleteProjectServiceAccount(projectID, serviceAccountID string) error {
 	// Correct URL format based on the API endpoint structure
 	url := fmt.Sprintf("/v1/organization/projects/%s/service_accounts/%s", projectID, serviceAccountID)
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Deleting service account %s from project %s\n", serviceAccountID, projectID)
 
-	// Make the request with custom API key if provided
-	var err error
-	if customAPIKey != "" {
-		// Use custom API key for this request
-		_, err = c.doRequestWithCustomAPIKey(http.MethodDelete, url, nil, customAPIKey)
-	} else {
-		// Use default API key
-		_, err = c.doRequest(http.MethodDelete, url, nil)
-	}
-
+	// Make the request
+	_, err := c.doRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return fmt.Errorf("error deleting project service account: %w", err)
 	}
@@ -2565,7 +2578,7 @@ type ListInvitesResponse struct {
 }
 
 // CreateInvite sends an invitation to a user to join the organization
-func (c *OpenAIClient) CreateInvite(email, role string, projects []InviteProject, customAPIKey string) (*InviteResponse, error) {
+func (c *OpenAIClient) CreateInvite(email, role string, projects []InviteProject) (*InviteResponse, error) {
 	inviteRequest := &InviteRequest{
 		Email:    email,
 		Role:     role,
@@ -2575,16 +2588,8 @@ func (c *OpenAIClient) CreateInvite(email, role string, projects []InviteProject
 	// Prepare URL for the API request
 	url := "/organization/invites"
 
-	var respBody []byte
-	var err error
-
-	// Use custom API key if provided, otherwise use the default
-	if customAPIKey != "" {
-		respBody, err = c.doRequestWithCustomAPIKey("POST", url, inviteRequest, customAPIKey)
-	} else {
-		respBody, err = c.DoRequest("POST", url, inviteRequest)
-	}
-
+	// Use the default API key
+	respBody, err := c.DoRequest("POST", url, inviteRequest)
 	if err != nil {
 		return nil, fmt.Errorf("error creating invite: %s", err)
 	}
@@ -2600,20 +2605,12 @@ func (c *OpenAIClient) CreateInvite(email, role string, projects []InviteProject
 }
 
 // GetInvite retrieves an invitation by ID
-func (c *OpenAIClient) GetInvite(inviteID string, customAPIKey string) (*Invite, error) {
+func (c *OpenAIClient) GetInvite(inviteID string) (*Invite, error) {
 	// Prepare URL for the API request
 	url := fmt.Sprintf("/v1/organization/invites/%s", inviteID)
 
-	var respBody []byte
-	var err error
-
-	// Use custom API key if provided, otherwise use the default
-	if customAPIKey != "" {
-		respBody, err = c.doRequestWithCustomAPIKey("GET", url, nil, customAPIKey)
-	} else {
-		respBody, err = c.DoRequest("GET", url, nil)
-	}
-
+	// Use the default API key
+	respBody, err := c.DoRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error getting invite: %s", err)
 	}
@@ -2629,7 +2626,7 @@ func (c *OpenAIClient) GetInvite(inviteID string, customAPIKey string) (*Invite,
 }
 
 // ListInvites retrieves all pending invitations for the organization
-func (c *OpenAIClient) ListInvites(customAPIKey string) (*ListInvitesResponse, error) {
+func (c *OpenAIClient) ListInvites() (*ListInvitesResponse, error) {
 	// Create a client with extended timeout specifically for this operation
 	// which can be slow for organizations with many invites
 	httpClient := &http.Client{
@@ -2647,16 +2644,8 @@ func (c *OpenAIClient) ListInvites(customAPIKey string) (*ListInvitesResponse, e
 	// Prepare URL for the API request
 	url := "/v1/organization/invites"
 
-	var respBody []byte
-	var err error
-
-	// Use custom API key if provided, otherwise use the default
-	if customAPIKey != "" {
-		respBody, err = c.doRequestWithCustomAPIKey("GET", url, nil, customAPIKey)
-	} else {
-		respBody, err = c.DoRequest("GET", url, nil)
-	}
-
+	// Use the default API key
+	respBody, err := c.DoRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error listing invites: %s", err)
 	}
@@ -2672,19 +2661,12 @@ func (c *OpenAIClient) ListInvites(customAPIKey string) (*ListInvitesResponse, e
 }
 
 // DeleteInvite cancels an invitation
-func (c *OpenAIClient) DeleteInvite(inviteID string, customAPIKey string) error {
+func (c *OpenAIClient) DeleteInvite(inviteID string) error {
 	// Prepare URL for the API request
 	url := fmt.Sprintf("/v1/organization/invites/%s", inviteID)
 
-	var err error
-
-	// Use custom API key if provided, otherwise use the default
-	if customAPIKey != "" {
-		_, err = c.doRequestWithCustomAPIKey("DELETE", url, nil, customAPIKey)
-	} else {
-		_, err = c.DoRequest("DELETE", url, nil)
-	}
-
+	// Use the default API key
+	_, err := c.DoRequest("DELETE", url, nil)
 	if err != nil {
 		// Check if the error is due to the invitation already being accepted
 		if strings.Contains(err.Error(), "already accepted") {
@@ -2700,11 +2682,6 @@ func (c *OpenAIClient) DeleteInvite(inviteID string, customAPIKey string) error 
 
 // ListRateLimits retrieves all rate limits for a specific project.
 func (c *OpenAIClient) ListRateLimits(projectID string) (*RateLimitListResponse, error) {
-	return c.ListRateLimitsWithKey(projectID, "")
-}
-
-// ListRateLimitsWithKey retrieves all rate limits for a specific project using a custom API key.
-func (c *OpenAIClient) ListRateLimitsWithKey(projectID, customAPIKey string) (*RateLimitListResponse, error) {
 	// Use consistent URL format with other methods, avoiding the absolute URL approach
 	url := fmt.Sprintf("/organization/projects/%s/rate_limits", projectID)
 
@@ -2712,22 +2689,15 @@ func (c *OpenAIClient) ListRateLimitsWithKey(projectID, customAPIKey string) (*R
 	fmt.Printf("\n\n[LIST-RL-DEBUG] ========== LIST RATE LIMITS DEBUG ==========\n")
 	fmt.Printf("[LIST-RL-DEBUG] ProjectID: %s\n", projectID)
 	maskedKey := "*****"
-	if customAPIKey != "" && len(customAPIKey) > 5 {
-		maskedKey = customAPIKey[:5] + "*****"
+	if len(c.APIKey) > 5 {
+		maskedKey = c.APIKey[:5] + "*****"
 	}
 	fmt.Printf("[LIST-RL-DEBUG] Using API key (masked): %s\n", maskedKey)
 	fmt.Printf("[LIST-RL-DEBUG] Client API URL: %s\n", c.APIURL)
 	fmt.Printf("[LIST-RL-DEBUG] Organization ID: %s\n", c.OrganizationID)
 	fmt.Printf("[LIST-RL-DEBUG] API URL: %s\n", url)
 
-	var respBody []byte
-	var err error
-	if customAPIKey != "" {
-		respBody, err = c.doRequestWithCustomAPIKey("GET", url, nil, customAPIKey)
-	} else {
-		respBody, err = c.doRequest("GET", url, nil)
-	}
-
+	respBody, err := c.doRequest("GET", url, nil)
 	if err != nil {
 		fmt.Printf("[LIST-RL-DEBUG] Error listing rate limits: %v\n", err)
 		fmt.Printf("[LIST-RL-DEBUG] ========== END LIST RATE LIMITS DEBUG ==========\n\n")
@@ -2750,177 +2720,6 @@ func (c *OpenAIClient) ListRateLimitsWithKey(projectID, customAPIKey string) (*R
 	fmt.Printf("[LIST-RL-DEBUG] ========== END LIST RATE LIMITS DEBUG ==========\n\n")
 
 	return &response, nil
-}
-
-// DeleteRateLimitWithKey deletes a rate limit for a model in a project using a custom API key.
-// NOTE: This is not a true deletion since OpenAI doesn't support DELETE operations on rate limits.
-// Instead, this resets the rate limit to default values.
-func (c *OpenAIClient) DeleteRateLimitWithKey(projectID, modelOrRateLimitID string, customAPIKey string) error {
-	// Note: OpenAI doesn't support DELETE operations on rate limits.
-	// Instead we "reset" them to default values.
-	fmt.Printf("[DELETE-RL-DEBUG] ========== DeleteRateLimitWithKey DEBUG ==========\n")
-	fmt.Printf("[DELETE-RL-DEBUG] ProjectID: %s\n", projectID)
-	fmt.Printf("[DELETE-RL-DEBUG] ModelOrRateLimitID: %s\n", modelOrRateLimitID)
-
-	// Step 1: List all rate limits and find the one we want to reset
-	fmt.Printf("[DELETE-RL-DEBUG] Listing all rate limits to find target rate limit\n")
-	rateLimits, err := c.ListRateLimitsWithKey(projectID, customAPIKey)
-	if err != nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Failed to list rate limits: %v\n", err)
-		return fmt.Errorf("failed to list rate limits: %w", err)
-	}
-
-	// Search logic similar to GetRateLimitWithKey
-	model := ""
-	searchID := modelOrRateLimitID
-
-	if !strings.HasPrefix(modelOrRateLimitID, "rl-") {
-		// If it doesn't have "rl-" prefix, it's a model name
-		model = modelOrRateLimitID
-		searchID = "rl-" + modelOrRateLimitID
-		fmt.Printf("[DELETE-RL-DEBUG] Searching by MODEL: %s (ID would be %s)\n", model, searchID)
-	} else {
-		// It has the prefix, treat it as an ID but also extract the model
-		// Try to extract model name from the ID
-		parts := strings.Split(modelOrRateLimitID[3:], "-")
-		if len(parts) >= 1 {
-			model = parts[0]
-			if len(parts) > 1 {
-				// For multi-part model names like "gpt-4o-mini"
-				if !containsProjectSuffix(parts[len(parts)-1]) {
-					model = strings.Join(parts, "-")
-				} else {
-					model = strings.Join(parts[:len(parts)-1], "-")
-				}
-			}
-		}
-		fmt.Printf("[DELETE-RL-DEBUG] Searching by ID: %s (extracted model: %s)\n", searchID, model)
-	}
-
-	// Find the target rate limit
-	var targetRateLimit *RateLimit
-
-	// 1. Try exact ID match first
-	for _, rl := range rateLimits.Data {
-		if rl.ID == searchID {
-			fmt.Printf("[DELETE-RL-DEBUG] Found exact ID match: %s (Model: %s)\n", rl.ID, rl.Model)
-			targetRateLimit = &rl
-			break
-		}
-	}
-
-	// 2. Try ID prefix match (accounts for project-specific suffixes)
-	if targetRateLimit == nil {
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.ID, searchID+"-") || rl.ID == searchID {
-				fmt.Printf("[DELETE-RL-DEBUG] Found ID prefix match: %s (Model: %s)\n", rl.ID, rl.Model)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 3. Try model name match as fallback
-	if targetRateLimit == nil && model != "" {
-		for _, rl := range rateLimits.Data {
-			if rl.Model == model {
-				fmt.Printf("[DELETE-RL-DEBUG] Found by model name match: %s (ID: %s)\n", rl.Model, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 4. Last resort: try partial model matching for compound model names
-	if targetRateLimit == nil && model != "" && strings.Contains(model, "-") {
-		modelBase := strings.Split(model, "-")[0]
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.Model, modelBase) {
-				fmt.Printf("[DELETE-RL-DEBUG] Found by partial model name match: %s matches base %s (ID: %s)\n",
-					rl.Model, modelBase, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	if targetRateLimit == nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
-		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimitWithKey DEBUG ==========\n\n")
-		return fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
-			projectID, modelOrRateLimitID)
-	}
-
-	// Now we have the target rate limit, construct the URL for update
-	effectiveRateLimitID := targetRateLimit.ID
-	effectiveModel := targetRateLimit.Model
-	fmt.Printf("[DELETE-RL-DEBUG] Found rate limit to reset: %s (Model: %s)\n", effectiveRateLimitID, effectiveModel)
-
-	// Construct the direct path with the rate limit ID included
-	path := fmt.Sprintf("/organization/projects/%s/rate_limits/%s", projectID, effectiveRateLimitID)
-	fmt.Printf("[DELETE-RL-DEBUG] Using path for reset: %s\n", path)
-
-	// Get default values for this model
-	defaultValues := getDefaultRateLimitValues(effectiveModel)
-	fmt.Printf("[DELETE-RL-DEBUG] Default values for model %s: %+v\n", effectiveModel, defaultValues)
-
-	// Create the request body with default values
-	req := map[string]interface{}{
-		"max_requests_per_1_minute": defaultValues.MaxRequestsPer1Minute,
-		"max_tokens_per_1_minute":   defaultValues.MaxTokensPer1Minute,
-	}
-
-	// Add optional fields if they exist in the default values
-	if defaultValues.MaxImagesPer1Minute > 0 {
-		req["max_images_per_1_minute"] = defaultValues.MaxImagesPer1Minute
-	}
-	if defaultValues.MaxAudioMegabytesPer1Minute > 0 {
-		req["max_audio_megabytes_per_1_minute"] = defaultValues.MaxAudioMegabytesPer1Minute
-	}
-	if defaultValues.Batch1DayMaxInputTokens > 0 {
-		req["batch_1_day_max_input_tokens"] = defaultValues.Batch1DayMaxInputTokens
-	}
-	if defaultValues.MaxRequestsPer1Day > 0 {
-		req["max_requests_per_1_day"] = defaultValues.MaxRequestsPer1Day
-	}
-
-	// Log the request for debugging
-	reqJson, _ := json.Marshal(req)
-	fmt.Printf("[DELETE-RL-DEBUG] Request body with default values: %s\n", string(reqJson))
-
-	// Debug: Output the actual API key being used (first/last 4 chars)
-	apiKeyToUse := c.APIKey
-	if customAPIKey != "" {
-		apiKeyToUse = customAPIKey
-	}
-	maskedKey := ""
-	if len(apiKeyToUse) > 8 {
-		maskedKey = apiKeyToUse[:4] + "..." + apiKeyToUse[len(apiKeyToUse)-4:]
-	} else {
-		maskedKey = "***"
-	}
-	fmt.Printf("[DELETE-RL-DEBUG] Using API key: %s\n", maskedKey)
-
-	// Send POST request to reset the rate limit to default values
-	var body []byte
-	if customAPIKey != "" {
-		fmt.Printf("[DELETE-RL-DEBUG] Using custom API key for request\n")
-		body, err = c.doRequestWithCustomAPIKey(http.MethodPost, path, req, customAPIKey)
-	} else {
-		fmt.Printf("[DELETE-RL-DEBUG] Using default API key for request\n")
-		body, err = c.doRequest(http.MethodPost, path, req)
-	}
-
-	if err != nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Reset rate limit request failed: %v\n", err)
-		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimitWithKey DEBUG ==========\n\n")
-		return err
-	}
-
-	// Debug: Log the response
-	fmt.Printf("[DELETE-RL-DEBUG] Response from OpenAI API: %s\n", string(body))
-	fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimitWithKey DEBUG ==========\n\n")
-	return nil
 }
 
 // Helper function to extract the model name from a rate limit ID

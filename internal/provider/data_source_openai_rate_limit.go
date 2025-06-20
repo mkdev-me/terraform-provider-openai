@@ -61,12 +61,6 @@ func dataSourceOpenAIRateLimit() *schema.Resource {
 				Computed:    true,
 				Description: "The OpenAI-assigned ID for this rate limit",
 			},
-			"api_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "Project-specific API key to use for authentication. If not provided, the provider's default API key will be used.",
-			},
 		},
 	}
 }
@@ -76,7 +70,7 @@ func dataSourceOpenAIRateLimitRead(ctx context.Context, d *schema.ResourceData, 
 	// Log information about field naming convention differences
 	tflog.Info(ctx, "[IMPORTANT] OpenAI API uses fields with '_per_1_minute' (with _1_), while Terraform uses '_per_minute'")
 
-	c, err := GetOpenAIClient(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
@@ -86,15 +80,8 @@ func dataSourceOpenAIRateLimitRead(ctx context.Context, d *schema.ResourceData, 
 
 	tflog.Debug(ctx, fmt.Sprintf("Reading rate limit for model %s in project %s", model, projectID))
 
-	// Use custom API key if provided
-	apiKey := ""
-	if v, ok := d.GetOk("api_key"); ok {
-		apiKey = v.(string)
-		tflog.Debug(ctx, "Using resource-specific API key")
-	}
-
-	// Get rate limit data
-	rateLimit, err := c.GetRateLimitWithKey(projectID, model, apiKey)
+	// Get rate limit data using the provider's API key
+	rateLimit, err := c.GetRateLimit(projectID, model)
 	if err != nil {
 		// Check for specific error types
 		if strings.Contains(err.Error(), "permission") || strings.Contains(err.Error(), "403") {

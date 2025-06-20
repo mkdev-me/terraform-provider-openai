@@ -72,7 +72,7 @@ func dataSourceOpenAIProjectAPIKeys() *schema.Resource {
 // dataSourceOpenAIProjectAPIKeysRead handles the read operation for the OpenAI project API keys data source.
 // It retrieves a list of all API keys for a specific project from the OpenAI API.
 func dataSourceOpenAIProjectAPIKeysRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+	client, err := GetOpenAIClientWithAdminKey(m)
 	if err != nil {
 		return diag.FromErr(err)
 	}
