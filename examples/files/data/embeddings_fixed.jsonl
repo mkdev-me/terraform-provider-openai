@@ -1,0 +1,3 @@
+{"model": "text-embedding-ada-002", "custom_id": "embed-1", "input": "The food was delicious and the service was excellent."}
+{"model": "text-embedding-ada-002", "custom_id": "embed-2", "input": "I had a terrible experience at the restaurant."}
+{"model": "text-embedding-ada-002", "custom_id": "embed-3", "input": "The price was reasonable for the quality of the meal."} 

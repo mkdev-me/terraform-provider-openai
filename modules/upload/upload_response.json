@@ -1,0 +1,11 @@
+{
+  "object": "file",
+  "id": "file-KX5E5F5BKdHGirufjCKrmA",
+  "purpose": "fine-tune",
+  "filename": "training_data.jsonl",
+  "bytes": 1090,
+  "created_at": 1742490340,
+  "expires_at": null,
+  "status": "processed",
+  "status_details": null
+}

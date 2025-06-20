@@ -1,0 +1,149 @@
+# OpenAI Terraform Provider - Thread Run Example
+
+# Configure the OpenAI provider
+provider "openai" {
+  api_key = var.openai_api_key # or use OPENAI_API_KEY env variable
+}
+
+# Create an Assistant for the runs
+resource "openai_assistant" "terraform_assistant" {
+  name          = "Terraform Helper"
+  description   = "Assistant that helps with Terraform configurations"
+  model         = "gpt-4o"
+  instructions  = "You are a helpful assistant that specializes in Terraform. Provide concise, accurate information about Terraform configurations, modules, providers, and best practices."
+  
+  tools {
+    type = "code_interpreter"
+  }
+  
+  tools {
+    type = "retrieval"
+  }
+  
+  tools {
+    type = "function"
+    function {
+      name        = "lookup_terraform_docs"
+      description = "Look up documentation for a Terraform resource or module"
+      parameters  = jsonencode({
+        type = "object",
+        properties = {
+          resource_type = {
+            type = "string",
+            description = "The type of Terraform resource or module to look up"
+          },
+          provider = {
+            type = "string",
+            description = "The Terraform provider (e.g., aws, azure, google)"
+          }
+        },
+        required = ["resource_type"]
+      })
+    }
+  }
+}
+
+# Example 1: Create a thread and run in a single operation
+resource "openai_thread_run" "combined_operation" {
+  assistant_id = openai_assistant.terraform_assistant.id
+  
+  thread {
+    messages {
+      role    = "user"
+      content = "What are the best practices for organizing Terraform modules?"
+    }
+    
+    messages {
+      role    = "user"
+      content = "Can you provide examples of folder structures for a large Terraform project?"
+    }
+    
+    metadata = {
+      topic    = "terraform-organization"
+      priority = "high"
+    }
+  }
+  
+  # Override assistant instructions for this specific run
+  instructions = "Focus specifically on organizational patterns for large enterprise environments with multiple teams."
+  
+  # Optional parameters
+  temperature          = 0.7
+  max_completion_tokens = 1024
+}
+
+# Example 2: Create a thread first, then use it in a thread run
+resource "openai_thread" "separate_thread" {
+  messages {
+    role    = "user"
+    content = "What's the difference between Terraform modules and resources?"
+  }
+  
+  messages {
+    role    = "user"
+    content = "How can I create reusable infrastructure components with Terraform?"
+  }
+}
+
+resource "openai_thread_run" "on_existing_thread" {
+  assistant_id      = openai_assistant.terraform_assistant.id
+  existing_thread_id = openai_thread.separate_thread.id
+  
+  # Use a different model than the assistant's default
+  model = "gpt-4o-mini"
+}
+
+# Example 3: Using the run module for simplified creation
+module "module_based_run" {
+  source = "../../modules/run"
+  
+  assistant_id = openai_assistant.terraform_assistant.id
+  
+  # Thread configuration  
+  messages = [
+    {
+      role    = "user"
+      content = "What are some strategies for handling Terraform state in a team environment?"
+    }
+  ]
+  
+  # Run configuration
+  instructions = "Provide practical examples that work well in enterprise environments."
+  temperature  = 0.5
+}
+
+# Outputs
+output "assistant_id" {
+  value       = openai_assistant.terraform_assistant.id
+  description = "The ID of the created assistant"
+}
+
+output "combined_operation_run_id" {
+  value       = openai_thread_run.combined_operation.id
+  description = "The ID of the combined thread and run operation"
+}
+
+output "combined_operation_thread_id" {
+  value       = openai_thread_run.combined_operation.thread_id
+  description = "The thread ID created by the combined operation"
+}
+
+output "separate_thread_id" {
+  value       = openai_thread.separate_thread.id
+  description = "The ID of the separately created thread"
+}
+
+output "separate_thread_run_id" {
+  value       = openai_thread_run.on_existing_thread.id
+  description = "The ID of the run on the existing thread"
+}
+
+output "module_based_run_id" {
+  value       = module.module_based_run.id
+  description = "The ID of the run created via the module"
+}
+
+output "module_based_thread_id" {
+  value       = module.module_based_run.thread_id
+  description = "The thread ID created by the module"
+} 
