@@ -110,7 +110,6 @@ resource "openai_fine_tuning_checkpoint_permission" "example" {
   
   checkpoint_id = var.checkpoint_id
   project_ids   = [var.project_id]
-  admin_api_key = var.admin_api_key
 }
 ```
 
@@ -128,7 +127,6 @@ resource "openai_fine_tuning_checkpoint_permission" "multi_project" {
     var.project_id_2,
     var.project_id_3
   ]
-  admin_api_key = var.admin_api_key
 }
 ```
 
@@ -160,7 +158,6 @@ Example output:
 ```
 # openai_fine_tuning_checkpoint_permission.checkpoint_permission[0]:
 resource "openai_fine_tuning_checkpoint_permission" "checkpoint_permission" {
-    admin_api_key = (sensitive value)
     checkpoint_id = "ft:gpt-4o-2024-08-06:org-name::AbCdEfGh"
     created_at    = 1743699340
     id            = "cp_AbCdEfGhIjKlMnOp123456"
@@ -207,7 +204,6 @@ resource "openai_fine_tuning_checkpoint_permission" "checkpoint_permission" {
   
   checkpoint_id = var.checkpoint_id
   project_ids   = [var.project_id]
-  admin_api_key = var.admin_api_key
   
   # Prevent modifications to imported resources
   lifecycle {

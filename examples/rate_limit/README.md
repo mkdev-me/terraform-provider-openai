@@ -103,9 +103,6 @@ resource "openai_rate_limit" "dalle3_limits" {
   max_requests_per_minute = 50
   max_images_per_minute   = 10
   max_requests_per_1_day  = 600
-  
-  # Pass the API key to use for authentication
-  api_key = var.openai_api_key
 }
 ```
 
@@ -118,7 +115,6 @@ The `data_sources.tf` file demonstrates how to use both the singular and plural 
 data "openai_rate_limits" "all_limits" {
   count      = var.try_data_sources ? 1 : 0
   project_id = var.project_id
-  api_key    = var.openai_api_key
 }
 
 # Retrieve rate limit for a specific model
@@ -126,7 +122,6 @@ data "openai_rate_limit" "dalle3_limit" {
   count      = var.try_data_sources ? 1 : 0
   project_id = var.project_id
   model      = "dall-e-3"
-  api_key    = var.openai_api_key
 }
 ```
 

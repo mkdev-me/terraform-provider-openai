@@ -54,7 +54,6 @@ As of version 0.X.X, the provider now supports looking up users by email address
 # Look up a user by email address
 data "openai_organization_user" "by_email" {
   email   = "user@example.com"  # Replace with a real email from your organization
-  api_key = var.openai_admin_api_key
 }
 
 # The data source will return the user's ID, which can then be used in other resources

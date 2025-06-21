@@ -149,7 +149,6 @@ An invite using a custom API key:
 resource "openai_invite" "custom_key_invite" {
   email   = "user2@example.com"
   role    = "reader"
-  api_key = var.admin_api_key  # Custom API key
 }
 ```
 

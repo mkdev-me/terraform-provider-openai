@@ -107,7 +107,6 @@ module "custom_api_key_file" {
 
   file_path = "path/to/file.txt"
   purpose   = "assistants"
-  api_key   = var.custom_api_key
 }
 ```
 
