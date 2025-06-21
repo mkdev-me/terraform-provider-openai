@@ -5,9 +5,9 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 // Default API URL if not specified

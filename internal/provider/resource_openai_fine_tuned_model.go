@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 // FineTuningJobResponse represents the API response for a fine-tuning job.

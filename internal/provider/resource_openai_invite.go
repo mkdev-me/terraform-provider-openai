@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 func resourceOpenAIInvite() *schema.Resource {

@@ -194,7 +194,6 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error creating embedding: %s", err))
 	}
 
-
 	// Parsear la respuesta
 	var embeddingResponse EmbeddingResponse
 	if err := json.Unmarshal(respBody, &embeddingResponse); err != nil {
