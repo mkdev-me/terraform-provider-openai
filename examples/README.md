@@ -105,7 +105,6 @@ provider "openai" {
 
 ```hcl
 resource "openai_chat_completion" "example" {
-  api_key = var.specific_project_key  # Override provider default
   model   = "gpt-4"
   # ...
 }

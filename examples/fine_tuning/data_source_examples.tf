@@ -173,7 +173,6 @@ data "openai_fine_tuning_checkpoint_permissions" "latest_permissions" {
   count = data.openai_fine_tuning_job.latest.status == "succeeded" ? 1 : 0
   # Use the fine_tuned_model output from the job as the checkpoint_id
   checkpoint_id = data.openai_fine_tuning_job.latest.fine_tuned_model
-  admin_api_key = var.admin_api_key  # Use admin API key from variables
 }
 
 # Comprehensive output

@@ -71,7 +71,6 @@ openai_admin_key = "sk-xxxx"  # Your OpenAI Admin API key
 # In main.tf - Replace with actual user IDs from your organization
 data "openai_organization_user" "user" {
   user_id = "user-yatSd6LuWvgeoqZbd89xzPlJ"  # Replace with real user ID
-  api_key = var.openai_admin_key
 }
 
 # In data_sources.tf - Replace with actual user IDs from your organization
@@ -125,7 +124,6 @@ This data source retrieves information about a specific user in your organizatio
 ```hcl
 data "openai_organization_user" "user" {
   user_id = "user-yatSd6LuWvgeoqZbd89xzPlJ"  # Must be a valid user ID
-  api_key = var.openai_admin_key  # Admin API key with api.management.read scope
 }
 
 output "user_details" {
@@ -150,7 +148,6 @@ This data source retrieves information about a specific user in your organizatio
 ```hcl
 data "openai_organization_user" "user_info" {
   user_id = "user-yatSd6LuWvgeoqZbd89xzPlJ"  # Must be a valid user ID
-  api_key = var.openai_admin_key  # Admin API key with api.management.read scope
 }
 
 output "data_source_user_email" {
@@ -166,7 +163,6 @@ output "data_source_user_role" {
 ```hcl
 data "openai_organization_user" "by_email" {
   email = "user@example.com"  # Must be a valid email address in your organization
-  api_key = var.openai_admin_key  # Admin API key with api.management.read scope
 }
 
 output "user_id_from_email" {
@@ -182,7 +178,6 @@ This data source retrieves information about all users in your organization.
 ```hcl
 data "openai_organization_users" "all_org_users" {
   limit = 50  # Number of users to return (1-100)
-  api_key = var.openai_admin_key  # Admin API key with api.management.read scope
 }
 
 output "organization_owner_count" {
@@ -267,7 +262,6 @@ This example demonstrates how to look up users by email instead of user IDs. Thi
 ```hcl
 data "openai_organization_user" "by_email" {
   email   = "user@example.com"  # Replace with a real email from your organization
-  api_key = var.openai_admin_key
 }
 
 output "org_user_by_email_id" {
