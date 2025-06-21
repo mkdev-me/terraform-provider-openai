@@ -9,7 +9,7 @@
 terraform {
   required_providers {
     openai = {
-      source  = "mkdev-me/openai" # Custom OpenAI provider source
+      source = "mkdev-me/openai" # Custom OpenAI provider source
     }
   }
 }

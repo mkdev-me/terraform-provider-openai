@@ -6,7 +6,7 @@
 terraform {
   required_providers {
     openai = {
-      source  = "mkdev-me/openai"
+      source = "mkdev-me/openai"
     }
     local = {
       source  = "hashicorp/local"
