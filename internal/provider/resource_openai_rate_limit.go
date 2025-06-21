@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 // resourceOpenAIRateLimit defines the schema and CRUD operations for OpenAI rate limits.
