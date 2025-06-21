@@ -1093,29 +1093,17 @@ func (c *OpenAIClient) UpdateProject(id, name, description string, isDefault boo
 
 // DeleteProject deletes (archives) a project by its ID
 func (c *OpenAIClient) DeleteProject(id string) error {
-	// First get the project to retrieve its name
-	project, err := c.GetProject(id)
-	if err != nil {
-		return fmt.Errorf("failed to get project before archiving: %v", err)
-	}
-
-	// Create a request body to archive the project, including the required 'name' field
-	requestBody := map[string]interface{}{
-		"name":   project.Name,
-		"status": "archived",
-	}
-
-	// Use the exact endpoint structure consistent with the curl command
-	url := fmt.Sprintf("/v1/organization/projects/%s", id)
+	// Use the archive endpoint as per the OpenAI API documentation
+	url := fmt.Sprintf("/v1/organization/projects/%s/archive", id)
 
 	// Debug info
 	fmt.Printf("Archiving project with ID: %s\n", id)
 	fmt.Printf("Using URL: %s\n", url)
-	fmt.Printf("Request body: %+v\n", requestBody)
 
-	_, err = c.doRequest("POST", url, requestBody)
+	// The archive endpoint doesn't require a request body
+	_, err := c.doRequest("POST", url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to archive project: %v", err)
 	}
 
 	return nil
