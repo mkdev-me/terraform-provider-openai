@@ -31,7 +31,6 @@ terraform {
   required_providers {
     openai = {
       source  = "mkdev-me/openai" # Custom OpenAI provider source
-      version = "~> 1.0.0"        # Provider version constraint
     }
   }
 }

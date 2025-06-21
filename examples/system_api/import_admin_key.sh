@@ -130,7 +130,6 @@ terraform {
   required_providers {
     openai = {
       source  = "local/openai"
-      version = "1.0.0"
     }
   }
 }

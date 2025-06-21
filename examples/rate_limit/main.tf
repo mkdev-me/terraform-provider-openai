@@ -2,7 +2,6 @@ terraform {
   required_providers {
     openai = {
       source  = "mkdev-me/openai"
-      version = "~> 1.0.0"
     }
   }
   required_version = ">= 1.0.0"
