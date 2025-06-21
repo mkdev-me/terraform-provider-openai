@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2025-01-XX
+## [1.0.1] - 2025-06-21
+
+### Fixed
+- Fixed pagination issue when fetching all projects - now retrieves all pages instead of just the first page
+- Cleaned up hardcoded version references in example files
+- Removed unnecessary API key mentions from examples
+- Improved code organization by reordering imports
+
+## [1.0.0] - 2025-06-20
 
 ### Added
 - Initial release of the Terraform Provider for OpenAI
