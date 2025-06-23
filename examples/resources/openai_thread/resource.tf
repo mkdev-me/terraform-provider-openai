@@ -1,0 +1,67 @@
+# Create a basic thread for assistant conversations
+resource "openai_thread" "customer_support" {
+  # Optional: Add metadata to track the thread
+  metadata = {
+    customer_id = "cust_12345"
+    ticket_id   = "TICKET-789"
+    category    = "billing"
+    priority    = "high"
+  }
+}
+
+# Create a thread with initial messages
+resource "openai_thread" "technical_discussion" {
+  messages = [
+    {
+      role    = "user"
+      content = "I'm having trouble connecting to the API. Getting 401 errors."
+
+      # Optional: Add metadata to the message
+      metadata = {
+        source    = "web_chat"
+        timestamp = "2024-01-15T10:30:00Z"
+      }
+    },
+    {
+      role    = "assistant"
+      content = "I can help you troubleshoot the 401 authentication error. This typically indicates an issue with your API key. Let me guide you through some steps to resolve this."
+
+      metadata = {
+        model_used    = "gpt-4"
+        response_time = "1.2s"
+      }
+    }
+  ]
+
+  metadata = {
+    department = "technical_support"
+    issue_type = "api_authentication"
+    created_by = "support_agent_42"
+  }
+}
+
+# Create a thread for a code review assistant
+resource "openai_thread" "code_review" {
+  messages = [
+    {
+      role    = "user"
+      content = "Please review this Python function for potential improvements:\n\ndef calculate_total(items):\n    total = 0\n    for item in items:\n        total = total + item['price'] * item['quantity']\n    return total"
+
+      metadata = {
+        language    = "python"
+        review_type = "optimization"
+      }
+    }
+  ]
+
+  metadata = {
+    project    = "backend-api"
+    reviewer   = "senior-dev-assistant"
+    repository = "github.com/company/backend"
+  }
+}
+
+# Output the support thread ID
+output "support_thread_id" {
+  value = openai_thread.customer_support.id
+}

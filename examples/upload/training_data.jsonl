@@ -1,5 +1,0 @@
-{"prompt": "What is machine learning?", "completion": " Machine learning is a branch of artificial intelligence that focuses on developing systems that can learn from and make predictions on data."}
-{"prompt": "Explain neural networks.", "completion": " Neural networks are computing systems inspired by the biological neural networks in animal brains. They consist of artificial neurons that can learn to perform tasks by analyzing examples."}
-{"prompt": "What is deep learning?", "completion": " Deep learning is a subset of machine learning that uses neural networks with multiple layers (deep neural networks) to analyze various factors of data."}
-{"prompt": "What is reinforcement learning?", "completion": " Reinforcement learning is a type of machine learning where an agent learns to make decisions by performing actions and receiving rewards or penalties."}
-{"prompt": "Explain computer vision.", "completion": " Computer vision is a field of artificial intelligence that trains computers to interpret and understand visual information from the world, such as images and videos."} 

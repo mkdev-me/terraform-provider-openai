@@ -148,18 +148,18 @@ func resourceOpenAIEmbedding() *schema.Resource {
 // It sends the request to OpenAI's API and processes the response.
 // The function supports various embedding options and provides control over the embedding process.
 func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Obtener el cliente de OpenAI
+	// Get the OpenAI client
 	client := meta.(*OpenAIClient)
 
-	// Preparar la petición con todos los campos
+	// Prepare the request with all fields
 	request := &EmbeddingRequest{
 		Model: d.Get("model").(string),
 	}
 
-	// Procesar el input (puede ser string o array de strings)
+	// Process the input (can be string or array of strings)
 	input := d.Get("input").(string)
 
-	// Verificar si el input es un array JSON
+	// Check if the input is a JSON array
 	var inputArray []string
 	if err := json.Unmarshal([]byte(input), &inputArray); err == nil && len(inputArray) > 0 {
 		// Si se pudo parsear como array, usarlo así
@@ -169,17 +169,17 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		request.Input = []string{input}
 	}
 
-	// Añadir user si está presente
+	// Add user if present
 	if user, ok := d.GetOk("user"); ok {
 		request.User = user.(string)
 	}
 
-	// Añadir encoding_format si está presente
+	// Add encoding_format if present
 	if format, ok := d.GetOk("encoding_format"); ok {
 		request.EncodingFormat = format.(string)
 	}
 
-	// Añadir dimensions si está presente
+	// Add dimensions if present
 	if dimensions, ok := d.GetOk("dimensions"); ok {
 		request.Dimensions = dimensions.(int)
 	}
@@ -194,7 +194,7 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error creating embedding: %s", err))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var embeddingResponse EmbeddingResponse
 	if err := json.Unmarshal(respBody, &embeddingResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
@@ -205,7 +205,7 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 	embeddingID := fmt.Sprintf("embd_%s", embeddingResponse.Model)
 	d.SetId(embeddingID)
 
-	// Actualizar el estado con los datos de la respuesta
+	// Update the state with response data
 	if err := d.Set("embedding_id", embeddingID); err != nil {
 		return diag.FromErr(err)
 	}
@@ -216,7 +216,7 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(err)
 	}
 
-	// Procesar los embeddings
+	// Process the embeddings
 	if len(embeddingResponse.Data) > 0 {
 		embeddings := make([]map[string]interface{}, 0, len(embeddingResponse.Data))
 
@@ -235,7 +235,7 @@ func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	// Actualizar las estadísticas de uso
+	// Update the usage statistics
 	usage := map[string]int{
 		"prompt_tokens": embeddingResponse.Usage.PromptTokens,
 		"total_tokens":  embeddingResponse.Usage.TotalTokens,

@@ -112,7 +112,7 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 	fmt.Printf("[DEBUG] Using API Key: %s...\n", openaiClient.APIKey[:10])
 	fmt.Printf("[DEBUG] Organization ID: %s\n", openaiClient.OrganizationID)
 
-	// Obtener los parámetros de entrada del schema
+	// Get the input parameters from the schema
 	model := d.Get("model").(string)
 	input := d.Get("input").(string)
 	voice := d.Get("voice").(string)
@@ -124,7 +124,7 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 	fmt.Printf("[DEBUG] Creating text-to-speech with model=%s, voice=%s, format=%s\n",
 		model, voice, responseFormat)
 
-	// Preparar la petición para convertir texto a voz
+	// Prepare the request to convert text to speech
 	request := &TextToSpeechRequest{
 		Model:          model,
 		Input:          input,
@@ -142,7 +142,7 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 		}
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	// Use the base API URL without adding "/v1" since it's already included
 	url := fmt.Sprintf("%s/audio/speech", openaiClient.APIURL)
 	fmt.Printf("[DEBUG] Making request to URL: %s\n", url)
@@ -157,23 +157,23 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+openaiClient.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if openaiClient.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", openaiClient.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		var errorResponse ErrorResponse
@@ -185,13 +185,13 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Crear el directorio de salida si no existe
+	// Create the output directory if it doesn't exist
 	outputDir := filepath.Dir(outputFilePath)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return diag.FromErr(fmt.Errorf("error creating output directory: %v", err))
 	}
 
-	// Crear el archivo de salida
+	// Create the output file
 	outputFile, err := os.Create(outputFilePath)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating output file: %v", err))
@@ -207,7 +207,7 @@ func resourceOpenAITextToSpeechCreate(ctx context.Context, d *schema.ResourceDat
 	speechID := fmt.Sprintf("speech-%d", time.Now().UnixNano())
 	d.SetId(speechID)
 
-	// Establecer los valores computados
+	// Set the computed values
 	if err := d.Set("created_at", time.Now().Unix()); err != nil {
 		return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
 	}
@@ -278,7 +278,7 @@ func resourceOpenAITextToSpeechDelete(ctx context.Context, d *schema.ResourceDat
 
 	outputFilePath := d.Get("output_file").(string)
 
-	// Eliminar el archivo de audio si existe
+	// Delete the audio file if it exists
 	if _, err := os.Stat(outputFilePath); err == nil {
 		if err := os.Remove(outputFilePath); err != nil {
 			return diag.FromErr(fmt.Errorf("error removing audio file: %v", err))

@@ -651,20 +651,20 @@ func resourceOpenAIRunDelete(ctx context.Context, d *schema.ResourceData, m inte
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Si el run no existe o ya está completo, simplemente limpiar el estado
+	// If the run does not exist or is already complete, simply clear the state
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
 		d.SetId("")
 		return diag.Diagnostics{}
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		var errorResponse ErrorResponse
@@ -676,7 +676,7 @@ func resourceOpenAIRunDelete(ctx context.Context, d *schema.ResourceData, m inte
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Limpiar el estado
+	// Clear the state
 	d.SetId("")
 
 	return diag.Diagnostics{}

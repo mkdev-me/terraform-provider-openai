@@ -1,3 +1,0 @@
-{"model": "gpt-3.5-turbo", "custom_id": "request-1", "method": "POST", "messages": [{"role": "user", "content": "Explain quantum computing in simple terms"}]}
-{"model": "gpt-3.5-turbo", "custom_id": "request-2", "method": "POST", "messages": [{"role": "user", "content": "Write a short poem about artificial intelligence"}]}
-{"model": "gpt-3.5-turbo", "custom_id": "request-3", "method": "POST", "messages": [{"role": "user", "content": "What are the key differences between machine learning and deep learning?"}]} 

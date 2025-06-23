@@ -1,1 +1,0 @@
-Hello world! This is a sample text that will be converted to speech using OpenAI's text-to-speech API.

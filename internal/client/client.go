@@ -704,8 +704,8 @@ func (c *OpenAIClient) DoRequest(method, path string, body interface{}) ([]byte,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
-	// SIEMPRE añadir el ID de organización como cabecera, independientemente de la URL
-	// Este es el cambio principal para asegurarnos de que coincide con test_projects_api.go
+	// ALWAYS add the organization ID as header, regardless of the URL
+	// This is the main change to ensure it matches test_projects_api.go
 	if c.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", c.OrganizationID)
 		fmt.Printf("Setting OpenAI-Organization header: %s\n", c.OrganizationID)

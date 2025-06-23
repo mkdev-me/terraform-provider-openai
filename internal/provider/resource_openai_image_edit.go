@@ -138,7 +138,7 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %v", err))
 	}
 
-	// Obtener los parámetros de entrada del schema
+	// Get the input parameters from the schema
 	imagePath := d.Get("image").(string)
 	prompt := d.Get("prompt").(string)
 	n := d.Get("n").(int)
@@ -146,50 +146,50 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 	responseFormat := d.Get("response_format").(string)
 	model := d.Get("model").(string)
 
-	// Verificar que el archivo de imagen existe
+	// Check if the image file exists
 	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
 		return diag.FromErr(fmt.Errorf("image file does not exist: %s", imagePath))
 	}
 
-	// Crear un buffer para la petición multipart
+	// Create a buffer for the multipart request
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Añadir el campo de prompt
+	// Add the prompt field
 	if err := writer.WriteField("prompt", prompt); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing prompt field: %v", err))
 	}
 
-	// Añadir el campo de n
+	// Add the n field
 	if err := writer.WriteField("n", fmt.Sprintf("%d", n)); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing n field: %v", err))
 	}
 
-	// Añadir el campo de size
+	// Add the size field
 	if err := writer.WriteField("size", size); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing size field: %v", err))
 	}
 
-	// Añadir el campo de response_format
+	// Add the response_format field
 	if err := writer.WriteField("response_format", responseFormat); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing response_format field: %v", err))
 	}
 
-	// Añadir el campo de model si está presente
+	// Add the model field if present
 	if model != "" {
 		if err := writer.WriteField("model", model); err != nil {
 			return diag.FromErr(fmt.Errorf("error writing model field: %v", err))
 		}
 	}
 
-	// Añadir el campo de user si está presente
+	// Add the user field if present
 	if user, ok := d.GetOk("user"); ok {
 		if err := writer.WriteField("user", user.(string)); err != nil {
 			return diag.FromErr(fmt.Errorf("error writing user field: %v", err))
 		}
 	}
 
-	// Añadir el archivo de imagen
+	// Add the image file
 	imageFile, err := os.Open(imagePath)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error opening image file: %v", err))
@@ -209,9 +209,9 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error copying image data: %v", err))
 	}
 
-	// Añadir el archivo de máscara si está presente
+	// Add the mask file if present
 	if maskPath, ok := d.GetOk("mask"); ok {
-		// Verificar que el archivo de máscara existe
+		// Check if the mask file exists
 		if _, err := os.Stat(maskPath.(string)); os.IsNotExist(err) {
 			return diag.FromErr(fmt.Errorf("mask file does not exist: %s", maskPath.(string)))
 		}
@@ -236,41 +236,41 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 		}
 	}
 
-	// Cerrar el escritor multipart
+	// Close the multipart writer
 	if err := writer.Close(); err != nil {
 		return diag.FromErr(fmt.Errorf("error closing multipart writer: %v", err))
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/images/edits", client.APIURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, &requestBody)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -281,23 +281,23 @@ func resourceOpenAIImageEditCreate(ctx context.Context, d *schema.ResourceData, 
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var editResponse ImageEditResponse
 	if err := json.Unmarshal(respBody, &editResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
 	}
 
-	// Generar un ID único para este recurso
-	// En edición de imágenes no se devuelve un ID específico, así que creamos uno basado en el timestamp
+	// Generate a unique ID for this resource
+	// In image editing no specific ID is returned, so we create one based on the timestamp
 	imageEditID := fmt.Sprintf("img-edit-%d", editResponse.Created)
 	d.SetId(imageEditID)
 
-	// Establecer el timestamp de creación
+	// Set the creation timestamp
 	if err := d.Set("created", editResponse.Created); err != nil {
 		return diag.FromErr(err)
 	}
 
-	// Procesar los datos de las imágenes editadas
+	// Process the edited image data
 	if len(editResponse.Data) > 0 {
 		imageData := make([]map[string]interface{}, len(editResponse.Data))
 

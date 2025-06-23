@@ -351,7 +351,7 @@ func waitForFineTuningJobCompletion(ctx context.Context, client *client.OpenAICl
 				return nil, err
 			}
 
-			// Verificar si el trabajo ha finalizado
+			// Check if the job has finished
 			if job.Status == "succeeded" || job.Status == "failed" || job.Status == "cancelled" {
 				return job, nil
 			}
@@ -369,28 +369,28 @@ func getFineTuningJob(ctx context.Context, client *client.OpenAIClient, jobID st
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading response: %v", err)
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -413,7 +413,7 @@ func getFineTuningJob(ctx context.Context, client *client.OpenAIClient, jobID st
 			errorResponse.Error.Type, errorResponse.Error.Message)
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var jobResponse FineTuningJobResponse
 	if err := json.Unmarshal(respBody, &jobResponse); err != nil {
 		return nil, fmt.Errorf("error parsing response: %v", err)
@@ -430,7 +430,7 @@ func resourceOpenAIFineTunedModelRead(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(err)
 	}
 
-	// Obtener el ID del trabajo
+	// Get the job ID
 	jobID := d.Id()
 
 	// Si el ID está vacío, el recurso ya no existe
@@ -452,7 +452,7 @@ func resourceOpenAIFineTunedModelRead(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(err)
 	}
 
-	// Actualizar el estado con los datos de la respuesta
+	// Update the state with response data
 	// Don't update the model field to prevent unnecessary recreations
 	// The API returns specific model versions (e.g., gpt-3.5-turbo-0125) which would cause Terraform
 	// to try to recreate the resource if it differs from the config (e.g., gpt-3.5-turbo)
@@ -499,7 +499,7 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(err)
 	}
 
-	// Obtener el nombre del modelo fine-tuned
+	// Get the fine-tuned model name
 	fineTunedModel := d.Get("fine_tuned_model").(string)
 
 	// Si no hay un modelo fine-tuned, simplemente limpiar el ID y salir
@@ -508,7 +508,7 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 		return diag.Diagnostics{}
 	}
 
-	// Verificar si el trabajo aún está en progreso
+	// Check if the job is still in progress
 	status := d.Get("status").(string)
 	if status == "pending" || status == "running" {
 		// Intentar cancelar el trabajo en curso
@@ -520,15 +520,15 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 			return diag.FromErr(fmt.Errorf("error creating request to cancel job: %v", err))
 		}
 
-		// Establecer headers
+		// Set headers
 		req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-		// Añadir Organization ID si está presente
+		// Add Organization ID if present
 		if client.OrganizationID != "" {
 			req.Header.Set("OpenAI-Organization", client.OrganizationID)
 		}
 
-		// Realizar la petición
+		// Make the request
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error making request to cancel job: %v", err))
@@ -542,7 +542,7 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 		}
 	}
 
-	// Eliminar el modelo fine-tuned (nota: esto no siempre es posible con la API de OpenAI)
+	// Delete the fine-tuned model (note: this is not always possible with the OpenAI API)
 	url := fmt.Sprintf("%s/models/%s", client.APIURL, fineTunedModel)
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
@@ -550,15 +550,15 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(fmt.Errorf("error creating request to delete model: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request to delete model: %v", err))
@@ -567,7 +567,7 @@ func resourceOpenAIFineTunedModelDelete(ctx context.Context, d *schema.ResourceD
 
 	// Si el modelo no se pudo eliminar, registrar el error pero continuar
 	if resp.StatusCode != http.StatusOK {
-		// Leer el cuerpo de la respuesta para obtener detalles del error
+		// Read the response body to get error details
 		respBody, _ := io.ReadAll(resp.Body)
 		fmt.Printf("Warning: Could not delete model %s (status code: %d, body: %s)\n",
 			fineTunedModel, resp.StatusCode, string(respBody))

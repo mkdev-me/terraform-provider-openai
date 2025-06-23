@@ -163,21 +163,21 @@ func resourceOpenAIEdit() *schema.Resource {
 // It sends the request to OpenAI's API and processes the response.
 // The function supports various edit options and provides control over the editing process.
 func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Obtener el cliente de OpenAI
+	// Get the OpenAI client
 	client := meta.(*OpenAIClient)
 
-	// Preparar la petición con todos los campos
+	// Prepare the request with all fields
 	request := &EditRequest{
 		Model:       d.Get("model").(string),
 		Instruction: d.Get("instruction").(string),
 	}
 
-	// Añadir input si está presente
+	// Add input if present
 	if input, ok := d.GetOk("input"); ok {
 		request.Input = input.(string)
 	}
 
-	// Añadir el resto de campos si están presentes
+	// Add the rest of the fields if present
 	if v, ok := d.GetOk("temperature"); ok {
 		request.Temperature = v.(float64)
 	}
@@ -190,10 +190,10 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 		request.N = v.(int)
 	}
 
-	// Determinar la URL de la API (considerando el project_id si está presente)
+	// Determine the API URL (considering project_id if present)
 	url := fmt.Sprintf("%s/edits", client.APIURL)
 
-	// Crear petición HTTP
+	// Create HTTP request
 	reqBody, err := json.Marshal(request)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error serializing edit request: %s", err))
@@ -204,34 +204,34 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Añadir Project ID si está presente
+	// Add Project ID if present
 	if projectID, ok := d.GetOk("project_id"); ok {
 		req.Header.Set("OpenAI-Project", projectID.(string))
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -240,13 +240,13 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(fmt.Errorf("error creating edit: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var editResponse EditResponse
 	if err := json.Unmarshal(respBody, &editResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
 	}
 
-	// Actualizar el estado con los datos de la respuesta
+	// Update the state with response data
 	d.SetId(editResponse.ID)
 	if err := d.Set("edit_id", editResponse.ID); err != nil {
 		return diag.FromErr(err)
@@ -261,7 +261,7 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 		return diag.FromErr(err)
 	}
 
-	// Procesar las opciones de respuesta
+	// Process the response options
 	if len(editResponse.Choices) > 0 {
 		choices := make([]map[string]interface{}, 0, len(editResponse.Choices))
 
@@ -279,7 +279,7 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 		}
 	}
 
-	// Actualizar las estadísticas de uso
+	// Update the usage statistics
 	usage := map[string]int{
 		"prompt_tokens":     editResponse.Usage.PromptTokens,
 		"completion_tokens": editResponse.Usage.CompletionTokens,
@@ -296,10 +296,10 @@ func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta 
 // It verifies that the edit exists and updates the Terraform state.
 // Note: OpenAI edits are immutable, so this function only verifies existence.
 func resourceOpenAIEditRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Los edits son efímeros y no se pueden recuperar después de la creación
-	// Esta función es básicamente un no-op, pero conservamos los datos que ya tenemos en el estado
+	// Edits are ephemeral and cannot be retrieved after creation
+	// This function is basically a no-op, but we preserve the data we already have in state
 
-	// Si no hay un ID, significa que el recurso no existe
+	// If there is no ID, it means the resource does not exist
 	if d.Id() == "" {
 		return diag.Diagnostics{}
 	}
@@ -311,8 +311,8 @@ func resourceOpenAIEditRead(ctx context.Context, d *schema.ResourceData, meta in
 // Note: OpenAI edits are immutable and cannot be deleted through the API.
 // This function only removes the resource from the Terraform state.
 func resourceOpenAIEditDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Los edits son efímeros y no se pueden eliminar
-	// Simplemente limpiamos el ID del estado
+	// Edits are ephemeral and cannot be deleted
+	// Simply clear the ID from the state
 	d.SetId("")
 	return diag.Diagnostics{}
 }

@@ -144,25 +144,25 @@ func resourceOpenAIAudioTranslation() *schema.Resource {
 func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*OpenAIClient)
 
-	// Obtener parámetros
+	// Get parameters
 	filePath := d.Get("file").(string)
 	model := d.Get("model").(string)
 
-	// Verificar si el archivo existe
+	// Check if the file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return diag.FromErr(fmt.Errorf("audio file does not exist: %s", filePath))
 	}
 
-	// Preparar el body para la petición multipart
+	// Prepare the body for the multipart request
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Añadir el modelo al form
+	// Add the model to the form
 	if err := writer.WriteField("model", model); err != nil {
 		return diag.FromErr(fmt.Errorf("error adding model to form: %s", err))
 	}
 
-	// Añadir otros campos opcionales
+	// Add other optional fields
 	if prompt, ok := d.GetOk("prompt"); ok {
 		if err := writer.WriteField("prompt", prompt.(string)); err != nil {
 			return diag.FromErr(fmt.Errorf("error adding prompt to form: %s", err))
@@ -181,30 +181,30 @@ func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.Resourc
 		}
 	}
 
-	// Abrir el archivo de audio
+	// Open the audio file
 	file, err := os.Open(filePath)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error opening audio file: %s", err))
 	}
 	defer file.Close()
 
-	// Crear un part para el archivo
+	// Create a part for the file
 	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating form file: %s", err))
 	}
 
-	// Copiar el contenido del archivo al part
+	// Copy the file content to the part
 	if _, err := io.Copy(part, file); err != nil {
 		return diag.FromErr(fmt.Errorf("error copying file to form: %s", err))
 	}
 
-	// Cerrar el writer para finalizar el body
+	// Close the writer to finalize the body
 	if err := writer.Close(); err != nil {
 		return diag.FromErr(fmt.Errorf("error closing multipart writer: %s", err))
 	}
 
-	// Crear la petición HTTP
+	// Create the HTTP request
 	url := fmt.Sprintf("%s/audio/translations", client.APIURL)
 	fmt.Printf("[DEBUG] Audio Translation URL: %s\n", url)
 	req, err := http.NewRequest("POST", url, &requestBody)
@@ -212,27 +212,27 @@ func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.Resourc
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -241,7 +241,7 @@ func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.Resourc
 		return diag.FromErr(fmt.Errorf("error creating translation: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta según el formato solicitado
+	// Parse the response according to the requested format
 	responseFormat := d.Get("response_format").(string)
 
 	if responseFormat == "json" || responseFormat == "verbose_json" {
@@ -250,7 +250,7 @@ func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.Resourc
 			return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
 		}
 
-		// Actualizar el estado con la traducción
+		// Update the state with the translation
 		if err := d.Set("text", translationResponse.Text); err != nil {
 			return diag.FromErr(err)
 		}
@@ -277,13 +277,13 @@ func resourceOpenAIAudioTranslationCreate(ctx context.Context, d *schema.Resourc
 			}
 		}
 	} else {
-		// Para formatos de texto plano (text, srt, vtt)
+		// For plain text formats (text, srt, vtt)
 		if err := d.Set("text", string(respBody)); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
-	// Generar un ID único para este recurso
+	// Generate a unique ID for this resource
 	translationID := fmt.Sprintf("translation-%d", time.Now().UnixNano())
 	d.SetId(translationID)
 
@@ -328,7 +328,7 @@ func resourceOpenAIAudioTranslationRead(ctx context.Context, d *schema.ResourceD
 // Note: Translations cannot be deleted through the API.
 // This function only removes the resource from the Terraform state.
 func resourceOpenAIAudioTranslationDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// No hay realmente una operación de eliminación para traducciones de audio
+	// There is no actual deletion operation for audio translations
 	d.SetId("")
 	return nil
 }

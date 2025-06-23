@@ -400,12 +400,12 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(fmt.Errorf("failed to get OpenAI client: %s", err))
 	}
 
-	// Preparar la petición con todos los campos
+	// Prepare the request with all fields
 	request := &ChatCompletionRequest{
 		Model: d.Get("model").(string),
 	}
 
-	// Procesar mensajes
+	// Process messages
 	if messagesRaw, ok := d.GetOk("messages"); ok {
 		messagesList := messagesRaw.([]interface{})
 		messages := make([]ChatCompletionMessage, 0, len(messagesList))
@@ -418,12 +418,12 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 				Content: msgMap["content"].(string),
 			}
 
-			// Añadir name si está presente
+			// Add name if present
 			if name, ok := msgMap["name"]; ok && name.(string) != "" {
 				msg.Name = name.(string)
 			}
 
-			// Añadir function_call si está presente
+			// Add function_call if present
 			if functionCallRaw, ok := msgMap["function_call"]; ok && len(functionCallRaw.([]interface{})) > 0 {
 				functionCallMap := functionCallRaw.([]interface{})[0].(map[string]interface{})
 
@@ -439,7 +439,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		request.Messages = messages
 	}
 
-	// Procesar funciones si están presentes
+	// Process functions if present
 	if functionsRaw, ok := d.GetOk("functions"); ok {
 		functionsList := functionsRaw.([]interface{})
 		functions := make([]ChatFunction, 0, len(functionsList))
@@ -452,7 +452,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 				Parameters: json.RawMessage(funcMap["parameters"].(string)),
 			}
 
-			// Añadir descripción si está presente
+			// Add description if present
 			if description, ok := funcMap["description"]; ok && description.(string) != "" {
 				function.Description = description.(string)
 			}
@@ -463,7 +463,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		request.Functions = functions
 	}
 
-	// Procesar function_call si está presente
+	// Process function_call if present
 	if functionCall, ok := d.GetOk("function_call"); ok {
 		fcValue := functionCall.(string)
 		if fcValue == "none" || fcValue == "auto" {
@@ -474,7 +474,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		}
 	}
 
-	// Añadir el resto de campos si están presentes
+	// Add the rest of the fields if present
 	if v, ok := d.GetOk("temperature"); ok {
 		request.Temperature = v.(float64)
 	}
@@ -561,7 +561,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 	// Determinar la URL de la API
 	url := "/v1/chat/completions"
 
-	// Realizar la llamada a la API directamente con DoRequest
+	// Make the API call directly with DoRequest
 	respBody, err := client.DoRequest("POST", url, json.RawMessage(reqJson))
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
@@ -570,13 +570,13 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var completionResponse ChatCompletionResponse
 	if err := json.Unmarshal(respBody, &completionResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
 	}
 
-	// Actualizar el estado con los datos de la respuesta
+	// Update the state with response data
 	d.SetId(completionResponse.ID)
 	if err := d.Set("chat_completion_id", completionResponse.ID); err != nil {
 		return diag.FromErr(err)
@@ -591,7 +591,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		return diag.FromErr(err)
 	}
 
-	// Procesar las opciones de respuesta
+	// Process the response options
 	if len(completionResponse.Choices) > 0 {
 		choices := make([]map[string]interface{}, 0, len(completionResponse.Choices))
 
@@ -601,13 +601,13 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 				"finish_reason": choice.FinishReason,
 			}
 
-			// Procesar el mensaje
+			// Process the message
 			message := map[string]interface{}{
 				"role":    choice.Message.Role,
 				"content": choice.Message.Content,
 			}
 
-			// Añadir function_call si está presente
+			// Add function_call if present
 			if choice.Message.FunctionCall != nil {
 				functionCall := []map[string]interface{}{
 					{
@@ -627,7 +627,7 @@ func resourceOpenAIChatCompletionCreate(ctx context.Context, d *schema.ResourceD
 		}
 	}
 
-	// Actualizar las estadísticas de uso
+	// Update the usage statistics
 	usage := map[string]int{
 		"prompt_tokens":     completionResponse.Usage.PromptTokens,
 		"completion_tokens": completionResponse.Usage.CompletionTokens,

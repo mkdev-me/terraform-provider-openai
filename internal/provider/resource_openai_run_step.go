@@ -107,7 +107,7 @@ func resourceOpenAIRunStep() *schema.Resource {
 func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*OpenAIClient)
 
-	// Obtener los parámetros de entrada del schema
+	// Get the input parameters from the schema
 	threadID := d.Get("thread_id").(string)
 	runID := d.Get("run_id").(string)
 	stepIDInput, hasStepID := d.GetOk("step_id")
@@ -118,36 +118,36 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 	if hasStepID {
 		stepID := stepIDInput.(string)
 
-		// Preparar la petición HTTP
+		// Prepare the HTTP request
 		url := fmt.Sprintf("%s/threads/%s/runs/%s/steps/%s", client.APIURL, threadID, runID, stepID)
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 		}
 
-		// Establecer headers
+		// Set headers
 		req.Header.Set("Authorization", "Bearer "+client.APIKey)
 		req.Header.Set("OpenAI-Beta", "assistants=v2")
 
-		// Añadir Organization ID si está presente
+		// Add Organization ID if present
 		if client.OrganizationID != "" {
 			req.Header.Set("OpenAI-Organization", client.OrganizationID)
 		}
 
-		// Realizar la petición
+		// Make the request
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error making request: %v", err))
 		}
 		defer resp.Body.Close()
 
-		// Leer la respuesta
+		// Read the response
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 		}
 
-		// Verificar si hubo un error
+		// Check if there was an error
 		if resp.StatusCode != http.StatusOK {
 			var errorResponse ErrorResponse
 			if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -158,16 +158,16 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 				errorResponse.Error.Type, errorResponse.Error.Message))
 		}
 
-		// Parsear la respuesta
+		// Parse the response
 		var stepResponse RunStepResponse
 		if err := json.Unmarshal(respBody, &stepResponse); err != nil {
 			return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
 		}
 
-		// Establecer el ID del recurso
+		// Set the resource ID
 		d.SetId(stepResponse.ID)
 
-		// Establecer los atributos del step
+		// Set the step attributes
 		if err := d.Set("object", stepResponse.Object); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to set object: %v", err))
 		}
@@ -181,7 +181,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 			return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
 		}
 
-		// Convertir detalles a JSON
+		// Convert details to JSON
 		detailsJSON, err := json.Marshal(stepResponse.Details)
 		if err == nil {
 			if err := d.Set("step_details", string(detailsJSON)); err != nil {
@@ -198,7 +198,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 		toolCallIDStr := toolCallID.(string)
 		toolOutputStr := toolOutput.(string)
 
-		// Preparar la petición para enviar la salida de la herramienta
+		// Prepare the request to send the tool output
 		request := &SubmitToolOutputsRequest{
 			ToolOutputs: []ToolOutput{
 				{
@@ -208,7 +208,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 			},
 		}
 
-		// Preparar la petición HTTP
+		// Prepare the HTTP request
 		url := fmt.Sprintf("%s/threads/%s/runs/%s/submit_tool_outputs", client.APIURL, threadID, runID)
 		reqBody, err := json.Marshal(request)
 		if err != nil {
@@ -220,30 +220,30 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 			return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 		}
 
-		// Establecer headers
+		// Set headers
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+client.APIKey)
 		req.Header.Set("OpenAI-Beta", "assistants=v2")
 
-		// Añadir Organization ID si está presente
+		// Add Organization ID if present
 		if client.OrganizationID != "" {
 			req.Header.Set("OpenAI-Organization", client.OrganizationID)
 		}
 
-		// Realizar la petición
+		// Make the request
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error making request: %v", err))
 		}
 		defer resp.Body.Close()
 
-		// Leer la respuesta
+		// Read the response
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 		}
 
-		// Verificar si hubo un error
+		// Check if there was an error
 		if resp.StatusCode != http.StatusOK {
 			var errorResponse ErrorResponse
 			if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -254,7 +254,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 				errorResponse.Error.Type, errorResponse.Error.Message))
 		}
 
-		// Parsear la respuesta
+		// Parse the response
 		var runResponse RunResponse
 		if err := json.Unmarshal(respBody, &runResponse); err != nil {
 			return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
@@ -273,7 +273,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 			endTime := time.Now().Add(time.Duration(timeoutSeconds) * time.Second)
 
 			for time.Now().Before(endTime) {
-				// Obtener los steps actuales del run
+				// Get the current steps of the run
 				stepsURL := fmt.Sprintf("%s/threads/%s/runs/%s/steps", client.APIURL, threadID, runID)
 				stepsReq, err := http.NewRequestWithContext(ctx, "GET", stepsURL, nil)
 				if err != nil {
@@ -342,7 +342,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 						return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
 					}
 
-					// Convertir detalles a JSON
+					// Convert details to JSON
 					detailsJSON, err := json.Marshal(latestToolStep.Details)
 					if err == nil {
 						if err := d.Set("step_details", string(detailsJSON)); err != nil {
@@ -356,7 +356,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 					break
 				}
 
-				// Verificar si el run ha completado o fallado
+				// Check if the run has completed or failed
 				runStatusURL := fmt.Sprintf("%s/threads/%s/runs/%s", client.APIURL, threadID, runID)
 				runStatusReq, err := http.NewRequestWithContext(ctx, "GET", runStatusURL, nil)
 				if err != nil {
@@ -399,36 +399,36 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 
 	} else {
 		// Si no se proporciona un ID de step ni una salida de herramienta, listar todos los steps y tomar el primero
-		// Preparar la petición HTTP
+		// Prepare the HTTP request
 		url := fmt.Sprintf("%s/threads/%s/runs/%s/steps", client.APIURL, threadID, runID)
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 		}
 
-		// Establecer headers
+		// Set headers
 		req.Header.Set("Authorization", "Bearer "+client.APIKey)
 		req.Header.Set("OpenAI-Beta", "assistants=v2")
 
-		// Añadir Organization ID si está presente
+		// Add Organization ID if present
 		if client.OrganizationID != "" {
 			req.Header.Set("OpenAI-Organization", client.OrganizationID)
 		}
 
-		// Realizar la petición
+		// Make the request
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error making request: %v", err))
 		}
 		defer resp.Body.Close()
 
-		// Leer la respuesta
+		// Read the response
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 		}
 
-		// Verificar si hubo un error
+		// Check if there was an error
 		if resp.StatusCode != http.StatusOK {
 			var errorResponse ErrorResponse
 			if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -439,13 +439,13 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 				errorResponse.Error.Type, errorResponse.Error.Message))
 		}
 
-		// Parsear la respuesta
+		// Parse the response
 		var stepsResponse ListRunStepsResponse
 		if err := json.Unmarshal(respBody, &stepsResponse); err != nil {
 			return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
 		}
 
-		// Verificar que hay pasos
+		// Check that there are steps
 		if len(stepsResponse.Data) == 0 {
 			return diag.FromErr(fmt.Errorf("no steps found for run %s", runID))
 		}
@@ -453,7 +453,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 		// Tomar el primer paso
 		firstStep := stepsResponse.Data[0]
 
-		// Establecer el ID del recurso
+		// Set the resource ID
 		d.SetId(firstStep.ID)
 		if err := d.Set("step_id", firstStep.ID); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to set step_id: %v", err))
@@ -473,7 +473,7 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 			return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
 		}
 
-		// Convertir detalles a JSON
+		// Convert details to JSON
 		detailsJSON, err := json.Marshal(firstStep.Details)
 		if err == nil {
 			if err := d.Set("step_details", string(detailsJSON)); err != nil {
@@ -495,47 +495,47 @@ func resourceOpenAIRunStepCreate(ctx context.Context, d *schema.ResourceData, m 
 func resourceOpenAIRunStepRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*OpenAIClient)
 
-	// Obtener los parámetros necesarios
+	// Get the necessary parameters
 	threadID := d.Get("thread_id").(string)
 	runID := d.Get("run_id").(string)
 	stepID := d.Id()
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/threads/%s/runs/%s/steps/%s", client.APIURL, threadID, runID, stepID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	req.Header.Set("OpenAI-Beta", "assistants=v2")
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Verificar si el step existe
+	// Check if the step exists
 	if resp.StatusCode == http.StatusNotFound {
 		d.SetId("")
 		return diag.Diagnostics{}
 	}
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -546,13 +546,13 @@ func resourceOpenAIRunStepRead(ctx context.Context, d *schema.ResourceData, m in
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var stepResponse RunStepResponse
 	if err := json.Unmarshal(respBody, &stepResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
 	}
 
-	// Actualizar los atributos del step
+	// Update the step attributes
 	if err := d.Set("object", stepResponse.Object); err != nil {
 		return diag.FromErr(fmt.Errorf("failed to set object: %v", err))
 	}
@@ -566,7 +566,7 @@ func resourceOpenAIRunStepRead(ctx context.Context, d *schema.ResourceData, m in
 		return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
 	}
 
-	// Convertir detalles a JSON
+	// Convert details to JSON
 	detailsJSON, err := json.Marshal(stepResponse.Details)
 	if err == nil {
 		if err := d.Set("step_details", string(detailsJSON)); err != nil {

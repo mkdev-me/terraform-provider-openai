@@ -1,0 +1,4 @@
+{"id": "ticket_001", "user": "john@example.com", "issue": "Login problem", "status": "resolved", "resolution": "Password reset"}
+{"id": "ticket_002", "user": "jane@example.com", "issue": "Billing question", "status": "resolved", "resolution": "Invoice explanation"}
+{"id": "ticket_003", "user": "bob@example.com", "issue": "Feature request", "status": "resolved", "resolution": "Feature added to roadmap"}
+{"id": "ticket_004", "user": "alice@example.com", "issue": "Bug report", "status": "resolved", "resolution": "Bug fixed in version 2.1"}
