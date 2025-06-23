@@ -6,18 +6,19 @@
 #   ./test_examples.sh [command] [options]
 #
 # Commands:
-#   plan [example]    - Run terraform plan (default: all examples)
-#   apply [example]   - Run terraform apply with cleanup (default: all examples)
-#   quick             - Quick test with minimal resources
-#   cleanup           - Remove all terraform artifacts
+#   plan [type/example]   - Run terraform plan (default: all examples)
+#   apply [type/example]  - Run terraform apply with cleanup (default: all examples)
+#   quick                 - Quick test with minimal resources
+#   cleanup               - Remove all terraform artifacts
 #
 # Examples:
-#   ./test_examples.sh plan              # Plan all examples
-#   ./test_examples.sh plan image        # Plan only image example
-#   ./test_examples.sh apply chat        # Apply and destroy chat example
-#   ./test_examples.sh apply             # Apply all examples (WARNING: costs!)
-#   ./test_examples.sh quick             # Quick verification test
-#   ./test_examples.sh cleanup           # Clean all terraform files
+#   ./test_examples.sh plan                          # Plan all examples
+#   ./test_examples.sh plan resources/               # Plan all resource examples
+#   ./test_examples.sh plan resources/openai_image   # Plan only image example
+#   ./test_examples.sh apply data-sources/           # Apply all data source examples
+#   ./test_examples.sh apply                         # Apply all examples (WARNING: costs!)
+#   ./test_examples.sh quick                         # Quick verification test
+#   ./test_examples.sh cleanup                       # Clean all terraform files
 #
 # Environment Variables Required:
 #   OPENAI_API_KEY    - Project API key (sk-proj-...)
@@ -75,16 +76,28 @@ test_plan() {
     rm -rf .terraform* terraform.tfstate* tfplan 2>/dev/null || true
     
     # Initialize
-    if ! terraform init -upgrade > /tmp/init_$example.log 2>&1; then
+    if ! terraform init -upgrade > /tmp/init_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}✗ Init failed${NC}"
-        grep "Error:" /tmp/init_$example.log | head -5
+        grep "Error:" /tmp/init_$(echo $example | tr '/' '_').log | head -5
         return 1
     fi
     
+    # Set variables
+    local tf_vars=""
+    if [ -f "variables.tf" ]; then
+        tf_vars="-var=openai_api_key=${OPENAI_API_KEY}"
+        if grep -q "openai_admin_key" variables.tf 2>/dev/null && [ -n "${OPENAI_ADMIN_KEY:-}" ]; then
+            tf_vars="$tf_vars -var=openai_admin_key=${OPENAI_ADMIN_KEY}"
+        fi
+        if grep -q "organization_id" variables.tf 2>/dev/null && [ -n "${OPENAI_ORGANIZATION_ID:-}" ]; then
+            tf_vars="$tf_vars -var=organization_id=${OPENAI_ORGANIZATION_ID}"
+        fi
+    fi
+    
     # Plan
-    if ! terraform plan -input=false > /tmp/plan_$example.log 2>&1; then
+    if ! terraform plan -input=false $tf_vars > /tmp/plan_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}✗ Plan failed${NC}"
-        grep "Error:" /tmp/plan_$example.log | head -5
+        grep "Error:" /tmp/plan_$(echo $example | tr '/' '_').log | head -5
         return 1
     fi
     
@@ -110,24 +123,36 @@ test_apply() {
     
     # Initialize
     echo "  Initializing..."
-    if ! terraform init -upgrade > /tmp/init_$example.log 2>&1; then
+    if ! terraform init -upgrade > /tmp/init_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}  ✗ Init failed${NC}"
         return 1
     fi
     
+    # Set variables
+    local tf_vars=""
+    if [ -f "variables.tf" ]; then
+        tf_vars="-var=openai_api_key=${OPENAI_API_KEY}"
+        if grep -q "openai_admin_key" variables.tf 2>/dev/null && [ -n "${OPENAI_ADMIN_KEY:-}" ]; then
+            tf_vars="$tf_vars -var=openai_admin_key=${OPENAI_ADMIN_KEY}"
+        fi
+        if grep -q "organization_id" variables.tf 2>/dev/null && [ -n "${OPENAI_ORGANIZATION_ID:-}" ]; then
+            tf_vars="$tf_vars -var=organization_id=${OPENAI_ORGANIZATION_ID}"
+        fi
+    fi
+    
     # Plan
     echo "  Planning..."
-    if ! terraform plan -input=false -out=tfplan > /tmp/plan_$example.log 2>&1; then
+    if ! terraform plan -input=false $tf_vars -out=tfplan > /tmp/plan_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}  ✗ Plan failed${NC}"
         return 1
     fi
     
     # Apply
     echo "  Applying..."
-    if ! terraform apply -auto-approve tfplan > /tmp/apply_$example.log 2>&1; then
+    if ! terraform apply -auto-approve tfplan > /tmp/apply_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}  ✗ Apply failed${NC}"
         # Try to destroy any partial resources
-        terraform destroy -auto-approve > /dev/null 2>&1 || true
+        terraform destroy -auto-approve $tf_vars > /dev/null 2>&1 || true
         return 1
     fi
     
@@ -141,7 +166,7 @@ test_apply() {
     
     # Destroy
     echo "  Destroying..."
-    if ! terraform destroy -auto-approve > /tmp/destroy_$example.log 2>&1; then
+    if ! terraform destroy -auto-approve $tf_vars > /tmp/destroy_$(echo $example | tr '/' '_').log 2>&1; then
         echo -e "${RED}  ✗ Destroy failed - resources may still exist!${NC}"
         return 1
     fi
@@ -151,6 +176,24 @@ test_apply() {
     # Final cleanup
     rm -rf .terraform* terraform.tfstate* tfplan 2>/dev/null || true
     return 0
+}
+
+# Get list of examples to test
+get_examples() {
+    local pattern=${1:-}
+    
+    if [ -z "$pattern" ] || [ "$pattern" = "all" ]; then
+        # All examples
+        find "$EXAMPLES_DIR" -type f -name "*.tf" | grep -E "(resource|data-source|provider)\.tf$" | \
+            sed "s|$EXAMPLES_DIR/||" | sed 's|/[^/]*\.tf$||' | sort -u
+    elif [ -d "$EXAMPLES_DIR/$pattern" ]; then
+        # Directory pattern (e.g., resources/, data-sources/)
+        find "$EXAMPLES_DIR/$pattern" -type f -name "*.tf" | grep -E "(resource|data-source|provider)\.tf$" | \
+            sed "s|$EXAMPLES_DIR/||" | sed 's|/[^/]*\.tf$||' | sort -u
+    else
+        # Single example
+        echo "$pattern"
+    fi
 }
 
 # Quick verification test
@@ -172,21 +215,10 @@ terraform {
 
 provider "openai" {}
 
-# Test project key
+# Test with embeddings (cheap and fast)
 resource "openai_embedding" "test" {
-  model = "text-embedding-ada-002"
+  model = "text-embedding-3-small"
   input = jsonencode(["Quick test"])
-}
-
-# Test admin key (if available)
-resource "openai_project" "test" {
-  count = var.has_admin_key ? 1 : 0
-  name  = "Quick test project"
-}
-
-variable "has_admin_key" {
-  type    = bool
-  default = false
 }
 
 output "test_passed" {
@@ -197,14 +229,9 @@ EOF
     # Run test
     terraform init -upgrade > /dev/null 2>&1
     
-    local admin_flag=""
-    if [ -n "${OPENAI_ADMIN_KEY:-}" ]; then
-        admin_flag="-var=has_admin_key=true"
-    fi
-    
-    if terraform apply -auto-approve $admin_flag > /tmp/quick-test-apply.log 2>&1; then
+    if terraform apply -auto-approve > /tmp/quick-test-apply.log 2>&1; then
         echo -e "${GREEN}✓ Quick test passed${NC}"
-        terraform destroy -auto-approve $admin_flag > /dev/null 2>&1
+        terraform destroy -auto-approve > /dev/null 2>&1
     else
         echo -e "${RED}✗ Quick test failed${NC}"
         echo "Error details:"
@@ -224,14 +251,13 @@ cleanup_all() {
     echo -e "${BLUE}Cleaning all terraform artifacts...${NC}"
     
     local cleaned=0
-    for example_dir in "$EXAMPLES_DIR"/*; do
-        if [ -d "$example_dir" ]; then
-            if ls "$example_dir"/.terraform* "$example_dir"/terraform.tfstate* "$example_dir"/tfplan 2>/dev/null | grep -q .; then
-                example=$(basename "$example_dir")
-                echo "  Cleaning $example"
-                rm -rf "$example_dir"/.terraform* "$example_dir"/terraform.tfstate* "$example_dir"/tfplan 2>/dev/null || true
-                ((cleaned++))
-            fi
+    for tf_file in $(find "$EXAMPLES_DIR" -name "*.tf" -type f); do
+        dir=$(dirname "$tf_file")
+        if ls "$dir"/.terraform* "$dir"/terraform.tfstate* "$dir"/tfplan 2>/dev/null | grep -q .; then
+            example=${dir#$EXAMPLES_DIR/}
+            echo "  Cleaning $example"
+            rm -rf "$dir"/.terraform* "$dir"/terraform.tfstate* "$dir"/tfplan 2>/dev/null || true
+            ((cleaned++))
         fi
     done
     
@@ -249,64 +275,65 @@ main() {
     case "$command" in
         plan)
             check_env
-            if [ "$target" = "all" ]; then
-                echo -e "${BLUE}Testing all examples (plan only)${NC}"
-                echo ""
-                
-                local passed=0
-                local failed=0
-                
-                for example_dir in "$EXAMPLES_DIR"/*; do
-                    if [ -d "$example_dir" ] && [ -f "$example_dir/main.tf" ]; then
-                        example=$(basename "$example_dir")
-                        if test_plan "$example"; then
-                            ((passed++))
-                        else
-                            ((failed++))
-                        fi
-                    fi
-                done
-                
-                echo ""
-                echo -e "${BLUE}Summary:${NC} ${GREEN}$passed passed${NC}, ${RED}$failed failed${NC}"
-            else
-                test_plan "$target"
+            local examples=($(get_examples "$target"))
+            
+            if [ ${#examples[@]} -eq 0 ]; then
+                echo -e "${RED}No examples found for pattern: $target${NC}"
+                exit 1
             fi
+            
+            echo -e "${BLUE}Testing ${#examples[@]} examples (plan only)${NC}"
+            echo ""
+            
+            local passed=0
+            local failed=0
+            
+            for example in "${examples[@]}"; do
+                if test_plan "$example"; then
+                    ((passed++))
+                else
+                    ((failed++))
+                fi
+            done
+            
+            echo ""
+            echo -e "${BLUE}Summary:${NC} ${GREEN}$passed passed${NC}, ${RED}$failed failed${NC}"
             ;;
             
         apply)
             check_env
-            if [ "$target" = "all" ]; then
-                echo -e "${YELLOW}WARNING: This will create real resources and may incur costs!${NC}"
-                read -p "Continue? (y/N) " -n 1 -r
-                echo
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    echo "Cancelled."
-                    exit 0
-                fi
-                
-                echo -e "${BLUE}Testing all examples (with apply)${NC}"
-                echo ""
-                
-                local passed=0
-                local failed=0
-                
-                for example_dir in "$EXAMPLES_DIR"/*; do
-                    if [ -d "$example_dir" ] && [ -f "$example_dir/main.tf" ]; then
-                        example=$(basename "$example_dir")
-                        if test_apply "$example"; then
-                            ((passed++))
-                        else
-                            ((failed++))
-                        fi
-                        echo ""
-                    fi
-                done
-                
-                echo -e "${BLUE}Summary:${NC} ${GREEN}$passed passed${NC}, ${RED}$failed failed${NC}"
-            else
-                test_apply "$target"
+            local examples=($(get_examples "$target"))
+            
+            if [ ${#examples[@]} -eq 0 ]; then
+                echo -e "${RED}No examples found for pattern: $target${NC}"
+                exit 1
             fi
+            
+            echo -e "${YELLOW}WARNING: This will create real resources and may incur costs!${NC}"
+            echo "Will test ${#examples[@]} examples"
+            read -p "Continue? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Cancelled."
+                exit 0
+            fi
+            
+            echo -e "${BLUE}Testing ${#examples[@]} examples (with apply)${NC}"
+            echo ""
+            
+            local passed=0
+            local failed=0
+            
+            for example in "${examples[@]}"; do
+                if test_apply "$example"; then
+                    ((passed++))
+                else
+                    ((failed++))
+                fi
+                echo ""
+            done
+            
+            echo -e "${BLUE}Summary:${NC} ${GREEN}$passed passed${NC}, ${RED}$failed failed${NC}"
             ;;
             
         quick)
@@ -319,13 +346,19 @@ main() {
             ;;
             
         *)
-            echo "Usage: $0 [plan|apply|quick|cleanup] [example_name|all]"
+            echo "Usage: $0 [plan|apply|quick|cleanup] [example_pattern|all]"
             echo ""
             echo "Commands:"
-            echo "  plan [example]   - Run terraform plan"
-            echo "  apply [example]  - Run terraform apply with cleanup"
+            echo "  plan [pattern]   - Run terraform plan"
+            echo "  apply [pattern]  - Run terraform apply with cleanup"
             echo "  quick            - Quick verification test"
             echo "  cleanup          - Remove all terraform artifacts"
+            echo ""
+            echo "Patterns:"
+            echo "  all                               - All examples (default)"
+            echo "  resources/                        - All resource examples"
+            echo "  data-sources/                     - All data source examples"
+            echo "  resources/openai_chat_completion  - Specific example"
             exit 1
             ;;
     esac
