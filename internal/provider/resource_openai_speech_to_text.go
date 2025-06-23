@@ -124,13 +124,13 @@ func resourceOpenAISpeechToText() *schema.Resource {
 func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*OpenAIClient)
 
-	// Obtener los parámetros de entrada del schema
+	// Get the input parameters from the schema
 	model := d.Get("model").(string)
 	filePath := d.Get("file").(string)
 	responseFormat := d.Get("response_format").(string)
 	temperature := d.Get("temperature").(float64)
 
-	// Verificar que el archivo de audio existe
+	// Check if the audio file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return diag.FromErr(fmt.Errorf("audio file does not exist: %s", filePath))
 	}
@@ -140,40 +140,40 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(fmt.Errorf("gpt-4o models only support 'json' response format"))
 	}
 
-	// Crear un buffer para la petición multipart
+	// Create a buffer for the multipart request
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Añadir el campo de model
+	// Add the model field
 	if err := writer.WriteField("model", model); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing model field: %v", err))
 	}
 
-	// Añadir el campo de response_format
+	// Add the response_format field
 	if err := writer.WriteField("response_format", responseFormat); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing response_format field: %v", err))
 	}
 
-	// Añadir el campo de temperature
+	// Add the temperature field
 	if err := writer.WriteField("temperature", fmt.Sprintf("%f", temperature)); err != nil {
 		return diag.FromErr(fmt.Errorf("error writing temperature field: %v", err))
 	}
 
-	// Añadir el campo de language si está presente
+	// Add the language field if present
 	if language, ok := d.GetOk("language"); ok {
 		if err := writer.WriteField("language", language.(string)); err != nil {
 			return diag.FromErr(fmt.Errorf("error writing language field: %v", err))
 		}
 	}
 
-	// Añadir el campo de prompt si está presente
+	// Add the prompt field if present
 	if prompt, ok := d.GetOk("prompt"); ok {
 		if err := writer.WriteField("prompt", prompt.(string)); err != nil {
 			return diag.FromErr(fmt.Errorf("error writing prompt field: %v", err))
 		}
 	}
 
-	// Añadir el campo de stream si está presente
+	// Add the stream field if present
 	if stream, ok := d.GetOk("stream"); ok {
 		// Skip if model is whisper-1 since it doesn't support streaming
 		if model != "whisper-1" {
@@ -183,7 +183,7 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 		}
 	}
 
-	// Añadir el campo de include si está presente
+	// Add the include field if present
 	if include, ok := d.GetOk("include"); ok {
 		includeList := include.([]interface{})
 		for _, item := range includeList {
@@ -193,7 +193,7 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 		}
 	}
 
-	// Añadir el campo de timestamp_granularities si está presente
+	// Add the timestamp_granularities field if present
 	if granularities, ok := d.GetOk("timestamp_granularities"); ok {
 		granularitiesList := granularities.([]interface{})
 		for _, item := range granularitiesList {
@@ -203,7 +203,7 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 		}
 	}
 
-	// Añadir el archivo de audio
+	// Add the audio file
 	audioFile, err := os.Open(filePath)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error opening audio file: %v", err))
@@ -224,36 +224,36 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 		return diag.FromErr(fmt.Errorf("error closing multipart writer: %v", err))
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/audio/transcriptions", client.APIURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, &requestBody)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -264,7 +264,7 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta dependiendo del formato solicitado
+	// Parse the response depending on the requested format
 	var transcriptionText string
 
 	if responseFormat == "json" || responseFormat == "verbose_json" {
@@ -282,7 +282,7 @@ func resourceOpenAISpeechToTextCreate(ctx context.Context, d *schema.ResourceDat
 	transcriptionID := fmt.Sprintf("transcription-%d", time.Now().UnixNano())
 	d.SetId(transcriptionID)
 
-	// Establecer los valores computados
+	// Set the computed values
 	if err := d.Set("text", transcriptionText); err != nil {
 		return diag.FromErr(fmt.Errorf("failed to set text: %v", err))
 	}

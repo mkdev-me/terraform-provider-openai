@@ -136,7 +136,7 @@ func resourceOpenAIBatchCreate(ctx context.Context, d *schema.ResourceData, m in
 		return diag.Errorf("error getting OpenAI client: %s", err)
 	}
 
-	// Obtener parámetros
+	// Get parameters
 	inputFileID := d.Get("input_file_id").(string)
 	endpoint := d.Get("endpoint").(string)
 
@@ -151,7 +151,7 @@ func resourceOpenAIBatchCreate(ctx context.Context, d *schema.ResourceData, m in
 
 	// Project ID will be included in the client request automatically
 
-	// Preparar la petición
+	// Prepare the request
 	createRequest := &BatchCreateRequest{
 		InputFileID:      inputFileID,
 		Endpoint:         apiEndpoint, // Use the endpoint with /v1 prefix
@@ -249,7 +249,7 @@ func resourceOpenAIBatchRead(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("error getting OpenAI client: %s", err)
 	}
 
-	// Obtener el ID del batch
+	// Get the batch ID
 	batchID := d.Id()
 	if batchID == "" {
 		d.SetId("")

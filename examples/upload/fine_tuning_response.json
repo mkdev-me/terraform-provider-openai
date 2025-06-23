@@ -1,8 +1,0 @@
-{
-  "error": {
-    "message": "You exceeded your current quota, please check your plan and billing details.",
-    "type": "invalid_request_error",
-    "param": null,
-    "code": "exceeded_quota"
-  }
-}

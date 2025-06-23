@@ -55,30 +55,6 @@ data "openai_chat_completion" "test" {
 
 # ========== Outputs ==========
 
-output "project_info" {
-  value = {
-    id     = openai_project.test.id
-    name   = openai_project.test.name
-    status = openai_project.test.status
-  }
-  description = "Created project information (used admin key)"
-}
-
-output "total_projects" {
-  value       = length(data.openai_projects.all.projects)
-  description = "Total number of projects (used admin key)"
-}
-
-output "embedding_dimensions" {
-  value       = length(openai_embedding.test.embedding)
-  description = "Embedding vector dimensions (used project key)"
-}
-
-output "chat_response" {
-  value       = data.openai_chat_completion.test.choices[0].message.content
-  description = "Chat completion response (used project key)"
-}
-
 output "summary" {
   value       = <<-EOT
     ✓ Admin API key successfully used for:

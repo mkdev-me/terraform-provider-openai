@@ -1,0 +1,19 @@
+# Technical Documentation
+
+This is a sample technical documentation file for the vector store example.
+
+## Overview
+This document contains technical specifications and implementation details.
+
+## API Endpoints
+- GET /api/v1/users
+- POST /api/v1/users
+- PUT /api/v1/users/{id}
+- DELETE /api/v1/users/{id}
+
+## Data Models
+User model contains:
+- id: unique identifier
+- name: user's full name
+- email: user's email address
+- created_at: timestamp of creation

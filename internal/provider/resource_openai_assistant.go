@@ -313,50 +313,50 @@ func resourceOpenAIAssistantCreate(ctx context.Context, d *schema.ResourceData, 
 // resourceOpenAIAssistantRead fetches the current state of an OpenAI assistant
 // and updates the Terraform state to match.
 func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Obtener el cliente de OpenAI
+	// Get the OpenAI client
 	client := m.(*OpenAIClient)
 
-	// Obtener el ID del asistente
+	// Get the assistant ID
 	assistantID := d.Id()
 	if assistantID == "" {
 		d.SetId("")
 		return diag.Diagnostics{}
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/assistants/%s", client.APIURL, assistantID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	req.Header.Set("OpenAI-Beta", "assistants=v2")
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 	defer resp.Body.Close()
 
-	// Si el asistente no existe, eliminarlo del estado
+	// If the assistant doesn't exist, remove it from state
 	if resp.StatusCode == http.StatusNotFound {
 		d.SetId("")
 		return diag.Diagnostics{}
 	}
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -365,13 +365,13 @@ func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m 
 		return diag.FromErr(fmt.Errorf("error reading assistant: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var assistantResponse AssistantResponse
 	if err := json.Unmarshal(respBody, &assistantResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
 	}
 
-	// Actualizar el estado
+	// Update the state
 	if err := d.Set("model", assistantResponse.Model); err != nil {
 		return diag.FromErr(err)
 	}
@@ -391,7 +391,7 @@ func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m 
 		return diag.FromErr(err)
 	}
 
-	// Procesar tools si están presentes
+	// Process tools if present
 	if len(assistantResponse.Tools) > 0 {
 		tools := make([]map[string]interface{}, 0, len(assistantResponse.Tools))
 
@@ -400,7 +400,7 @@ func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m 
 				"type": tool.Type,
 			}
 
-			// Si el tipo es "function", procesar los detalles de la función
+			// If type is "function", process the function details
 			if tool.Type == "function" && tool.Function != nil {
 				// Normalize JSON parameters to prevent whitespace differences
 				var parametersObj interface{}
@@ -454,7 +454,7 @@ func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m 
 		}
 	}
 
-	// Actualizar metadata si está presente
+	// Update metadata if present
 	if len(assistantResponse.Metadata) > 0 {
 		metadata := make(map[string]string)
 		for k, v := range assistantResponse.Metadata {
@@ -471,16 +471,16 @@ func resourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m 
 // resourceOpenAIAssistantUpdate applies any changes to an existing OpenAI assistant.
 // After updating, it reads the assistant state to ensure the Terraform state is current.
 func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Obtener el cliente de OpenAI
+	// Get the OpenAI client
 	client := m.(*OpenAIClient)
 
-	// Obtener el ID del asistente
+	// Get the assistant ID
 	assistantID := d.Id()
 
-	// Preparar la petición
+	// Prepare the request
 	updateRequest := make(map[string]interface{})
 
-	// Añadir campos que han cambiado
+	// Add fields that have changed
 	if d.HasChange("model") {
 		updateRequest["model"] = d.Get("model").(string)
 	}
@@ -497,7 +497,7 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		updateRequest["instructions"] = d.Get("instructions").(string)
 	}
 
-	// Procesar tools si han cambiado
+	// Process tools if they have changed
 	if d.HasChange("tools") {
 		toolsRaw := d.Get("tools").([]interface{})
 		tools := make([]AssistantTool, 0, len(toolsRaw))
@@ -509,23 +509,23 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 				Type: toolMap["type"].(string),
 			}
 
-			// Si el tipo es "function", añadir los detalles de la función
+			// If type is "function", add the function details
 			if tool.Type == "function" && toolMap["function"] != nil {
 				functionList := toolMap["function"].([]interface{})
 				if len(functionList) > 0 {
 					functionMap := functionList[0].(map[string]interface{})
 
-					// Convertir parameters a JSON
+					// Convert parameters to JSON
 					parametersStr := functionMap["parameters"].(string)
 					parametersJSON := json.RawMessage(parametersStr)
 
-					// Crear la función
+					// Create the function
 					tool.Function = &AssistantToolFunction{
 						Name:       functionMap["name"].(string),
 						Parameters: parametersJSON,
 					}
 
-					// Añadir descripción si está presente
+					// Add description if present
 					if description, ok := functionMap["description"]; ok && description.(string) != "" {
 						tool.Function.Description = description.(string)
 					}
@@ -538,7 +538,7 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		updateRequest["tools"] = tools
 	}
 
-	// Procesar file_ids si han cambiado
+	// Process file_ids if they have changed
 	if d.HasChange("file_ids") {
 		fileIDsRaw := d.Get("file_ids").([]interface{})
 		fileIDs := make([]string, 0, len(fileIDsRaw))
@@ -550,7 +550,7 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		updateRequest["file_ids"] = fileIDs
 	}
 
-	// Procesar metadata si ha cambiado
+	// Process metadata if it has changed
 	if d.HasChange("metadata") {
 		metadataRaw := d.Get("metadata").(map[string]interface{})
 		metadata := make(map[string]interface{})
@@ -560,20 +560,20 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		updateRequest["metadata"] = metadata
 	}
 
-	// Convertir la petición a JSON
+	// Convert the request to JSON
 	reqBody, err := json.Marshal(updateRequest)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error serializing update request: %s", err))
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/assistants/%s", client.APIURL, assistantID)
 	req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	req.Header.Set("OpenAI-Beta", "assistants=v2")
@@ -581,20 +581,20 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -603,52 +603,52 @@ func resourceOpenAIAssistantUpdate(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error updating assistant: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Llamar a Read para actualizar el estado
+	// Call Read to update the state
 	return resourceOpenAIAssistantRead(ctx, d, m)
 }
 
 // resourceOpenAIAssistantDelete removes an OpenAI assistant.
 func resourceOpenAIAssistantDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Obtener el cliente de OpenAI
+	// Get the OpenAI client
 	client := m.(*OpenAIClient)
 
-	// Obtener el ID del asistente
+	// Get the assistant ID
 	assistantID := d.Id()
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/assistants/%s", client.APIURL, assistantID)
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	req.Header.Set("OpenAI-Beta", "assistants=v2")
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
 	}
 	defer resp.Body.Close()
 
-	// Si el asistente no existe, no es un error
+	// If the assistant doesn't exist, it's not an error
 	if resp.StatusCode == http.StatusNotFound {
 		d.SetId("")
 		return diag.Diagnostics{}
 	}
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -657,7 +657,7 @@ func resourceOpenAIAssistantDelete(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(fmt.Errorf("error deleting assistant: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Borrar el ID del estado
+	// Clear the ID from state
 	d.SetId("")
 
 	return diag.Diagnostics{}

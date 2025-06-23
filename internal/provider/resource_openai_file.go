@@ -341,7 +341,7 @@ func resourceOpenAIFileDelete(ctx context.Context, d *schema.ResourceData, m int
 		return diag.Diagnostics{}
 	}
 
-	// Crear la URL para eliminar el archivo
+	// Create the URL to delete the file
 	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, fileID)
 
 	// If the APIURL already contains /v1, adjust the URL construction
@@ -349,19 +349,19 @@ func resourceOpenAIFileDelete(ctx context.Context, d *schema.ResourceData, m int
 		url = fmt.Sprintf("%s/files/%s", client.APIURL, fileID)
 	}
 
-	// Crear la petición HTTP
+	// Create the HTTP request
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
 	}
 
-	// Añadir headers
+	// Add headers
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Hacer la llamada
+	// Make the call
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %s", err))
@@ -374,13 +374,13 @@ func resourceOpenAIFileDelete(ctx context.Context, d *schema.ResourceData, m int
 		return diag.Diagnostics{}
 	}
 
-	// Leer la respuesta
+	// Read the response
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
 	}
 
-	// Verificar si hubo errores
+	// Check if there were errors
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		err = json.Unmarshal(responseBody, &errorResponse)
@@ -390,7 +390,7 @@ func resourceOpenAIFileDelete(ctx context.Context, d *schema.ResourceData, m int
 		return diag.FromErr(fmt.Errorf("API error: %s - %s (%s)", errorResponse.Error.Type, errorResponse.Error.Message, errorResponse.Error.Code))
 	}
 
-	// Eliminar el ID para marcar que el recurso ya no existe
+	// Remove the ID to mark that the resource no longer exists
 	d.SetId("")
 
 	return diag.Diagnostics{}

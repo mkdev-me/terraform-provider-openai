@@ -158,7 +158,7 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %v", err))
 	}
 
-	// Obtener los parámetros de entrada del schema
+	// Get the input parameters from the schema
 	prompt := d.Get("prompt").(string)
 	model := d.Get("model").(string)
 	n := d.Get("n").(int)
@@ -167,7 +167,7 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 	size := d.Get("size").(string)
 	style := d.Get("style").(string)
 
-	// Preparar la petición para generar imágenes
+	// Prepare the request to generate images
 	request := &ImageGenerationRequest{
 		Model:          model,
 		Prompt:         prompt,
@@ -178,12 +178,12 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 		Style:          style,
 	}
 
-	// Añadir user si está presente
+	// Add user if present
 	if user, ok := d.GetOk("user"); ok {
 		request.User = user.(string)
 	}
 
-	// Preparar la petición HTTP
+	// Prepare the HTTP request
 	url := fmt.Sprintf("%s/images/generations", client.APIURL)
 	reqBody, err := json.Marshal(request)
 	if err != nil {
@@ -195,29 +195,29 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
 	}
 
-	// Establecer headers
+	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+client.APIKey)
 
-	// Añadir Organization ID si está presente
+	// Add Organization ID if present
 	if client.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", client.OrganizationID)
 	}
 
-	// Realizar la petición
+	// Make the request
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error making request: %v", err))
 	}
 	defer resp.Body.Close()
 
-	// Leer la respuesta
+	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error reading response: %v", err))
 	}
 
-	// Verificar si hubo un error
+	// Check if there was an error
 	if resp.StatusCode != http.StatusOK {
 		var errorResponse ErrorResponse
 		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
@@ -228,7 +228,7 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 			errorResponse.Error.Type, errorResponse.Error.Message))
 	}
 
-	// Parsear la respuesta
+	// Parse the response
 	var genResponse ImageGenerationResponse
 	if err := json.Unmarshal(respBody, &genResponse); err != nil {
 		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
@@ -239,12 +239,12 @@ func resourceOpenAIImageGenerationCreate(ctx context.Context, d *schema.Resource
 	imageGenID := fmt.Sprintf("img-%d", genResponse.Created)
 	d.SetId(imageGenID)
 
-	// Establecer el timestamp de creación
+	// Set the creation timestamp
 	if err := d.Set("created", genResponse.Created); err != nil {
 		return diag.FromErr(err)
 	}
 
-	// Procesar los datos de las imágenes generadas
+	// Process the generated image data
 	if len(genResponse.Data) > 0 {
 		imageData := make([]map[string]interface{}, len(genResponse.Data))
 

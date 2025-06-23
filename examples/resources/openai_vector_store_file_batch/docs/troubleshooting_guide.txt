@@ -1,0 +1,16 @@
+Troubleshooting Guide
+
+Problem: Cannot login
+Solution: Check username and password, ensure caps lock is off
+
+Problem: Slow performance
+Solution: Clear browser cache, check network connection
+
+Problem: Error 500
+Solution: Contact support with error details
+
+Problem: Data not syncing
+Solution: Check internet connection, try manual sync
+
+Problem: Feature not working
+Solution: Refresh page, try different browser

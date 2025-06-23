@@ -1,0 +1,13 @@
+2024-01-15 10:25:00 ERROR: Authentication failed
+Traceback (most recent call last):
+  File "app.py", line 15, in <module>
+    response = client.completions.create(model='gpt-3.5-turbo', prompt='Hello world')
+  File "/usr/local/lib/python3.9/site-packages/openai/api.py", line 123, in create
+    raise AuthenticationError("Invalid API key provided")
+openai.errors.AuthenticationError: Invalid API key provided
+
+2024-01-15 10:25:01 ERROR: Failed to initialize OpenAI client
+Details: No API key found in environment variables or configuration file
+
+2024-01-15 10:25:02 INFO: Attempting to read API key from config.json
+2024-01-15 10:25:02 ERROR: Config file not found at expected path: /etc/openai/config.json

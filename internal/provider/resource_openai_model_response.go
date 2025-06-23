@@ -253,7 +253,7 @@ func resourceOpenAIModelResponseCreate(ctx context.Context, d *schema.ResourceDa
 	// Usar directamente HTTP
 	fmt.Printf("[RESOURCE-DEBUG] Using direct HTTP approach\n")
 
-	// Crear URL completa de forma segura
+	// Create complete URL safely
 	baseURL := providerClient.APIURL
 	fmt.Printf("[RESOURCE-DEBUG] Original baseURL: %s\n", baseURL)
 
@@ -276,28 +276,28 @@ func resourceOpenAIModelResponseCreate(ctx context.Context, d *schema.ResourceDa
 		fmt.Printf("[RESOURCE-DEBUG] Standard URL: %s\n", url)
 	}
 
-	// Marshal del cuerpo de la solicitud
+	// Marshal the request body
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
 		fmt.Printf("[RESOURCE-DEBUG] Error marshaling request: %s\n", err)
 		return diag.Errorf("Error marshaling request: %s", err)
 	}
 
-	// Crear la solicitud HTTP
+	// Create the HTTP request
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		fmt.Printf("[RESOURCE-DEBUG] Error creating request: %s\n", err)
 		return diag.Errorf("Error creating request: %s", err)
 	}
 
-	// Establecer encabezados
+	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", providerClient.APIKey))
 	if providerClient.OrganizationID != "" {
 		req.Header.Set("OpenAI-Organization", providerClient.OrganizationID)
 	}
 
-	// Hacer la solicitud HTTP
+	// Make the HTTP request
 	fmt.Printf("[RESOURCE-DEBUG] Sending request to: %s\n", req.URL.String())
 	resp, err := providerClient.HTTPClient.Do(req)
 	if err != nil {
@@ -306,14 +306,14 @@ func resourceOpenAIModelResponseCreate(ctx context.Context, d *schema.ResourceDa
 	}
 	defer resp.Body.Close()
 
-	// Leer el cuerpo de la respuesta
+	// Read the response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("[RESOURCE-DEBUG] Error reading response: %s\n", err)
 		return diag.Errorf("Error reading response: %s", err)
 	}
 
-	// Verificar el código de estado
+	// Verify the status code
 	if resp.StatusCode >= 400 {
 		fmt.Printf("[RESOURCE-DEBUG] Error response: %d - %s\n", resp.StatusCode, string(respBody))
 		return diag.Errorf("API error: status code %d, body: %s", resp.StatusCode, string(respBody))

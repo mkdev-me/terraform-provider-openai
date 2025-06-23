@@ -1,0 +1,25 @@
+Frequently Asked Questions
+
+Q: How do I reset my password?
+A: Click on the 'Forgot Password' link on the login page.
+
+Q: How do I update my profile information?
+A: Navigate to Settings > Profile and edit your information.
+
+Q: Can I delete my account?
+A: Yes, go to Settings > Account > Delete Account.
+
+Q: How do I contact support?
+A: Email us at support@example.com or use the chat feature.
+
+Q: What payment methods do you accept?
+A: We accept all major credit cards and PayPal.
+
+Q: How do I cancel my subscription?
+A: Go to Settings > Billing > Cancel Subscription.
+
+Q: Is my data secure?
+A: Yes, we use industry-standard encryption to protect your data.
+
+Q: Can I export my data?
+A: Yes, you can export your data from Settings > Data Export.
