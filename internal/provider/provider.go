@@ -242,6 +242,10 @@ func Provider() *schema.Provider {
 	vectorStoreFileBatchResource := resourceOpenAIVectorStoreFileBatch()
 	log.Printf("[DEBUG] openai_vector_store_file_batch schema: %+v", vectorStoreFileBatchResource.Schema)
 
+	log.Printf("[DEBUG] Creating openai_organization_user resource")
+	organizationUserResource := resourceOpenAIOrganizationUser()
+	log.Printf("[DEBUG] openai_organization_user schema: %+v", organizationUserResource.Schema)
+
 	modelResponseDataSource := dataSourceOpenAIModelResponse()
 	log.Printf("[DEBUG] openai_model_response data source schema: %+v", modelResponseDataSource.Schema)
 
@@ -285,6 +289,7 @@ func Provider() *schema.Provider {
 		"openai_vector_store":                      vectorStoreResource,
 		"openai_vector_store_file":                 vectorStoreFileResource,
 		"openai_vector_store_file_batch":           vectorStoreFileBatchResource,
+		"openai_organization_user":                 organizationUserResource,
 	}
 
 	// Debug log each registered resource

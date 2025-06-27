@@ -657,6 +657,23 @@ func (c *OpenAIClient) UpdateUserRole(userID string, role string) (*User, error)
 	return &user, nil
 }
 
+// DeleteUser removes a user from the organization
+func (c *OpenAIClient) DeleteUser(userID string) error {
+	// Construct the correct URL using the API format
+	url := fmt.Sprintf("/v1/organization/users/%s", userID)
+
+	// Debug the request
+	fmt.Printf("[DEBUG] Deleting user with ID: %s\n", userID)
+
+	// Make the request
+	_, err := c.DoRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("error deleting user: %w", err)
+	}
+
+	return nil
+}
+
 // DoRequest performs an HTTP request with the given method, path, and body, and returns the response.
 func (c *OpenAIClient) DoRequest(method, path string, body interface{}) ([]byte, error) {
 	var jsonBody []byte
