@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-06-27
+### Added
+- Timeout configuration support for provider operations (#21)
+- Update and delete functionality for Organization Users resource (#19)
+
+### Changed
+- Simplified import scripts for better maintainability (#18)
+- Updated example scripts for clarity (#17)
+
+### Fixed
+- Docs updated to render examples on Terraform Registry correctly
+
 ## [1.0.3] - 2025-06-23
 ### Fixed
 - Docs updated to render examples on Terraform Registry correctly
