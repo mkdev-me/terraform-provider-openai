@@ -22,6 +22,7 @@ type OpenAIClient struct {
 	OrganizationID string
 	APIURL         string
 	HTTPClient     *http.Client
+	Timeout        time.Duration // Timeout for all requests
 }
 
 // NewClient creates a new instance of the OpenAI client
@@ -57,15 +58,85 @@ func NewClient(apiKey, organizationID, apiURL string) *OpenAIClient {
 		MaxIdleConnsPerHost:   10,
 	}
 
-	return &OpenAIClient{
+	defaultTimeout := 60 * time.Second
+
+	client := &OpenAIClient{
 		APIKey:         apiKey,
 		OrganizationID: organizationID,
 		APIURL:         apiURL,
 		HTTPClient: &http.Client{
 			Transport: transport,
-			Timeout:   60 * time.Second, // Increased timeout for API operations
+			Timeout:   defaultTimeout,
 		},
+		Timeout: defaultTimeout,
 	}
+
+	return client
+}
+
+// ClientConfig contains configuration options for the OpenAI client
+type ClientConfig struct {
+	APIKey         string
+	OrganizationID string
+	APIURL         string
+	Timeout        time.Duration // Timeout for all operations
+}
+
+// NewClientWithConfig creates a new instance of the OpenAI client with custom configuration
+func NewClientWithConfig(config ClientConfig) *OpenAIClient {
+	// Set default API URL if not provided
+	if config.APIURL == "" {
+		config.APIURL = "https://api.openai.com"
+	}
+
+	// Ensure the URL doesn't end with a slash
+	config.APIURL = strings.TrimSuffix(config.APIURL, "/")
+
+	// Set default timeout if not provided
+	if config.Timeout == 0 {
+		config.Timeout = 60 * time.Second
+	}
+
+	// Debug: Print the client configuration
+	fmt.Printf("DEBUG: Creating new OpenAI client with API URL: %s\n", config.APIURL)
+	fmt.Printf("DEBUG: Organization ID: %s\n", config.OrganizationID)
+	fmt.Printf("DEBUG: API key provided: %v\n", config.APIKey != "")
+	fmt.Printf("DEBUG: Timeout: %v\n", config.Timeout)
+
+	// Create a custom transport with specific timeouts and DNS configuration
+	dialer := &net.Dialer{
+		Timeout:   180 * time.Second,
+		KeepAlive: 180 * time.Second,
+		DualStack: true,
+	}
+
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConnsPerHost:   10,
+	}
+
+	return &OpenAIClient{
+		APIKey:         config.APIKey,
+		OrganizationID: config.OrganizationID,
+		APIURL:         config.APIURL,
+		HTTPClient: &http.Client{
+			Transport: transport,
+			Timeout:   config.Timeout,
+		},
+		Timeout: config.Timeout,
+	}
+}
+
+// SetTimeout updates the timeout for the client
+func (c *OpenAIClient) SetTimeout(timeout time.Duration) {
+	c.Timeout = timeout
+	c.HTTPClient.Timeout = timeout
 }
 
 // Project represents a project in OpenAI

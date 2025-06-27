@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -250,76 +249,20 @@ func resourceOpenAIModelResponseCreate(ctx context.Context, d *schema.ResourceDa
 		fmt.Printf("[RESOURCE-DEBUG] Added store=true because stop sequences were provided\n")
 	}
 
-	// Usar directamente HTTP
-	fmt.Printf("[RESOURCE-DEBUG] Using direct HTTP approach\n")
+	// Use the client's DoRequest method
+	fmt.Printf("[RESOURCE-DEBUG] Using client DoRequest with timeout: %v\n", providerClient.Timeout)
 
-	// Create complete URL safely
-	baseURL := providerClient.APIURL
-	fmt.Printf("[RESOURCE-DEBUG] Original baseURL: %s\n", baseURL)
-
-	// Define the url variable
-	var url string
-
-	// Normalize: If base URL already contains /v1, don't add it again
-	if strings.HasSuffix(baseURL, "/v1") {
-		if !strings.HasSuffix(baseURL, "/") {
-			baseURL += "/"
-		}
-		url = baseURL + "responses"
-		fmt.Printf("[RESOURCE-DEBUG] URL with /v1 in base: %s\n", url)
-	} else {
-		// Standard case - need to add /v1
-		if !strings.HasSuffix(baseURL, "/") {
-			baseURL += "/"
-		}
-		url = baseURL + "v1/responses"
-		fmt.Printf("[RESOURCE-DEBUG] Standard URL: %s\n", url)
-	}
-
-	// Marshal the request body
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		fmt.Printf("[RESOURCE-DEBUG] Error marshaling request: %s\n", err)
-		return diag.Errorf("Error marshaling request: %s", err)
-	}
-
-	// Create the HTTP request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		fmt.Printf("[RESOURCE-DEBUG] Error creating request: %s\n", err)
-		return diag.Errorf("Error creating request: %s", err)
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", providerClient.APIKey))
-	if providerClient.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", providerClient.OrganizationID)
-	}
-
-	// Make the HTTP request
-	fmt.Printf("[RESOURCE-DEBUG] Sending request to: %s\n", req.URL.String())
-	resp, err := providerClient.HTTPClient.Do(req)
+	// Use the /v1/responses endpoint
+	path := "/v1/responses"
+	
+	// Make the request using the client's method
+	respBody, err := providerClient.DoRequest("POST", path, requestBody)
 	if err != nil {
 		fmt.Printf("[RESOURCE-DEBUG] Error making request: %s\n", err)
 		return diag.Errorf("Error making request: %s", err)
 	}
-	defer resp.Body.Close()
 
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("[RESOURCE-DEBUG] Error reading response: %s\n", err)
-		return diag.Errorf("Error reading response: %s", err)
-	}
-
-	// Verify the status code
-	if resp.StatusCode >= 400 {
-		fmt.Printf("[RESOURCE-DEBUG] Error response: %d - %s\n", resp.StatusCode, string(respBody))
-		return diag.Errorf("API error: status code %d, body: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Parse response as a map instead of using client.ModelResponse
+	// Parse response as a map
 	var responseMap map[string]interface{}
 	if err := json.Unmarshal(respBody, &responseMap); err != nil {
 		fmt.Printf("[RESOURCE-DEBUG] Error parsing response: %s\n", err)

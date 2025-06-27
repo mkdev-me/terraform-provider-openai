@@ -45,3 +45,4 @@ provider "openai" {
 - `api_key` (String, Sensitive) Project API key (sk-proj...) for authentication. Note: Use project keys, not admin keys.
 - `api_url` (String) The URL for OpenAI API. If not set, the OPENAI_API_URL environment variable will be used, or the default value of 'https://api.openai.com/v1'.
 - `organization` (String) The Organization ID for OpenAI API operations. If not set, the OPENAI_ORGANIZATION environment variable will be used.
+- `timeout` (Number) Timeout in seconds for API operations. If not set, the OPENAI_TIMEOUT environment variable will be used, or the default value of 300 seconds (5 minutes).
