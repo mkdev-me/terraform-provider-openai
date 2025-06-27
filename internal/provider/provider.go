@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/url"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -55,7 +56,13 @@ func GetOpenAIClientWithProjectKey(m interface{}) (*client.OpenAIClient, error) 
 		// If project API key is available, create a new client with it
 		if c.ProjectAPIKey != "" {
 			log.Printf("[DEBUG] Using project API key for request")
-			return client.NewClient(c.ProjectAPIKey, c.OpenAIClient.OrganizationID, c.OpenAIClient.APIURL), nil
+			config := client.ClientConfig{
+				APIKey:         c.ProjectAPIKey,
+				OrganizationID: c.OpenAIClient.OrganizationID,
+				APIURL:         c.OpenAIClient.APIURL,
+				Timeout:        c.OpenAIClient.Timeout,
+			}
+			return client.NewClientWithConfig(config), nil
 		}
 		// Fall back to the default client if no project key
 		log.Printf("[DEBUG] No project API key available, using default client")
@@ -80,7 +87,13 @@ func GetOpenAIClientWithAdminKey(m interface{}) (*client.OpenAIClient, error) {
 		// If admin API key is available, create a new client with it
 		if c.AdminAPIKey != "" {
 			log.Printf("[DEBUG] Using admin API key for request")
-			return client.NewClient(c.AdminAPIKey, c.OpenAIClient.OrganizationID, c.OpenAIClient.APIURL), nil
+			config := client.ClientConfig{
+				APIKey:         c.AdminAPIKey,
+				OrganizationID: c.OpenAIClient.OrganizationID,
+				APIURL:         c.OpenAIClient.APIURL,
+				Timeout:        c.OpenAIClient.Timeout,
+			}
+			return client.NewClientWithConfig(config), nil
 		}
 		// Fall back to the project API key if no admin key
 		log.Printf("[DEBUG] No admin API key available, using project API key")
@@ -327,6 +340,12 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("OPENAI_API_URL", "https://api.openai.com/v1"),
 				Description: "The URL for OpenAI API. If not set, the OPENAI_API_URL environment variable will be used, or the default value of 'https://api.openai.com/v1'.",
 			},
+			"timeout": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("OPENAI_TIMEOUT", 300),
+				Description: "Timeout in seconds for API operations. If not set, the OPENAI_TIMEOUT environment variable will be used, or the default value of 300 seconds (5 minutes).",
+			},
 		},
 		ResourcesMap: resourceMap,
 		DataSourcesMap: map[string]*schema.Resource{
@@ -400,6 +419,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	adminKey := d.Get("admin_key").(string)
 	organization := d.Get("organization").(string)
 	apiURL := d.Get("api_url").(string)
+	timeout := d.Get("timeout").(int)
 
 	if apiURL == "" {
 		apiURL = defaultAPIURL
@@ -407,6 +427,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	log.Printf("[DEBUG] Configuring provider with base URL: %s", apiURL)
 	log.Printf("[DEBUG] Organization ID: %s", organization)
+	log.Printf("[DEBUG] Timeout: %d seconds", timeout)
 
 	// Validate base URL
 	baseURL, err := url.Parse(apiURL)
@@ -414,13 +435,21 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.Errorf("invalid API URL: %v", err)
 	}
 
+	// Create client configuration with timeout
+	config := client.ClientConfig{
+		APIKey:         apiKey,
+		OrganizationID: organization,
+		APIURL:         baseURL.String(),
+		Timeout:        time.Duration(timeout) * time.Second,
+	}
+
 	// Initialize OpenAI client with project API key by default
 	// The embedded client should use the project API key for standard operations
-	client := &OpenAIClient{
-		OpenAIClient:  client.NewClient(apiKey, organization, baseURL.String()),
+	providerClient := &OpenAIClient{
+		OpenAIClient:  client.NewClientWithConfig(config),
 		ProjectAPIKey: apiKey,
 		AdminAPIKey:   adminKey,
 	}
 
-	return client, nil
+	return providerClient, nil
 }
