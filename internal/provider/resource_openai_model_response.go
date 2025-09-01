@@ -254,7 +254,7 @@ func resourceOpenAIModelResponseCreate(ctx context.Context, d *schema.ResourceDa
 
 	// Use the /v1/responses endpoint
 	path := "/v1/responses"
-	
+
 	// Make the request using the client's method
 	respBody, err := providerClient.DoRequest("POST", path, requestBody)
 	if err != nil {

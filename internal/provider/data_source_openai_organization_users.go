@@ -20,17 +20,6 @@ func dataSourceOpenAIOrganizationUsers() *schema.Resource {
 				Optional:    true,
 				Description: "The ID of a specific user to retrieve. If provided, other filter parameters are ignored.",
 			},
-			"after": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "A cursor for use in pagination. 'after' is an object ID that defines your place in the list.",
-			},
-			"limit": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				Default:     20,
-				Description: "A limit on the number of objects to be returned. Limit can range between 1 and 100, and the default is 20.",
-			},
 			"emails": {
 				Type:     schema.TypeList,
 				Optional: true,
@@ -78,21 +67,6 @@ func dataSourceOpenAIOrganizationUsers() *schema.Resource {
 				},
 				Description: "List of users in the organization",
 			},
-			"first_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the first user in the list",
-			},
-			"last_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the last user in the list",
-			},
-			"has_more": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Whether there are more users that can be retrieved by paginating",
-			},
 		},
 	}
 }
@@ -139,26 +113,8 @@ func dataSourceOpenAIOrganizationUsersRead(ctx context.Context, d *schema.Resour
 			return diag.FromErr(fmt.Errorf("error setting users: %s", err))
 		}
 
-		// For a single user, has_more is always false
-		if err := d.Set("has_more", false); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting has_more: %s", err))
-		}
-
-		// Set first_id and last_id to the user's ID
-		if err := d.Set("first_id", user.ID); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting first_id: %s", err))
-		}
-
-		if err := d.Set("last_id", user.ID); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting last_id: %s", err))
-		}
-
 		return nil
 	}
-
-	// If no specific user ID, list users with filters
-	after := d.Get("after").(string)
-	limit := d.Get("limit").(int)
 
 	// Extract the emails filter if provided
 	var emails []string
@@ -168,46 +124,53 @@ func dataSourceOpenAIOrganizationUsersRead(ctx context.Context, d *schema.Resour
 		}
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("Listing organization users with limit: %d", limit))
+	// Automatic pagination - fetch all users with default batch size
+	const batchSize = 100
+	tflog.Debug(ctx, fmt.Sprintf("Fetching all organization users with batch size: %d", batchSize))
 
-	// Call the API using the provider's API key
-	resp, err := c.ListUsers(after, limit, emails)
-	if err != nil {
-		return diag.Errorf("error listing organization users: %s", err)
-	}
+	var allUsers []map[string]interface{}
+	var after string
+	hasMore := true
+	pageCount := 0
 
-	// Set a unique ID based on the query parameters
-	d.SetId(fmt.Sprintf("organization-users-%s-%d", after, limit))
+	// Paginate through all results
+	for hasMore {
+		pageCount++
+		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d with after: %s", pageCount, after))
 
-	// Prepare the users list
-	users := make([]map[string]interface{}, 0, len(resp.Data))
-	for _, user := range resp.Data {
-		u := map[string]interface{}{
-			"id":       user.ID,
-			"object":   user.Object,
-			"email":    user.Email,
-			"name":     user.Name,
-			"role":     user.Role,
-			"added_at": user.AddedAt,
+		resp, err := c.ListUsers(after, batchSize, emails)
+		if err != nil {
+			return diag.Errorf("error listing organization users (page %d): %s", pageCount, err)
 		}
-		users = append(users, u)
+
+		// Add users from this page to the collection
+		for _, user := range resp.Data {
+			u := map[string]interface{}{
+				"id":       user.ID,
+				"object":   user.Object,
+				"email":    user.Email,
+				"name":     user.Name,
+				"role":     user.Role,
+				"added_at": user.AddedAt,
+			}
+			allUsers = append(allUsers, u)
+		}
+
+		// Check if there are more pages
+		hasMore = resp.HasMore
+		if hasMore && resp.LastID != "" {
+			after = resp.LastID
+		}
 	}
+
+	tflog.Debug(ctx, fmt.Sprintf("Fetched %d total users across %d pages", len(allUsers), pageCount))
+
+	// Set a unique ID for the data source
+	d.SetId(fmt.Sprintf("organization-users-all-%d", len(allUsers)))
 
 	// Set the computed values
-	if err := d.Set("users", users); err != nil {
+	if err := d.Set("users", allUsers); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting users: %s", err))
-	}
-
-	if err := d.Set("has_more", resp.HasMore); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting has_more: %s", err))
-	}
-
-	if err := d.Set("first_id", resp.FirstID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting first_id: %s", err))
-	}
-
-	if err := d.Set("last_id", resp.LastID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting last_id: %s", err))
 	}
 
 	return nil

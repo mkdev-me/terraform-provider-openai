@@ -81,6 +81,8 @@ cd terraform-provider-openai
 # Install dependencies and build
 make install
 
+# or make install-dev, to avoid conflicts with published version
+
 # Run tests
 make test
 ```
@@ -157,6 +159,10 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_ADMIN_KEY="your-admin-key"  # For admin operations
 export OPENAI_ORGANIZATION_ID="your-org-id"  # Optional
 ```
+
+#### Documentation
+
+Make sure to run `tfplugindocs` if resources are updated.
 
 ## Testing
 
