@@ -125,7 +125,7 @@ func dataSourceOpenAIOrganizationUsersRead(ctx context.Context, d *schema.Resour
 	}
 
 	// Automatic pagination - fetch all users with default batch size
-	const batchSize = 20
+	const batchSize = 100
 	tflog.Debug(ctx, fmt.Sprintf("Fetching all organization users with batch size: %d", batchSize))
 
 	var allUsers []map[string]interface{}
