@@ -29,8 +29,11 @@ func testAccPreCheck(t *testing.T) {
 	if v := os.Getenv("OPENAI_API_KEY"); v == "" {
 		t.Fatal("OPENAI_API_KEY must be set for acceptance tests")
 	}
-	if v := os.Getenv("OPENAI_ORGANIZATION_ID"); v == "" {
-		t.Fatal("OPENAI_ORGANIZATION_ID must be set for acceptance tests")
+	// OPENAI_ORGANIZATION_ID is optional - some users only have personal accounts
+	if v := os.Getenv("OPENAI_ORGANIZATION_ID"); v != "" {
+		t.Logf("Using organization ID: %s", v)
+	} else {
+		t.Log("No organization ID set - using personal account")
 	}
 }
 
