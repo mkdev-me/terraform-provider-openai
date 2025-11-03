@@ -47,9 +47,9 @@ func dataSourceOpenAIProjectUser() *schema.Resource {
 	}
 }
 
-// findProjectUserWithPaginationDataSource finds a user in a project by ID with automatic pagination.
+// dataSourceFindProjectUser finds a user in a project by ID with automatic pagination.
 // This is used by the data source to ensure proper user lookups across all pages.
-func findProjectUserWithPaginationDataSource(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
+func dataSourceFindProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
 	clientInstance, err := GetOpenAIClientWithAdminKey(c)
 	if err != nil {
 		return nil, false, err
@@ -90,9 +90,9 @@ func findProjectUserWithPaginationDataSource(ctx context.Context, c interface{},
 	return nil, false, nil
 }
 
-// findProjectUserByEmailWithPaginationDataSource finds a user in a project by email with automatic pagination.
+// dataSourceFindProjectUserByEmail finds a user in a project by email with automatic pagination.
 // This is used by the data source to ensure proper user lookups across all pages.
-func findProjectUserByEmailWithPaginationDataSource(ctx context.Context, c interface{}, projectID, email string) (*client.ProjectUser, bool, error) {
+func dataSourceFindProjectUserByEmail(ctx context.Context, c interface{}, projectID, email string) (*client.ProjectUser, bool, error) {
 	clientInstance, err := GetOpenAIClientWithAdminKey(c)
 	if err != nil {
 		return nil, false, err
@@ -157,7 +157,7 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
 
 		// Check if the user exists in the project using the provider's API key
-		projectUser, exists, err = findProjectUserWithPaginationDataSource(ctx, m, projectID, userID)
+		projectUser, exists, err = dataSourceFindProjectUser(ctx, m, projectID, userID)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 			return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -179,7 +179,7 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user with email %s exists in project %s", email, projectID))
 
 		// Check if the user exists in the project by email using the provider's API key
-		projectUser, exists, err = findProjectUserByEmailWithPaginationDataSource(ctx, m, projectID, email)
+		projectUser, exists, err = dataSourceFindProjectUserByEmail(ctx, m, projectID, email)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists by email: %v", err))
 			return diag.Errorf("Error checking if user exists in project by email: %s", err)

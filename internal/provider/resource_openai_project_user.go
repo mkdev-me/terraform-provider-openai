@@ -57,9 +57,9 @@ func resourceOpenAIProjectUser() *schema.Resource {
 	}
 }
 
-// findProjectUserWithPagination finds a user in a project by ID with automatic pagination.
+// findProjectUser finds a user in a project by ID with automatic pagination.
 // This helper function ensures we search through all pages of users to properly detect drift.
-func findProjectUserWithPagination(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
+func findProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
 	clientInstance, err := GetOpenAIClientWithAdminKey(c)
 	if err != nil {
 		return nil, false, err
@@ -118,7 +118,7 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 
 	// First check if the user is already in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s already exists in project %s", userID, projectID))
-	existingUser, exists, err := findProjectUserWithPagination(ctx, m, projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 		return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -155,7 +155,7 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 			tflog.Info(ctx, fmt.Sprintf("User %s already exists in project, continuing: %s", userID, err))
 
 			// Try to get user details again
-			existingUser, exists, findErr := findProjectUserWithPagination(ctx, m, projectID, userID)
+			existingUser, exists, findErr := findProjectUser(ctx, m, projectID, userID)
 			if findErr == nil && exists {
 				// Update the Terraform state with values from the existing user
 				if err := d.Set("email", existingUser.Email); err != nil {
@@ -205,7 +205,7 @@ func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, 
 
 	// Check if the user exists in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
-	existingUser, exists, err := findProjectUserWithPagination(ctx, m, projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		// If it's a permissions error, just keep the state
 		if strings.Contains(err.Error(), "insufficient permissions") {
@@ -411,7 +411,7 @@ func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData
 	}
 
 	// Find the user in the project to get additional details
-	existingUser, exists, err := findProjectUserWithPagination(ctx, m, projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving project user: %s", err)
 	}
