@@ -98,34 +98,57 @@ func dataSourceOpenAIProjectUsersRead(ctx context.Context, d *schema.ResourceDat
 	// Set the ID to the project_id
 	d.SetId(projectID)
 
-	// List all users in the project
-	tflog.Debug(ctx, fmt.Sprintf("Listing users in project %s", projectID))
-	usersList, err := c.ListProjectUsers(projectID)
-	if err != nil {
-		tflog.Error(ctx, fmt.Sprintf("Error listing users: %v", err))
-		return diag.Errorf("Error listing users in project: %s", err)
+	// Automatic pagination - fetch all users with default batch size
+	const batchSize = 100
+	tflog.Debug(ctx, fmt.Sprintf("Fetching all users in project %s with batch size: %d", projectID, batchSize))
+
+	var allUsers []map[string]interface{}
+	var after string
+	hasMore := true
+	pageCount := 0
+
+	// Paginate through all results
+	for hasMore {
+		pageCount++
+		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
+
+		usersList, err := c.ListProjectUsers(projectID, after, batchSize)
+		if err != nil {
+			tflog.Error(ctx, fmt.Sprintf("Error listing users (page %d): %v", pageCount, err))
+			return diag.Errorf("Error listing users in project (page %d): %s", pageCount, err)
+		}
+
+		// Transform the users from this page into a format appropriate for the schema
+		for _, user := range usersList.Data {
+			userData := map[string]interface{}{
+				"id":       user.ID,
+				"email":    user.Email,
+				"role":     user.Role,
+				"added_at": user.AddedAt,
+			}
+			allUsers = append(allUsers, userData)
+		}
+
+		// Check if there are more pages
+		hasMore = usersList.HasMore
+		if hasMore && usersList.LastID != "" {
+			after = usersList.LastID
+		}
 	}
 
-	// Transform the users into a format appropriate for the schema
-	users := make([]map[string]interface{}, 0, len(usersList.Data))
-	for _, user := range usersList.Data {
-		userData := map[string]interface{}{
-			"id":       user.ID,
-			"email":    user.Email,
-			"role":     user.Role,
-			"added_at": user.AddedAt,
-		}
-		users = append(users, userData)
-	}
+	tflog.Debug(ctx, fmt.Sprintf("Fetched %d total users for project %s across %d pages", len(allUsers), projectID, pageCount))
+
+	// Use allUsers instead of users
+	users := allUsers
 
 	if err := d.Set("users", users); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting users: %s", err))
 	}
 
 	// Extract user IDs
-	userIDs := make([]string, 0, len(usersList.Data))
-	for _, user := range usersList.Data {
-		userIDs = append(userIDs, user.ID)
+	userIDs := make([]string, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user["id"].(string))
 	}
 
 	if err := d.Set("user_ids", userIDs); err != nil {
@@ -133,18 +156,19 @@ func dataSourceOpenAIProjectUsersRead(ctx context.Context, d *schema.ResourceDat
 	}
 
 	// Set user count for easy access
-	if err := d.Set("user_count", len(usersList.Data)); err != nil {
+	if err := d.Set("user_count", len(users)); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting user_count: %s", err))
 	}
 
 	// Extract owner and member IDs
 	ownerIDs := make([]string, 0)
 	memberIDs := make([]string, 0)
-	for _, user := range usersList.Data {
-		if user.Role == "owner" {
-			ownerIDs = append(ownerIDs, user.ID)
-		} else if user.Role == "member" {
-			memberIDs = append(memberIDs, user.ID)
+	for _, user := range users {
+		role := user["role"].(string)
+		if role == "owner" {
+			ownerIDs = append(ownerIDs, user["id"].(string))
+		} else if role == "member" {
+			memberIDs = append(memberIDs, user["id"].(string))
 		}
 	}
 
