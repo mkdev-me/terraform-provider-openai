@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -116,8 +117,7 @@ func dataSourceFindProjectUserByEmail(ctx context.Context, c interface{}, projec
 
 		// Look for the user with matching email in this page (case insensitive)
 		for _, user := range userList.Data {
-			if user.Email == email || (len(user.Email) == len(email) &&
-				fmt.Sprintf("%s", user.Email) == fmt.Sprintf("%s", email)) {
+			if strings.EqualFold(user.Email, email) {
 				tflog.Debug(ctx, fmt.Sprintf("Found user with email %s in project %s on page %d", email, projectID, pageCount))
 				return &user, true, nil
 			}
