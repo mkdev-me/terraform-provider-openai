@@ -7,7 +7,7 @@ REGISTRY_HOSTNAME=registry.terraform.io
 NAMESPACE=mkdev-me
 NAME=openai
 BINARY=terraform-provider-${NAME}
-VERSION=1.1.1
+VERSION=1.1.2
 OS_ARCH=darwin_arm64
 
 default: install
