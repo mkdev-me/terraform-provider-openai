@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 // resourceOpenAIProjectUser defines the schema and CRUD operations for OpenAI project users.
@@ -56,6 +57,49 @@ func resourceOpenAIProjectUser() *schema.Resource {
 	}
 }
 
+// findProjectUser finds a user in a project by ID with automatic pagination.
+// This helper function ensures we search through all pages of users to properly detect drift.
+func findProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
+	clientInstance, err := GetOpenAIClientWithAdminKey(c)
+	if err != nil {
+		return nil, false, err
+	}
+
+	const batchSize = 100
+	tflog.Debug(ctx, fmt.Sprintf("Finding user %s in project %s with pagination", userID, projectID))
+
+	var after string
+	hasMore := true
+	pageCount := 0
+
+	for hasMore {
+		pageCount++
+		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
+
+		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
+		if err != nil {
+			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
+		}
+
+		// Look for the user in this page
+		for _, user := range userList.Data {
+			if user.ID == userID {
+				tflog.Debug(ctx, fmt.Sprintf("Found user %s in project %s on page %d", userID, projectID, pageCount))
+				return &user, true, nil
+			}
+		}
+
+		// Check if there are more pages
+		hasMore = userList.HasMore
+		if hasMore && userList.LastID != "" {
+			after = userList.LastID
+		}
+	}
+
+	tflog.Debug(ctx, fmt.Sprintf("User %s not found in project %s after checking %d pages", userID, projectID, pageCount))
+	return nil, false, nil
+}
+
 // resourceOpenAIProjectUserCreate adds a user to an OpenAI project.
 // It requires the project_id, user_id, and role to be specified.
 func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -74,7 +118,7 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 
 	// First check if the user is already in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s already exists in project %s", userID, projectID))
-	existingUser, exists, err := c.FindProjectUser(projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 		return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -111,7 +155,7 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 			tflog.Info(ctx, fmt.Sprintf("User %s already exists in project, continuing: %s", userID, err))
 
 			// Try to get user details again
-			existingUser, exists, findErr := c.FindProjectUser(projectID, userID)
+			existingUser, exists, findErr := findProjectUser(ctx, m, projectID, userID)
 			if findErr == nil && exists {
 				// Update the Terraform state with values from the existing user
 				if err := d.Set("email", existingUser.Email); err != nil {
@@ -156,17 +200,12 @@ func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData
 // resourceOpenAIProjectUserRead retrieves information about a user in a project.
 // This implementation now tries to verify if the user exists in the project.
 func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
 	projectID := d.Get("project_id").(string)
 	userID := d.Get("user_id").(string)
 
 	// Check if the user exists in the project
 	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
-	existingUser, exists, err := c.FindProjectUser(projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		// If it's a permissions error, just keep the state
 		if strings.Contains(err.Error(), "insufficient permissions") {
@@ -354,11 +393,6 @@ func resourceOpenAIProjectUserDelete(ctx context.Context, d *schema.ResourceData
 // resourceOpenAIProjectUserImport imports an existing project user into Terraform state.
 // The ID should be in the format "project_id:user_id".
 func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return nil, err
-	}
-
 	// Split the ID to get project_id and user_id
 	parts := strings.Split(d.Id(), ":")
 	if len(parts) != 2 {
@@ -377,7 +411,7 @@ func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData
 	}
 
 	// Find the user in the project to get additional details
-	existingUser, exists, err := c.FindProjectUser(projectID, userID)
+	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving project user: %s", err)
 	}
