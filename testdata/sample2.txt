@@ -1,7 +1,0 @@
-Sample file 2 for testing multiple vector store file creation.
-
-This is the second file in a batch of concurrent file uploads to test
-the retry logic when the OpenAI API experiences eventual consistency issues.
-
-The test ensures that even when multiple files are created at the same time,
-the provider handles any temporary "file not found" errors gracefully.

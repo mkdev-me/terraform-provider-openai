@@ -1,7 +1,0 @@
-Sample file 1 for testing multiple vector store file creation.
-
-This file is part of a test that validates the retry logic when creating
-multiple vector store files simultaneously, which can trigger eventual
-consistency issues with the OpenAI API.
-
-Test scenario: Create 3 files concurrently and verify all succeed with retry logic.

@@ -263,12 +263,35 @@ func resourceOpenAIVectorStoreFileCreate(ctx context.Context, d *schema.Resource
 		}
 	}
 
-	// Wait for the file to be available in the vector store with retry logic
+	// Wait for the file to be available in the vector store with retry logic.
+	// This addresses eventual consistency issues where the OpenAI API returns
+	// "No file found" errors immediately after file creation (issue #35).
 	return resourceOpenAIVectorStoreFileReadWithRetry(ctx, d, m, 5)
 }
 
 // resourceOpenAIVectorStoreFileReadWithRetry attempts to read the vector store file with retry logic
-// to handle eventual consistency issues with the OpenAI API
+// to handle eventual consistency issues with the OpenAI API.
+//
+// When a vector store file is created, the OpenAI API may temporarily return "file not found"
+// errors due to eventual consistency delays in their backend. This is especially common when
+// creating multiple files simultaneously.
+//
+// Retry Behavior:
+// - Retries up to maxRetries times (default: 5)
+// - Uses exponential backoff: 1s, 2s, 4s, 8s, 16s (max ~31s total)
+// - Only retries on "not found" errors (case-insensitive)
+// - Returns immediately on other errors (unauthorized, rate limit, etc.)
+// - Logs retry attempts for debugging
+//
+// Parameters:
+//   - ctx: Context for logging
+//   - d: Resource data
+//   - m: Provider metadata containing OpenAI client
+//   - maxRetries: Maximum number of read attempts (must be >= 1)
+//
+// Returns:
+//   - nil diagnostics on success
+//   - diagnostics with error details if all retries are exhausted or non-retriable error occurs
 func resourceOpenAIVectorStoreFileReadWithRetry(ctx context.Context, d *schema.ResourceData, m interface{}, maxRetries int) diag.Diagnostics {
 	var lastErr diag.Diagnostics
 
