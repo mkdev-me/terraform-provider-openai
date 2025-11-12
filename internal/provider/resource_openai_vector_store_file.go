@@ -269,6 +269,13 @@ func resourceOpenAIVectorStoreFileCreate(ctx context.Context, d *schema.Resource
 	return resourceOpenAIVectorStoreFileReadWithRetry(ctx, d, m, 5)
 }
 
+// containsRetriableError checks if an error message indicates a retriable error.
+// Uses case-insensitive matching to catch "404 Not Found", "No file found", etc.
+func containsRetriableError(message string) bool {
+	lowerMsg := strings.ToLower(message)
+	return strings.Contains(lowerMsg, "no file found") || strings.Contains(lowerMsg, "not found")
+}
+
 // resourceOpenAIVectorStoreFileReadWithRetry attempts to read the vector store file with retry logic
 // to handle eventual consistency issues with the OpenAI API.
 //
@@ -293,6 +300,11 @@ func resourceOpenAIVectorStoreFileCreate(ctx context.Context, d *schema.Resource
 //   - nil diagnostics on success
 //   - diagnostics with error details if all retries are exhausted or non-retriable error occurs
 func resourceOpenAIVectorStoreFileReadWithRetry(ctx context.Context, d *schema.ResourceData, m interface{}, maxRetries int) diag.Diagnostics {
+	// Validate maxRetries configuration
+	if maxRetries <= 0 {
+		return diag.Errorf("maxRetries must be at least 1 for vector store file read retries")
+	}
+
 	var lastErr diag.Diagnostics
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -312,12 +324,7 @@ func resourceOpenAIVectorStoreFileReadWithRetry(ctx context.Context, d *schema.R
 		// Use case-insensitive matching to catch "404 Not Found", "No file found", etc.
 		shouldRetry := false
 		for _, diag := range diags {
-			summary := strings.ToLower(diag.Summary)
-			detail := strings.ToLower(diag.Detail)
-			if strings.Contains(summary, "no file found") ||
-			   strings.Contains(detail, "no file found") ||
-			   strings.Contains(summary, "not found") ||
-			   strings.Contains(detail, "not found") {
+			if containsRetriableError(diag.Summary) || containsRetriableError(diag.Detail) {
 				shouldRetry = true
 				break
 			}

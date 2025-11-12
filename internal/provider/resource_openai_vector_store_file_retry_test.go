@@ -208,13 +208,6 @@ func simulateRetryLogic(readFunc mockReadFunc, maxRetries int) diag.Diagnostics 
 	return lastErr
 }
 
-// containsRetriableError checks if an error message indicates a retriable error
-// Uses case-insensitive matching to catch "404 Not Found", "No file found", etc.
-func containsRetriableError(message string) bool {
-	lowerMsg := strings.ToLower(message)
-	return strings.Contains(lowerMsg, "no file found") || strings.Contains(lowerMsg, "not found")
-}
-
 // BenchmarkRetryLogic benchmarks the retry logic performance
 func BenchmarkRetryLogic(b *testing.B) {
 	mockRead := func(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
