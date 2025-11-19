@@ -60,6 +60,6 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.1.6
