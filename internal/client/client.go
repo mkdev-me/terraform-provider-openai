@@ -1856,19 +1856,33 @@ func (c *OpenAIClient) AddProjectUser(projectID, userID, role string) (*ProjectU
 //
 // Parameters:
 //   - projectID: The ID of the project to list users from
+//   - after: Cursor for pagination (empty string for first page)
+//   - limit: Maximum number of users to return per page
 //
 // Returns:
-//   - A ProjectUserList object with all users in the project
+//   - A ProjectUserList object with users in the project
 //   - An error if the operation failed
-func (c *OpenAIClient) ListProjectUsers(projectID string) (*ProjectUserList, error) {
+func (c *OpenAIClient) ListProjectUsers(projectID, after string, limit int) (*ProjectUserList, error) {
+	// Build query parameters
+	queryParams := url.Values{}
+	if after != "" {
+		queryParams.Add("after", after)
+	}
+	if limit > 0 {
+		queryParams.Add("limit", fmt.Sprintf("%d", limit))
+	}
+
 	// Construct the URL for the request
-	url := fmt.Sprintf("/v1/organization/projects/%s/users", projectID)
+	urlPath := fmt.Sprintf("/v1/organization/projects/%s/users", projectID)
+	if len(queryParams) > 0 {
+		urlPath = urlPath + "?" + queryParams.Encode()
+	}
 
 	// Log the request for debugging
 	fmt.Printf("[DEBUG] Listing users for project %s\n", projectID)
 
 	// Make the request
-	respBody, err := c.doRequest(http.MethodGet, url, nil)
+	respBody, err := c.doRequest(http.MethodGet, urlPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1880,64 +1894,6 @@ func (c *OpenAIClient) ListProjectUsers(projectID string) (*ProjectUserList, err
 	}
 
 	return &userList, nil
-}
-
-// FindProjectUser checks if a user exists in a project by ID.
-// This is a helper method to avoid having to iterate through users in the provider.
-//
-// Parameters:
-//   - projectID: The ID of the project to check
-//   - userID: The ID of the user to find
-//
-// Returns:
-//   - The found ProjectUser if it exists
-//   - A boolean indicating if the user was found
-//   - An error if the operation failed
-func (c *OpenAIClient) FindProjectUser(projectID, userID string) (*ProjectUser, bool, error) {
-	// Get all users in the project
-	userList, err := c.ListProjectUsers(projectID)
-	if err != nil {
-		return nil, false, err
-	}
-
-	// Look for the user in the list
-	for _, user := range userList.Data {
-		if user.ID == userID {
-			return &user, true, nil
-		}
-	}
-
-	// User not found
-	return nil, false, nil
-}
-
-// FindProjectUserByEmail checks if a user exists in a project by email address.
-// This is a helper method to allow looking up users by email instead of ID.
-//
-// Parameters:
-//   - projectID: The ID of the project to check
-//   - email: The email address of the user to find
-//
-// Returns:
-//   - The found ProjectUser if it exists
-//   - A boolean indicating if the user was found
-//   - An error if the operation failed
-func (c *OpenAIClient) FindProjectUserByEmail(projectID, email string) (*ProjectUser, bool, error) {
-	// Get all users in the project
-	userList, err := c.ListProjectUsers(projectID)
-	if err != nil {
-		return nil, false, err
-	}
-
-	// Look for the user with matching email in the list (case insensitive)
-	for _, user := range userList.Data {
-		if strings.EqualFold(user.Email, email) {
-			return &user, true, nil
-		}
-	}
-
-	// User not found
-	return nil, false, nil
 }
 
 // RemoveProjectUser removes a user from a project.

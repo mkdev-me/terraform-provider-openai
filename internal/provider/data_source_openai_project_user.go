@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -47,14 +48,95 @@ func dataSourceOpenAIProjectUser() *schema.Resource {
 	}
 }
 
+// dataSourceFindProjectUser finds a user in a project by ID with automatic pagination.
+// This is used by the data source to ensure proper user lookups across all pages.
+func dataSourceFindProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
+	clientInstance, err := GetOpenAIClientWithAdminKey(c)
+	if err != nil {
+		return nil, false, err
+	}
+
+	const batchSize = 100
+	tflog.Debug(ctx, fmt.Sprintf("Finding user %s in project %s with pagination", userID, projectID))
+
+	var after string
+	hasMore := true
+	pageCount := 0
+
+	for hasMore {
+		pageCount++
+		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
+
+		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
+		if err != nil {
+			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
+		}
+
+		// Look for the user in this page
+		for _, user := range userList.Data {
+			if user.ID == userID {
+				tflog.Debug(ctx, fmt.Sprintf("Found user %s in project %s on page %d", userID, projectID, pageCount))
+				return &user, true, nil
+			}
+		}
+
+		// Check if there are more pages
+		hasMore = userList.HasMore
+		if hasMore && userList.LastID != "" {
+			after = userList.LastID
+		}
+	}
+
+	tflog.Debug(ctx, fmt.Sprintf("User %s not found in project %s after checking %d pages", userID, projectID, pageCount))
+	return nil, false, nil
+}
+
+// dataSourceFindProjectUserByEmail finds a user in a project by email with automatic pagination.
+// This is used by the data source to ensure proper user lookups across all pages.
+func dataSourceFindProjectUserByEmail(ctx context.Context, c interface{}, projectID, email string) (*client.ProjectUser, bool, error) {
+	clientInstance, err := GetOpenAIClientWithAdminKey(c)
+	if err != nil {
+		return nil, false, err
+	}
+
+	const batchSize = 100
+	tflog.Debug(ctx, fmt.Sprintf("Finding user by email %s in project %s with pagination", email, projectID))
+
+	var after string
+	hasMore := true
+	pageCount := 0
+
+	for hasMore {
+		pageCount++
+		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
+
+		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
+		if err != nil {
+			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
+		}
+
+		// Look for the user with matching email in this page (case insensitive)
+		for _, user := range userList.Data {
+			if strings.EqualFold(user.Email, email) {
+				tflog.Debug(ctx, fmt.Sprintf("Found user with email %s in project %s on page %d", email, projectID, pageCount))
+				return &user, true, nil
+			}
+		}
+
+		// Check if there are more pages
+		hasMore = userList.HasMore
+		if hasMore && userList.LastID != "" {
+			after = userList.LastID
+		}
+	}
+
+	tflog.Debug(ctx, fmt.Sprintf("User with email %s not found in project %s after checking %d pages", email, projectID, pageCount))
+	return nil, false, nil
+}
+
 // dataSourceOpenAIProjectUserRead handles the read operation for the OpenAI project user data source.
 // It retrieves information about a specific user in a project from the OpenAI API.
 func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
 	projectID := d.Get("project_id").(string)
 	if projectID == "" {
 		return diag.FromErr(fmt.Errorf("project_id is required"))
@@ -62,6 +144,7 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 
 	var projectUser *client.ProjectUser
 	var exists bool
+	var err error
 
 	// Check if we're looking up by user_id or email
 	if userID, ok := d.GetOk("user_id"); ok {
@@ -74,7 +157,7 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
 
 		// Check if the user exists in the project using the provider's API key
-		projectUser, exists, err = c.FindProjectUser(projectID, userID)
+		projectUser, exists, err = dataSourceFindProjectUser(ctx, m, projectID, userID)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
 			return diag.Errorf("Error checking if user exists in project: %s", err)
@@ -96,7 +179,7 @@ func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData
 		tflog.Debug(ctx, fmt.Sprintf("Checking if user with email %s exists in project %s", email, projectID))
 
 		// Check if the user exists in the project by email using the provider's API key
-		projectUser, exists, err = c.FindProjectUserByEmail(projectID, email)
+		projectUser, exists, err = dataSourceFindProjectUserByEmail(ctx, m, projectID, email)
 		if err != nil {
 			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists by email: %v", err))
 			return diag.Errorf("Error checking if user exists in project by email: %s", err)
