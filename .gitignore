@@ -164,6 +164,3 @@ website/node_modules
 *.iml
 website/vendor
 tfplan
-
-# Examples directory (local testing only)
-examples/
