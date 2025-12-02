@@ -3,7 +3,7 @@
 page_title: "openai_project Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-
+  
 ---
 
 # openai_project (Data Source)

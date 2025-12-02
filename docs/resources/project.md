@@ -3,7 +3,7 @@
 page_title: "openai_project Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-
+  
 ---
 
 # openai_project (Resource)
