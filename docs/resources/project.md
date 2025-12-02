@@ -3,7 +3,7 @@
 page_title: "openai_project Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+
 ---
 
 # openai_project (Resource)
@@ -15,14 +15,12 @@ description: |-
 ```terraform
 # Create a new OpenAI project
 resource "openai_project" "development" {
-  name        = "Development Project"
-  description = "Project for development and testing purposes"
+  title = "Development Project"
 }
 
 # Create a production project
 resource "openai_project" "production" {
-  name        = "Production API Services"
-  description = "Project for production API services and deployments"
+  title = "Production API Services"
 }
 
 # Output the project ID
@@ -37,18 +35,18 @@ output "dev_project_id" {
 
 ### Required
 
-- `name` (String) The name of the project
+- `title` (String) The title of the project
 
 ### Optional
 
-- `description` (String) A description of the project
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
-- `archived_at` (String) Timestamp when the project was archived, if applicable
-- `created_at` (String) Timestamp when the project was created
+- `archived_at` (Number) Timestamp when the project was archived, if applicable
+- `created` (Number) Timestamp when the project was created
 - `id` (String) The ID of this resource.
+- `is_initial` (Boolean) Whether this is the initial project
 - `status` (String) Status of the project (active, archived, etc.)
 
 <a id="nestedblock--timeouts"></a>

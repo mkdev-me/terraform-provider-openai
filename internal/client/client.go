@@ -141,19 +141,13 @@ func (c *OpenAIClient) SetTimeout(timeout time.Duration) {
 
 // Project represents a project in OpenAI
 type Project struct {
-	Object         string        `json:"object"`
-	ID             string        `json:"id"`
-	Name           string        `json:"name"`
-	Description    string        `json:"description,omitempty"`
-	OrganizationID string        `json:"organization_id,omitempty"`
-	CreatedAt      *int64        `json:"created_at"`
-	ArchivedAt     *int64        `json:"archived_at"`
-	Status         string        `json:"status"`
-	IsDefault      bool          `json:"is_default,omitempty"`
-	BillingMode    string        `json:"billing_mode,omitempty"`
-	APIKeys        []APIKey      `json:"api_keys,omitempty"`
-	RateLimits     []RateLimit   `json:"rate_limits,omitempty"`
-	Users          []ProjectUser `json:"users,omitempty"`
+	ID         string `json:"id"`
+	Object     string `json:"object"`
+	Created    int64  `json:"created"`
+	Status     string `json:"status"`
+	ArchivedAt *int64 `json:"archived_at"`
+	IsInitial  bool   `json:"is_initial"`
+	Title      string `json:"title"`
 }
 
 // ProjectUser represents a user associated with a project
@@ -197,9 +191,7 @@ type APIKey struct {
 
 // CreateProjectRequest represents the request to create a project
 type CreateProjectRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	IsDefault   bool   `json:"is_default,omitempty"`
+	Title string `json:"title"`
 }
 
 // Error represents an error from the OpenAI API
@@ -1119,25 +1111,15 @@ func (c *OpenAIClient) ListProjects(limit int, includeArchived bool, after strin
 	return &resp, nil
 }
 
-// CreateProject creates a new project with the given name and description
-func (c *OpenAIClient) CreateProject(name, description string, isDefault bool) (*Project, error) {
+// CreateProject creates a new project with the given title
+func (c *OpenAIClient) CreateProject(title string) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"name": name,
-	}
-
-	// Only include description if it's not empty
-	if description != "" {
-		requestBody["description"] = description
-	}
-
-	// Only include is_default if it's true (don't send false)
-	if isDefault {
-		requestBody["is_default"] = isDefault
+		"title": title,
 	}
 
 	// Debug information
-	fmt.Printf("Creating project with name: %s\n", name)
+	fmt.Printf("Creating project with title: %s\n", title)
 	fmt.Printf("Request body: %+v\n", requestBody)
 
 	// Use the exact endpoint from the curl command that works
@@ -1184,21 +1166,11 @@ func (c *OpenAIClient) GetProject(id string) (*Project, error) {
 	return &project, nil
 }
 
-// UpdateProject updates an existing project with the given details
-func (c *OpenAIClient) UpdateProject(id, name, description string, isDefault bool) (*Project, error) {
+// UpdateProject updates an existing project with the given title
+func (c *OpenAIClient) UpdateProject(id, title string) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"name": name,
-	}
-
-	// Only include description if it's not empty
-	if description != "" {
-		requestBody["description"] = description
-	}
-
-	// Only include is_default if it's true (don't send false)
-	if isDefault {
-		requestBody["is_default"] = isDefault
+		"title": title,
 	}
 
 	// Use the exact endpoint structure consistent with the curl command

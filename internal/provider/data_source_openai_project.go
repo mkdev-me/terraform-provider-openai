@@ -14,19 +14,13 @@ import (
 
 // ProjectResponse represents the API response for an OpenAI project
 type ProjectResponse struct {
-	ID          string      `json:"id"`
-	Object      string      `json:"object"`
-	Name        string      `json:"name"`
-	CreatedAt   int         `json:"created_at"`
-	Status      string      `json:"status"`
-	UsageLimits UsageLimits `json:"usage_limits"`
-}
-
-// UsageLimits represents the usage limits for a project
-type UsageLimits struct {
-	MaxMonthlyDollars   float64 `json:"max_monthly_dollars"`
-	MaxParallelRequests int     `json:"max_parallel_requests"`
-	MaxTokens           int     `json:"max_tokens"`
+	ID         string `json:"id"`
+	Object     string `json:"object"`
+	Title      string `json:"title"`
+	Created    int64  `json:"created"`
+	Status     string `json:"status"`
+	ArchivedAt *int64 `json:"archived_at"`
+	IsInitial  bool   `json:"is_initial"`
 }
 
 // dataSourceOpenAIProject returns a schema.Resource that represents a data source for an OpenAI project.
@@ -46,44 +40,30 @@ func dataSourceOpenAIProject() *schema.Resource {
 				Sensitive:   true,
 				Description: "Admin API key for authentication. If not provided, the provider's default API key will be used.",
 			},
-			"name": {
+			"title": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The name of the project",
+				Description: "The title of the project",
 			},
 			"status": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "The status of the project",
 			},
-			"created_at": {
+			"created": {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "Timestamp when the project was created",
 			},
-			"usage_limits": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"max_monthly_dollars": {
-							Type:        schema.TypeFloat,
-							Computed:    true,
-							Description: "Maximum monthly spend in dollars",
-						},
-						"max_parallel_requests": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Maximum number of parallel requests allowed",
-						},
-						"max_tokens": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Maximum number of tokens per request",
-						},
-					},
-				},
-				Description: "Usage limits for the project",
+			"archived_at": {
+				Type:        schema.TypeInt,
+				Computed:    true,
+				Description: "Timestamp when the project was archived (null if not archived)",
+			},
+			"is_initial": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether this is the initial project",
 			},
 		},
 	}
@@ -166,25 +146,21 @@ func dataSourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	// Set the project details in the schema
-	if err := d.Set("name", project.Name); err != nil {
+	if err := d.Set("title", project.Title); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("status", project.Status); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("created_at", project.CreatedAt); err != nil {
+	if err := d.Set("created", project.Created); err != nil {
 		return diag.FromErr(err)
 	}
-
-	// Set usage limits
-	usageLimits := []map[string]interface{}{
-		{
-			"max_monthly_dollars":   project.UsageLimits.MaxMonthlyDollars,
-			"max_parallel_requests": project.UsageLimits.MaxParallelRequests,
-			"max_tokens":            project.UsageLimits.MaxTokens,
-		},
+	if project.ArchivedAt != nil {
+		if err := d.Set("archived_at", *project.ArchivedAt); err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	if err := d.Set("usage_limits", usageLimits); err != nil {
+	if err := d.Set("is_initial", project.IsInitial); err != nil {
 		return diag.FromErr(err)
 	}
 

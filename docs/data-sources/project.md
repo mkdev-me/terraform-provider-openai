@@ -3,7 +3,7 @@
 page_title: "openai_project Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+
 ---
 
 # openai_project (Data Source)
@@ -28,7 +28,7 @@ output "project_id" {
 # Use project data to set variables
 locals {
   project_active = data.openai_project.production.status == "active"
-  project_name   = data.openai_project.production.name
+  project_title  = data.openai_project.production.title
 }
 ```
 
@@ -45,17 +45,9 @@ locals {
 
 ### Read-Only
 
-- `created_at` (Number) Timestamp when the project was created
+- `archived_at` (Number) Timestamp when the project was archived (null if not archived)
+- `created` (Number) Timestamp when the project was created
 - `id` (String) The ID of this resource.
-- `name` (String) The name of the project
+- `is_initial` (Boolean) Whether this is the initial project
 - `status` (String) The status of the project
-- `usage_limits` (List of Object) Usage limits for the project (see [below for nested schema](#nestedatt--usage_limits))
-
-<a id="nestedatt--usage_limits"></a>
-### Nested Schema for `usage_limits`
-
-Read-Only:
-
-- `max_monthly_dollars` (Number)
-- `max_parallel_requests` (Number)
-- `max_tokens` (Number)
+- `title` (String) The title of the project

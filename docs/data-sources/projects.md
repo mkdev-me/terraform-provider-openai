@@ -3,7 +3,7 @@
 page_title: "openai_projects Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+
 ---
 
 # openai_projects (Data Source)
@@ -42,7 +42,9 @@ output "project_count" {
 
 Read-Only:
 
-- `created_at` (Number)
-- `id` (String)
-- `name` (String)
-- `status` (String)
+- `archived_at` (Number) Timestamp when the project was archived
+- `created` (Number) Timestamp when the project was created
+- `id` (String) The ID of the project
+- `is_initial` (Boolean) Whether this is the initial project
+- `status` (String) The status of the project
+- `title` (String) The title of the project
