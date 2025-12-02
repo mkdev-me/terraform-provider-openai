@@ -38,7 +38,7 @@ func dataSourceOpenAIOrganizationUser() *schema.Resource {
 				Computed:    true,
 				Description: "The role of the user in the organization (owner, member, or reader)",
 			},
-			"added_at": {
+			"created": {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "The Unix timestamp when the user was added to the organization",
@@ -114,8 +114,8 @@ func dataSourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.Resourc
 		return diag.FromErr(fmt.Errorf("error setting role: %s", err))
 	}
 
-	if err := d.Set("added_at", user.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
+	if err := d.Set("created", user.Created); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting created: %s", err))
 	}
 
 	return nil
