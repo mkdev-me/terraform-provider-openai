@@ -46,7 +46,7 @@ output "all_users_count" {
 
 Read-Only:
 
-- `added_at` (Number)
+- `created` (Number)
 - `email` (String)
 - `id` (String)
 - `name` (String)

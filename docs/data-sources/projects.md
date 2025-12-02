@@ -42,7 +42,9 @@ output "project_count" {
 
 Read-Only:
 
-- `created_at` (Number)
+- `archived_at` (Number)
+- `created` (Number)
 - `id` (String)
-- `name` (String)
+- `is_initial` (Boolean)
 - `status` (String)
+- `title` (String)

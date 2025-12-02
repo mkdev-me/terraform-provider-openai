@@ -41,7 +41,7 @@ resource "openai_organization_user" "organization_users" {
 
 ### Read-Only
 
-- `added_at` (Number) The Unix timestamp when the user was added to the organization
+- `created` (Number) The Unix timestamp when the user was added to the organization
 - `email` (String) The email address of the user
 - `id` (String) The ID of this resource.
 - `name` (String) The name of the user

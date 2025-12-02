@@ -22,7 +22,7 @@ description: |-
 
 ### Read-Only
 
-- `added_at` (Number) The Unix timestamp when the user was added to the organization
+- `created` (Number) The Unix timestamp when the user was added to the organization
 - `id` (String) The ID of this resource.
 - `name` (String) The name of the user
 - `role` (String) The role of the user in the organization (owner, member, or reader)
