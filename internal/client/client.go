@@ -567,23 +567,64 @@ type AssistantFunction struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// User represents an OpenAI user
+// UserInfo represents the nested user details in an organization user response
+type UserInfo struct {
+	ID     string `json:"id"`
+	Object string `json:"object"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
+}
+
+// OrganizationUser represents an OpenAI organization user as returned by the API
+type OrganizationUser struct {
+	Object                         string   `json:"object"`
+	Created                        int64    `json:"created"`
+	IsDefault                      bool     `json:"is_default"`
+	IsScaleTierAuthorizedPurchaser bool     `json:"is_scale_tier_authorized_purchaser"`
+	IsScimManaged                  bool     `json:"is_scim_managed"`
+	IsServiceAccount               bool     `json:"is_service_account"`
+	Role                           string   `json:"role"`
+	User                           UserInfo `json:"user"`
+}
+
+// User provides a flattened view of OrganizationUser for easier access
+// This is a convenience wrapper used internally
 type User struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Email   string `json:"email"`
-	Name    string `json:"name"`
-	Role    string `json:"role"`
-	AddedAt int64  `json:"added_at"`
+	ID                             string `json:"id"`
+	Object                         string `json:"object"`
+	Email                          string `json:"email"`
+	Name                           string `json:"name"`
+	Role                           string `json:"role"`
+	Created                        int64  `json:"created"`
+	IsDefault                      bool   `json:"is_default"`
+	IsScaleTierAuthorizedPurchaser bool   `json:"is_scale_tier_authorized_purchaser"`
+	IsScimManaged                  bool   `json:"is_scim_managed"`
+	IsServiceAccount               bool   `json:"is_service_account"`
+}
+
+// ToUser converts an OrganizationUser to a flattened User struct
+func (ou *OrganizationUser) ToUser() *User {
+	return &User{
+		ID:                             ou.User.ID,
+		Object:                         ou.Object,
+		Email:                          ou.User.Email,
+		Name:                           ou.User.Name,
+		Role:                           ou.Role,
+		Created:                        ou.Created,
+		IsDefault:                      ou.IsDefault,
+		IsScaleTierAuthorizedPurchaser: ou.IsScaleTierAuthorizedPurchaser,
+		IsScimManaged:                  ou.IsScimManaged,
+		IsServiceAccount:               ou.IsServiceAccount,
+	}
 }
 
 // UsersResponse represents the response from the list users API
 type UsersResponse struct {
-	Object  string `json:"object"`
-	Data    []User `json:"data"`
-	FirstID string `json:"first_id"`
-	LastID  string `json:"last_id"`
-	HasMore bool   `json:"has_more"`
+	Object  string             `json:"object"`
+	Data    []OrganizationUser `json:"data"`
+	FirstID string             `json:"first_id"`
+	LastID  string             `json:"last_id"`
+	HasMore bool               `json:"has_more"`
 }
 
 // ListUsers retrieves a list of users in the organization
@@ -660,12 +701,13 @@ func (c *OpenAIClient) FindUserByEmail(email string) (*User, bool, error) {
 		return nil, false, nil
 	}
 
-	// Return the first matching user
-	user := usersResponse.Data[0]
+	// Return the first matching user (convert from OrganizationUser to User)
+	orgUser := usersResponse.Data[0]
+	user := orgUser.ToUser()
 
 	// Double check that the email matches exactly (case insensitive)
 	if strings.EqualFold(user.Email, email) {
-		return &user, true, nil
+		return user, true, nil
 	}
 
 	// No exact match found
@@ -691,13 +733,14 @@ func (c *OpenAIClient) GetUser(userID string) (*User, bool, error) {
 		return nil, false, fmt.Errorf("error getting user: %w", err)
 	}
 
-	// Parse the response
-	var user User
-	if err := json.Unmarshal(respBody, &user); err != nil {
+	// Parse the response into OrganizationUser (new API format)
+	var orgUser OrganizationUser
+	if err := json.Unmarshal(respBody, &orgUser); err != nil {
 		return nil, false, fmt.Errorf("error decoding user response: %w", err)
 	}
 
-	return &user, true, nil
+	// Convert to flattened User struct
+	return orgUser.ToUser(), true, nil
 }
 
 // UpdateUserRole updates a user's role
@@ -719,13 +762,14 @@ func (c *OpenAIClient) UpdateUserRole(userID string, role string) (*User, error)
 		return nil, fmt.Errorf("error updating user role: %w", err)
 	}
 
-	// Parse the response
-	var user User
-	if err := json.Unmarshal(respBody, &user); err != nil {
+	// Parse the response into OrganizationUser (new API format)
+	var orgUser OrganizationUser
+	if err := json.Unmarshal(respBody, &orgUser); err != nil {
 		return nil, fmt.Errorf("error decoding user response: %w", err)
 	}
 
-	return &user, nil
+	// Convert to flattened User struct
+	return orgUser.ToUser(), nil
 }
 
 // DeleteUser removes a user from the organization

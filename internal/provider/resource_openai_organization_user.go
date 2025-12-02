@@ -46,7 +46,7 @@ func resourceOpenAIOrganizationUser() *schema.Resource {
 				Computed:    true,
 				Description: "The name of the user",
 			},
-			"added_at": {
+			"created": {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "The Unix timestamp when the user was added to the organization",
@@ -98,8 +98,8 @@ func resourceOpenAIOrganizationUserCreate(ctx context.Context, d *schema.Resourc
 	if err := d.Set("name", user.Name); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
 	}
-	if err := d.Set("added_at", user.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
+	if err := d.Set("created", user.Created); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting created: %s", err))
 	}
 
 	return nil
@@ -141,8 +141,8 @@ func resourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.ResourceD
 	if err := d.Set("role", user.Role); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting role: %s", err))
 	}
-	if err := d.Set("added_at", user.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
+	if err := d.Set("created", user.Created); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting created: %s", err))
 	}
 
 	return nil
@@ -173,8 +173,8 @@ func resourceOpenAIOrganizationUserUpdate(ctx context.Context, d *schema.Resourc
 		if err := d.Set("name", user.Name); err != nil {
 			return diag.FromErr(fmt.Errorf("error setting name: %s", err))
 		}
-		if err := d.Set("added_at", user.AddedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
+		if err := d.Set("created", user.Created); err != nil {
+			return diag.FromErr(fmt.Errorf("error setting created: %s", err))
 		}
 	}
 

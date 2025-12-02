@@ -58,7 +58,7 @@ func dataSourceOpenAIOrganizationUsers() *schema.Resource {
 							Computed:    true,
 							Description: "The role of the user in the organization (owner, member, or reader)",
 						},
-						"added_at": {
+						"created": {
 							Type:        schema.TypeInt,
 							Computed:    true,
 							Description: "The Unix timestamp when the user was added to the organization",
@@ -100,12 +100,12 @@ func dataSourceOpenAIOrganizationUsersRead(ctx context.Context, d *schema.Resour
 		// Create a list with just this one user
 		users := []map[string]interface{}{
 			{
-				"id":       user.ID,
-				"object":   user.Object,
-				"email":    user.Email,
-				"name":     user.Name,
-				"role":     user.Role,
-				"added_at": user.AddedAt,
+				"id":      user.ID,
+				"object":  user.Object,
+				"email":   user.Email,
+				"name":    user.Name,
+				"role":    user.Role,
+				"created": user.Created,
 			},
 		}
 
@@ -144,14 +144,16 @@ func dataSourceOpenAIOrganizationUsersRead(ctx context.Context, d *schema.Resour
 		}
 
 		// Add users from this page to the collection
-		for _, user := range resp.Data {
+		for _, orgUser := range resp.Data {
+			// Convert to flattened user for consistent field access
+			user := orgUser.ToUser()
 			u := map[string]interface{}{
-				"id":       user.ID,
-				"object":   user.Object,
-				"email":    user.Email,
-				"name":     user.Name,
-				"role":     user.Role,
-				"added_at": user.AddedAt,
+				"id":      user.ID,
+				"object":  user.Object,
+				"email":   user.Email,
+				"name":    user.Name,
+				"role":    user.Role,
+				"created": user.Created,
 			}
 			allUsers = append(allUsers, u)
 		}
