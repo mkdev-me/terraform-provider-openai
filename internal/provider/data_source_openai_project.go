@@ -14,13 +14,11 @@ import (
 
 // ProjectResponse represents the API response for an OpenAI project
 type ProjectResponse struct {
-	ID         string `json:"id"`
-	Object     string `json:"object"`
-	Title      string `json:"title"`
-	Created    int64  `json:"created"`
-	Status     string `json:"status"`
-	ArchivedAt *int64 `json:"archived_at"`
-	IsInitial  bool   `json:"is_initial"`
+	ID        string `json:"id"`
+	Object    string `json:"object"`
+	Name      string `json:"name"`
+	CreatedAt int    `json:"created_at"`
+	Status    string `json:"status"`
 }
 
 // dataSourceOpenAIProject returns a schema.Resource that represents a data source for an OpenAI project.
@@ -40,30 +38,20 @@ func dataSourceOpenAIProject() *schema.Resource {
 				Sensitive:   true,
 				Description: "Admin API key for authentication. If not provided, the provider's default API key will be used.",
 			},
-			"title": {
+			"name": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The title of the project",
+				Description: "The name of the project",
 			},
 			"status": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "The status of the project",
 			},
-			"created": {
+			"created_at": {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "Timestamp when the project was created",
-			},
-			"archived_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "Timestamp when the project was archived (null if not archived)",
-			},
-			"is_initial": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Whether this is the initial project",
 			},
 		},
 	}
@@ -146,21 +134,13 @@ func dataSourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	// Set the project details in the schema
-	if err := d.Set("title", project.Title); err != nil {
+	if err := d.Set("name", project.Name); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("status", project.Status); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("created", project.Created); err != nil {
-		return diag.FromErr(err)
-	}
-	if project.ArchivedAt != nil {
-		if err := d.Set("archived_at", *project.ArchivedAt); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-	if err := d.Set("is_initial", project.IsInitial); err != nil {
+	if err := d.Set("created_at", project.CreatedAt); err != nil {
 		return diag.FromErr(err)
 	}
 

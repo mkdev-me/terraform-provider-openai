@@ -45,30 +45,20 @@ func dataSourceOpenAIProjects() *schema.Resource {
 							Computed:    true,
 							Description: "The ID of the project",
 						},
-						"title": {
+						"name": {
 							Type:        schema.TypeString,
 							Computed:    true,
-							Description: "The title of the project",
+							Description: "The name of the project",
 						},
 						"status": {
 							Type:        schema.TypeString,
 							Computed:    true,
 							Description: "The status of the project",
 						},
-						"created": {
+						"created_at": {
 							Type:        schema.TypeInt,
 							Computed:    true,
 							Description: "Timestamp when the project was created",
-						},
-						"archived_at": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Timestamp when the project was archived",
-						},
-						"is_initial": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether this is the initial project",
 						},
 					},
 				},
@@ -206,13 +196,9 @@ func dataSourceOpenAIProjectsRead(ctx context.Context, d *schema.ResourceData, m
 	for _, project := range allProjects {
 		projectMap := map[string]interface{}{
 			"id":         project.ID,
-			"title":      project.Title,
+			"name":       project.Name,
 			"status":     project.Status,
-			"created":    project.Created,
-			"is_initial": project.IsInitial,
-		}
-		if project.ArchivedAt != nil {
-			projectMap["archived_at"] = *project.ArchivedAt
+			"created_at": project.CreatedAt,
 		}
 		projects = append(projects, projectMap)
 	}

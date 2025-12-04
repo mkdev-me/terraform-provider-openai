@@ -74,12 +74,6 @@ func resourceOpenAIRateLimit() *schema.Resource {
 				Computed:    true,
 				Description: "The ID of the rate limit.",
 			},
-			"ignore_rate_limit_warning": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Set to true to acknowledge that OpenAI rate limits cannot be truly deleted and will be reset to defaults on removal.",
-			},
 		},
 	}
 }
@@ -280,165 +274,68 @@ func resourceOpenAIRateLimitRead(ctx context.Context, d *schema.ResourceData, me
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
 
-	// The ID in Terraform may have a suffix, but we save it to maintain consistency
 	rateLimitID := d.Id()
 	projectID := d.Get("project_id").(string)
 	model := d.Get("model").(string)
 
-	// Enhanced debug logging
-	fmt.Printf("\n\n[TF-READ-DEBUG] ========== TERRAFORM READ RATE LIMIT DEBUG ==========\n")
-	fmt.Printf("[TF-READ-DEBUG] Resource ID from Terraform state (d.Id()): %s\n", rateLimitID)
-	fmt.Printf("[TF-READ-DEBUG] Project ID: %s\n", projectID)
-	fmt.Printf("[TF-READ-DEBUG] Model from config: %s\n", model)
-
 	if rateLimitID == "" {
 		d.SetId("")
-		fmt.Printf("[TF-READ-DEBUG] Rate limit ID is empty, clearing resource from state\n")
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 		return diag.Diagnostics{}
 	}
 
-	// Use the provider's API key
-	fmt.Printf("[TF-READ-DEBUG] Using default API key from provider configuration\n")
-
-	// IMPORTANT: First try with just the model name, as the OpenAI API actually uses model names
-	// not the IDs with project suffixes that we generate for Terraform state management
-	fmt.Printf("[TF-READ-DEBUG] First trying GetRateLimitWithKey with model name: %s\n", model)
+	// Try to get rate limit by model name first, then by ID
 	rateLimit, err := c.GetRateLimit(projectID, model)
-
-	// If we can't find it with the model name, try with the full ID as fallback
 	if err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Failed to get rate limit with model name: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] Now trying with full rate limit ID: %s\n", rateLimitID)
-
 		rateLimit, err = c.GetRateLimit(projectID, rateLimitID)
 		if err != nil {
-			// Log the complete error for debugging
-			fmt.Printf("[TF-READ-DEBUG] Also failed with full ID: %v\n", err)
-			fmt.Printf("[TF-READ-DEBUG] Error type: %T\n", err)
-
 			// Handle various error cases
 			if responseHasStatusCode(err, 404) || strings.Contains(err.Error(), "not found") {
-				fmt.Printf("[TF-READ-DEBUG] Resource not found, removing from Terraform state\n")
 				d.SetId("")
-				fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 				return nil
 			} else if strings.Contains(err.Error(), "No project found") {
-				fmt.Printf("[TF-READ-DEBUG] Project not found, removing from Terraform state: %s\n", projectID)
 				d.SetId("")
-				fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 				return nil
 			} else if strings.Contains(err.Error(), "insufficient permissions") || strings.Contains(err.Error(), "do not have permission") {
-				// Always create a warning, never an error for permission issues
-				warning := diag.Diagnostic{
-					Severity: diag.Warning,
-					Summary:  "Permission error reading rate limit",
-					Detail:   fmt.Sprintf("Permission error: %s. The resource will remain in the Terraform state, but the actual values might differ from what's shown.", err),
+				tflog.Warn(ctx, fmt.Sprintf("Permission error when reading rate limit: %v", err))
+				return diag.Diagnostics{
+					diag.Diagnostic{
+						Severity: diag.Warning,
+						Summary:  "Permission error reading rate limit",
+						Detail:   fmt.Sprintf("Permission error: %s. The resource will remain in the Terraform state, but the actual values might differ from what's shown.", err),
+					},
 				}
-
-				// Just log the warning and continue
-				tflog.Warn(ctx, fmt.Sprintf("Permission error when reading rate limit: %v. Continuing with Terraform operation.", err))
-				fmt.Printf("[TF-READ-DEBUG] Permission error, returning warning\n")
-				fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-
-				// Always return only the warning, never an error for permission issues
-				return diag.Diagnostics{warning}
-			} else {
-				// For any other error, return it to Terraform so it can handle drift properly
-				fmt.Printf("[TF-READ-DEBUG] Unhandled error, returning to Terraform\n")
-				fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-				return diag.Errorf("Error reading rate limit from OpenAI API: %s", err)
 			}
+			return diag.Errorf("Error reading rate limit from OpenAI API: %s", err)
 		}
 	}
 
-	// If we got here, we successfully found the rate limit
-	fmt.Printf("[TF-READ-DEBUG] Successfully read rate limit: ID=%s, Model=%s, MaxReq=%d, MaxTokens=%d\n",
-		rateLimit.ID, rateLimit.Model, rateLimit.MaxRequestsPer1Minute, rateLimit.MaxTokensPer1Minute)
-
+	// Set all rate limit values in state
 	if err := d.Set("model", rateLimit.Model); err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Error setting model: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 		return diag.FromErr(err)
 	}
 	if err := d.Set("max_requests_per_minute", rateLimit.MaxRequestsPer1Minute); err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Error setting max_requests_per_minute: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 		return diag.FromErr(err)
 	}
 	if err := d.Set("max_tokens_per_minute", rateLimit.MaxTokensPer1Minute); err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Error setting max_tokens_per_minute: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
 		return diag.FromErr(err)
 	}
 	if err := d.Set("max_images_per_minute", rateLimit.MaxImagesPer1Minute); err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Error setting max_images_per_minute: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
+		return diag.FromErr(err)
+	}
+	if err := d.Set("batch_1_day_max_input_tokens", rateLimit.Batch1DayMaxInputTokens); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("max_audio_megabytes_per_1_minute", rateLimit.MaxAudioMegabytesPer1Minute); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("max_requests_per_1_day", rateLimit.MaxRequestsPer1Day); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("rate_limit_id", rateLimit.ID); err != nil {
 		return diag.FromErr(err)
 	}
 
-	// For fields that may not be returned by the API for certain models,
-	// only update the state if the API returned a non-zero value
-
-	// If batch_1_day_max_input_tokens is 0 in the API response but non-zero in our state,
-	// keep the existing state value
-	oldBatch1DayMaxInputTokens := d.Get("batch_1_day_max_input_tokens").(int)
-	if rateLimit.Batch1DayMaxInputTokens > 0 || oldBatch1DayMaxInputTokens == 0 {
-		if err := d.Set("batch_1_day_max_input_tokens", rateLimit.Batch1DayMaxInputTokens); err != nil {
-			fmt.Printf("[TF-READ-DEBUG] Error setting batch_1_day_max_input_tokens: %v\n", err)
-			fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-			return diag.FromErr(err)
-		}
-	}
-
-	// If max_audio_megabytes_per_1_minute is 0 in the API response but non-zero in our state,
-	// keep the existing state value
-	oldMaxAudioMegabytesPer1Minute := d.Get("max_audio_megabytes_per_1_minute").(int)
-	if rateLimit.MaxAudioMegabytesPer1Minute > 0 || oldMaxAudioMegabytesPer1Minute == 0 {
-		if err := d.Set("max_audio_megabytes_per_1_minute", rateLimit.MaxAudioMegabytesPer1Minute); err != nil {
-			fmt.Printf("[TF-READ-DEBUG] Error setting max_audio_megabytes_per_1_minute: %v\n", err)
-			fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-			return diag.FromErr(err)
-		}
-	}
-
-	// If max_requests_per_1_day is 0 in the API response but non-zero in our state,
-	// keep the existing state value
-	oldMaxRequestsPer1Day := d.Get("max_requests_per_1_day").(int)
-	if rateLimit.MaxRequestsPer1Day > 0 || oldMaxRequestsPer1Day == 0 {
-		if err := d.Set("max_requests_per_1_day", rateLimit.MaxRequestsPer1Day); err != nil {
-			fmt.Printf("[TF-READ-DEBUG] Error setting max_requests_per_1_day: %v\n", err)
-			fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-			return diag.FromErr(err)
-		}
-	} else {
-		fmt.Printf("[TF-READ-DEBUG] Preserving max_requests_per_1_day value %d in state (API returned 0)\n",
-			oldMaxRequestsPer1Day)
-	}
-
-	if err := d.Set("rate_limit_id", rateLimit.ID); err != nil {
-		fmt.Printf("[TF-READ-DEBUG] Error setting rate_limit_id: %v\n", err)
-		fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-		return diag.FromErr(fmt.Errorf("failed to set rate_limit_id: %v", err))
-	}
-
-	// Keep the current resource ID
 	d.SetId(rateLimit.ID)
-	fmt.Printf("[TF-READ-DEBUG] Set resource ID to: %s\n", rateLimit.ID)
-
-	// Log the values for debugging
-	fmt.Printf("[TF-READ-DEBUG] Rate limit values being set in Terraform state:\n")
-	fmt.Printf("  - max_requests_per_minute: %d\n", rateLimit.MaxRequestsPer1Minute)
-	fmt.Printf("  - max_tokens_per_minute: %d\n", rateLimit.MaxTokensPer1Minute)
-	fmt.Printf("  - max_images_per_minute: %d\n", rateLimit.MaxImagesPer1Minute)
-	fmt.Printf("  - batch_1_day_max_input_tokens: %d (preserved: %t)\n",
-		rateLimit.Batch1DayMaxInputTokens, rateLimit.Batch1DayMaxInputTokens == 0 && oldBatch1DayMaxInputTokens > 0)
-	fmt.Printf("  - max_audio_megabytes_per_1_minute: %d (preserved: %t)\n",
-		rateLimit.MaxAudioMegabytesPer1Minute, rateLimit.MaxAudioMegabytesPer1Minute == 0 && oldMaxAudioMegabytesPer1Minute > 0)
-	fmt.Printf("  - max_requests_per_1_day: %d (preserved: %t)\n",
-		rateLimit.MaxRequestsPer1Day, rateLimit.MaxRequestsPer1Day == 0 && oldMaxRequestsPer1Day > 0)
-	fmt.Printf("[TF-READ-DEBUG] ========== END TERRAFORM READ RATE LIMIT DEBUG ==========\n\n")
-
 	return diag.Diagnostics{}
 }
 
@@ -711,117 +608,27 @@ func getAPIKeyType(apiKey string) string {
 // Since OpenAI API doesn't support true deletion of rate limits, this function resets the rate limit
 // to the default values based on the comprehensive model defaults we have compiled.
 func resourceOpenAIRateLimitDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	tflog.Info(ctx, "START: Deleting OpenAI rate limit resource")
-	fmt.Printf("\n\n[TF-DELETE-DEBUG] ========== TERRAFORM DELETE RATE LIMIT DEBUG ==========\n")
-	fmt.Printf("[TF-DELETE-DEBUG] Resource ID: %s\n", d.Id())
-
-	// Get the client from the provider configuration
-	// Fix: Use GetOpenAIClientWithAdminKey helper function for admin operations
-	client, err := GetOpenAIClientWithAdminKey(meta)
+	c, err := GetOpenAIClientWithAdminKey(meta)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %w", err))
 	}
-	fmt.Printf("[TF-DELETE-DEBUG] Client API URL: %s\n", client.APIURL)
 
-	var diags diag.Diagnostics
-
-	// Extract the model and project ID from the resource state
 	model := d.Get("model").(string)
 	projectID := d.Get("project_id").(string)
-	fmt.Printf("[TF-DELETE-DEBUG] Model from state: %s\n", model)
-	fmt.Printf("[TF-DELETE-DEBUG] Project ID from state: %s\n", projectID)
 
-	// Get the rate limit ID directly from the resource ID
-	resourceID := d.Id()
-	fmt.Printf("[TF-DELETE-DEBUG] Resource ID (full): %s\n", resourceID)
-
-	// Use the provider's API key
-	fmt.Printf("[TF-DELETE-DEBUG] Using provider's API key\n")
-
-	// Try to get the existing rate limit before deleting
-	fmt.Printf("[TF-DELETE-DEBUG] Checking if rate limit exists before deletion\n")
-	existingRateLimit, getRLErr := client.GetRateLimit(projectID, model)
-	if getRLErr != nil {
-		fmt.Printf("[TF-DELETE-DEBUG] Error getting existing rate limit: %v\n", getRLErr)
-		// Try with the full ID as fallback
-		existingRateLimit, getRLErr = client.GetRateLimit(projectID, resourceID)
-		if getRLErr != nil {
-			fmt.Printf("[TF-DELETE-DEBUG] Also failed with full ID: %v\n", getRLErr)
-		}
-	}
-
-	if existingRateLimit != nil {
-		fmt.Printf("[TF-DELETE-DEBUG] Found existing rate limit: ID=%s, Model=%s, MaxReq=%d, MaxTokens=%d\n",
-			existingRateLimit.ID, existingRateLimit.Model, existingRateLimit.MaxRequestsPer1Minute, existingRateLimit.MaxTokensPer1Minute)
-	} else {
-		fmt.Printf("[TF-DELETE-DEBUG] Rate limit not found or nil response\n")
-	}
-
-	// Attempt to delete the rate limit - Use the model name since that's what the API expects
-	fmt.Printf("[TF-DELETE-DEBUG] Calling DeleteRateLimitWithKey with: projectID=%s, model=%s\n",
-		projectID, model)
-
-	err = client.DeleteRateLimit(projectID, model)
+	// Delete (reset to defaults) the rate limit
+	err = c.DeleteRateLimit(projectID, model)
 	if err != nil {
-		fmt.Printf("[TF-DELETE-DEBUG] Error deleting rate limit: %v\n", err)
-		fmt.Printf("[TF-DELETE-DEBUG] Error type: %T\n", err)
-		fmt.Printf("[TF-DELETE-DEBUG] Error contains 'permission': %v\n", strings.Contains(err.Error(), "permission"))
-		fmt.Printf("[TF-DELETE-DEBUG] Error contains '403': %v\n", strings.Contains(err.Error(), "403"))
-
-		// Try with the full ID as fallback
-		fmt.Printf("[TF-DELETE-DEBUG] Trying again with full resource ID: %s\n", resourceID)
-		err = client.DeleteRateLimit(projectID, resourceID)
-		if err != nil {
-			fmt.Printf("[TF-DELETE-DEBUG] Also failed with full ID: %v\n", err)
-
-			if strings.Contains(err.Error(), "permission") || strings.Contains(err.Error(), "403") {
-				// Special handling for permission errors
-				fmt.Printf("[TF-DELETE-DEBUG] Got permission/403 error, checking if we should handle differently\n")
-
-				// Check if the error is specifically a permission error for deletion
-				if strings.Contains(err.Error(), "permission to delete") {
-					// Get the rate limit again to see if it still exists with original values
-					fmt.Printf("[TF-DELETE-DEBUG] Checking if rate limit still exists after deletion attempt\n")
-					rateLimit, getRLErr := client.GetRateLimit(projectID, model)
-					if getRLErr == nil && rateLimit != nil {
-						// The rate limit still exists, but we can consider it "deleted" from Terraform's perspective
-						fmt.Printf("[TF-DELETE-DEBUG] Rate limit still exists but marking as deleted in Terraform state\n")
-						fmt.Printf("[TF-DELETE-DEBUG] ========== END TERRAFORM DELETE RATE LIMIT DEBUG ==========\n\n")
-						return diags
-					}
-				}
-			}
-
-			// Convert the error to diagnostics
-			diags = append(diags, diag.Diagnostic{
-				Severity: diag.Error,
-				Summary:  "Error deleting OpenAI rate limit",
-				Detail:   fmt.Sprintf("Error deleting OpenAI rate limit: %s", err),
-			})
-			fmt.Printf("[TF-DELETE-DEBUG] Added error diagnostic\n")
-			fmt.Printf("[TF-DELETE-DEBUG] ========== END TERRAFORM DELETE RATE LIMIT DEBUG ==========\n\n")
-			return diags
+		// Handle permission errors gracefully
+		if strings.Contains(err.Error(), "permission") || strings.Contains(err.Error(), "403") {
+			tflog.Warn(ctx, fmt.Sprintf("Permission error deleting rate limit: %v", err))
+			// Still remove from state as we can't manage it
+			return nil
 		}
+		return diag.FromErr(fmt.Errorf("error deleting rate limit: %w", err))
 	}
 
-	fmt.Printf("[TF-DELETE-DEBUG] Rate limit deletion successful\n")
-
-	// Verify if rate limit was actually deleted/reset by checking the API again
-	fmt.Printf("[TF-DELETE-DEBUG] Verifying rate limit state after deletion\n")
-	verifyRateLimit, verifyErr := client.GetRateLimit(projectID, model)
-	if verifyErr != nil {
-		fmt.Printf("[TF-DELETE-DEBUG] Error verifying rate limit state: %v\n", verifyErr)
-	} else if verifyRateLimit != nil {
-		fmt.Printf("[TF-DELETE-DEBUG] Rate limit still exists after deletion (expected, since it's reset to defaults)\n")
-		fmt.Printf("[TF-DELETE-DEBUG] Updated rate limit details: ID=%s, Model=%s, MaxReq=%d, MaxTokens=%d\n",
-			verifyRateLimit.ID, verifyRateLimit.Model, verifyRateLimit.MaxRequestsPer1Minute, verifyRateLimit.MaxTokensPer1Minute)
-	} else {
-		fmt.Printf("[TF-DELETE-DEBUG] Rate limit not found after deletion (unexpected)\n")
-	}
-
-	fmt.Printf("[TF-DELETE-DEBUG] ========== END TERRAFORM DELETE RATE LIMIT DEBUG ==========\n\n")
-	tflog.Info(ctx, "END: Deleted OpenAI rate limit resource")
-	return diags
+	return nil
 }
 
 // Helper function to get min of two integers

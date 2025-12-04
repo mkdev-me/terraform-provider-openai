@@ -1,11 +1,11 @@
 # Create a new OpenAI project
 resource "openai_project" "development" {
-  title = "Development Project"
+  name = "Development Project"
 }
 
 # Create a production project
 resource "openai_project" "production" {
-  title = "Production API Services"
+  name = "Production API Services"
 }
 
 # Output the project ID

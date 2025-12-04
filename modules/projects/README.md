@@ -85,10 +85,8 @@ output "project_ids" {
 | `list_mode` | Whether to retrieve all projects instead of working with a single project | `bool` | `false` | no |
 | `name` | Name of the project | `string` | `null` | yes, when create_project is true |
 | `project_id` | ID of the project to use in data source mode | `string` | `null` | yes, when create_project is false and list_mode is false |
-| `is_default` | Whether this project should be the default project | `bool` | `false` | no |
 | `openai_admin_key` | OpenAI Admin API key | `string` | `null` | no |
-| `rate_limits` | Rate limits for the project | `list(object)` | `[]` | no |
-| `users` | Users to add to the project | `list(object)` | `[]` | no |
+| `organization_id` | OpenAI Organization ID (org-xxxx) | `string` | `""` | no |
 
 ## Outputs
 
@@ -100,7 +98,6 @@ output "project_ids" {
 | `project_name` | The name of the project |
 | `project_status` | The status of the project |
 | `project_created_at` | When the project was created |
-| `project_usage_limits` | Usage limits for the project |
 
 ### List Mode (list_mode = true)
 

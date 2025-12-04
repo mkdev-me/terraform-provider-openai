@@ -28,7 +28,7 @@ output "project_id" {
 # Use project data to set variables
 locals {
   project_active = data.openai_project.production.status == "active"
-  project_title  = data.openai_project.production.title
+  project_name   = data.openai_project.production.name
 }
 ```
 
@@ -45,9 +45,7 @@ locals {
 
 ### Read-Only
 
-- `archived_at` (Number) Timestamp when the project was archived (null if not archived)
-- `created` (Number) Timestamp when the project was created
+- `created_at` (Number) Timestamp when the project was created
 - `id` (String) The ID of this resource.
-- `is_initial` (Boolean) Whether this is the initial project
+- `name` (String) The name of the project
 - `status` (String) The status of the project
-- `title` (String) The title of the project
