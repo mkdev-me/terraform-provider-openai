@@ -141,13 +141,19 @@ func (c *OpenAIClient) SetTimeout(timeout time.Duration) {
 
 // Project represents a project in OpenAI
 type Project struct {
-	ID         string `json:"id"`
-	Object     string `json:"object"`
-	Created    int64  `json:"created"`
-	Status     string `json:"status"`
-	ArchivedAt *int64 `json:"archived_at"`
-	IsInitial  bool   `json:"is_initial"`
-	Title      string `json:"title"`
+	Object         string        `json:"object"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Description    string        `json:"description,omitempty"`
+	OrganizationID string        `json:"organization_id,omitempty"`
+	CreatedAt      *int64        `json:"created_at"`
+	ArchivedAt     *int64        `json:"archived_at"`
+	Status         string        `json:"status"`
+	IsDefault      bool          `json:"is_default,omitempty"`
+	BillingMode    string        `json:"billing_mode,omitempty"`
+	APIKeys        []APIKey      `json:"api_keys,omitempty"`
+	RateLimits     []RateLimit   `json:"rate_limits,omitempty"`
+	Users          []ProjectUser `json:"users,omitempty"`
 }
 
 // ProjectUser represents a user associated with a project
@@ -191,7 +197,9 @@ type APIKey struct {
 
 // CreateProjectRequest represents the request to create a project
 type CreateProjectRequest struct {
-	Title string `json:"title"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	IsDefault   bool   `json:"is_default,omitempty"`
 }
 
 // Error represents an error from the OpenAI API
@@ -559,64 +567,23 @@ type AssistantFunction struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// UserInfo represents the nested user details in an organization user response
-type UserInfo struct {
-	ID     string `json:"id"`
-	Object string `json:"object"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
-}
-
-// OrganizationUser represents an OpenAI organization user as returned by the API
-type OrganizationUser struct {
-	Object                         string   `json:"object"`
-	Created                        int64    `json:"created"`
-	IsDefault                      bool     `json:"is_default"`
-	IsScaleTierAuthorizedPurchaser bool     `json:"is_scale_tier_authorized_purchaser"`
-	IsScimManaged                  bool     `json:"is_scim_managed"`
-	IsServiceAccount               bool     `json:"is_service_account"`
-	Role                           string   `json:"role"`
-	User                           UserInfo `json:"user"`
-}
-
-// User provides a flattened view of OrganizationUser for easier access
-// This is a convenience wrapper used internally
+// User represents an OpenAI user
 type User struct {
-	ID                             string `json:"id"`
-	Object                         string `json:"object"`
-	Email                          string `json:"email"`
-	Name                           string `json:"name"`
-	Role                           string `json:"role"`
-	Created                        int64  `json:"created"`
-	IsDefault                      bool   `json:"is_default"`
-	IsScaleTierAuthorizedPurchaser bool   `json:"is_scale_tier_authorized_purchaser"`
-	IsScimManaged                  bool   `json:"is_scim_managed"`
-	IsServiceAccount               bool   `json:"is_service_account"`
-}
-
-// ToUser converts an OrganizationUser to a flattened User struct
-func (ou *OrganizationUser) ToUser() *User {
-	return &User{
-		ID:                             ou.User.ID,
-		Object:                         ou.Object,
-		Email:                          ou.User.Email,
-		Name:                           ou.User.Name,
-		Role:                           ou.Role,
-		Created:                        ou.Created,
-		IsDefault:                      ou.IsDefault,
-		IsScaleTierAuthorizedPurchaser: ou.IsScaleTierAuthorizedPurchaser,
-		IsScimManaged:                  ou.IsScimManaged,
-		IsServiceAccount:               ou.IsServiceAccount,
-	}
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	AddedAt int64  `json:"added_at"`
 }
 
 // UsersResponse represents the response from the list users API
 type UsersResponse struct {
-	Object  string             `json:"object"`
-	Data    []OrganizationUser `json:"data"`
-	FirstID string             `json:"first_id"`
-	LastID  string             `json:"last_id"`
-	HasMore bool               `json:"has_more"`
+	Object  string `json:"object"`
+	Data    []User `json:"data"`
+	FirstID string `json:"first_id"`
+	LastID  string `json:"last_id"`
+	HasMore bool   `json:"has_more"`
 }
 
 // ListUsers retrieves a list of users in the organization
@@ -693,13 +660,12 @@ func (c *OpenAIClient) FindUserByEmail(email string) (*User, bool, error) {
 		return nil, false, nil
 	}
 
-	// Return the first matching user (convert from OrganizationUser to User)
-	orgUser := usersResponse.Data[0]
-	user := orgUser.ToUser()
+	// Return the first matching user
+	user := usersResponse.Data[0]
 
 	// Double check that the email matches exactly (case insensitive)
 	if strings.EqualFold(user.Email, email) {
-		return user, true, nil
+		return &user, true, nil
 	}
 
 	// No exact match found
@@ -725,14 +691,13 @@ func (c *OpenAIClient) GetUser(userID string) (*User, bool, error) {
 		return nil, false, fmt.Errorf("error getting user: %w", err)
 	}
 
-	// Parse the response into OrganizationUser (new API format)
-	var orgUser OrganizationUser
-	if err := json.Unmarshal(respBody, &orgUser); err != nil {
+	// Parse the response
+	var user User
+	if err := json.Unmarshal(respBody, &user); err != nil {
 		return nil, false, fmt.Errorf("error decoding user response: %w", err)
 	}
 
-	// Convert to flattened User struct
-	return orgUser.ToUser(), true, nil
+	return &user, true, nil
 }
 
 // UpdateUserRole updates a user's role
@@ -754,14 +719,13 @@ func (c *OpenAIClient) UpdateUserRole(userID string, role string) (*User, error)
 		return nil, fmt.Errorf("error updating user role: %w", err)
 	}
 
-	// Parse the response into OrganizationUser (new API format)
-	var orgUser OrganizationUser
-	if err := json.Unmarshal(respBody, &orgUser); err != nil {
+	// Parse the response
+	var user User
+	if err := json.Unmarshal(respBody, &user); err != nil {
 		return nil, fmt.Errorf("error decoding user response: %w", err)
 	}
 
-	// Convert to flattened User struct
-	return orgUser.ToUser(), nil
+	return &user, nil
 }
 
 // DeleteUser removes a user from the organization
@@ -1111,15 +1075,25 @@ func (c *OpenAIClient) ListProjects(limit int, includeArchived bool, after strin
 	return &resp, nil
 }
 
-// CreateProject creates a new project with the given title
-func (c *OpenAIClient) CreateProject(title string) (*Project, error) {
+// CreateProject creates a new project with the given name and description
+func (c *OpenAIClient) CreateProject(name, description string, isDefault bool) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"title": title,
+		"name": name,
+	}
+
+	// Only include description if it's not empty
+	if description != "" {
+		requestBody["description"] = description
+	}
+
+	// Only include is_default if it's true (don't send false)
+	if isDefault {
+		requestBody["is_default"] = isDefault
 	}
 
 	// Debug information
-	fmt.Printf("Creating project with title: %s\n", title)
+	fmt.Printf("Creating project with name: %s\n", name)
 	fmt.Printf("Request body: %+v\n", requestBody)
 
 	// Use the exact endpoint from the curl command that works
@@ -1166,11 +1140,21 @@ func (c *OpenAIClient) GetProject(id string) (*Project, error) {
 	return &project, nil
 }
 
-// UpdateProject updates an existing project with the given title
-func (c *OpenAIClient) UpdateProject(id, title string) (*Project, error) {
+// UpdateProject updates an existing project with the given details
+func (c *OpenAIClient) UpdateProject(id, name, description string, isDefault bool) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
-		"title": title,
+		"name": name,
+	}
+
+	// Only include description if it's not empty
+	if description != "" {
+		requestBody["description"] = description
+	}
+
+	// Only include is_default if it's true (don't send false)
+	if isDefault {
+		requestBody["is_default"] = isDefault
 	}
 
 	// Use the exact endpoint structure consistent with the curl command

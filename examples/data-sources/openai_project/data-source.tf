@@ -13,5 +13,5 @@ output "project_id" {
 # Use project data to set variables
 locals {
   project_active = data.openai_project.production.status == "active"
-  project_title  = data.openai_project.production.title
+  project_name   = data.openai_project.production.name
 }
