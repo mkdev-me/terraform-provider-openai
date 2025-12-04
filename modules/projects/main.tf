@@ -10,9 +10,8 @@ terraform {
 
 # Create an OpenAI project
 resource "openai_project" "project" {
-  provider   = openai
-  name       = var.name
-  is_default = var.is_default
+  provider = openai
+  name     = var.name
 }
 
 # Outputs from the actual project resource
@@ -31,7 +30,3 @@ output "created_at" {
   value       = openai_project.project.created_at
 }
 
-output "is_default" {
-  description = "Whether the OpenAI project is the default project"
-  value       = openai_project.project.is_default
-}

@@ -41,29 +41,3 @@ variable "organization_id" {
   default     = ""
 }
 
-variable "rate_limits" {
-  description = "Rate limits for the project"
-  type = list(object({
-    model                        = string
-    max_requests_per_minute      = optional(number)
-    max_tokens_per_minute        = optional(number)
-    max_images_per_minute        = optional(number)
-    batch_1_day_max_input_tokens = optional(number)
-  }))
-  default = []
-}
-
-variable "users" {
-  description = "Users to add to the project"
-  type = list(object({
-    user_id = string
-    role    = string
-  }))
-  default = []
-}
-
-variable "is_default" {
-  description = "Whether this project should be the default project"
-  type        = bool
-  default     = false
-}

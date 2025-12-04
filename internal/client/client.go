@@ -141,18 +141,12 @@ func (c *OpenAIClient) SetTimeout(timeout time.Duration) {
 
 // Project represents a project in OpenAI
 type Project struct {
-	Object         string        `json:"object"`
-	ID             string        `json:"id"`
-	Name           string        `json:"name"`
-	OrganizationID string        `json:"organization_id,omitempty"`
-	CreatedAt      *int64        `json:"created_at"`
-	ArchivedAt     *int64        `json:"archived_at"`
-	Status         string        `json:"status"`
-	IsDefault      bool          `json:"is_default,omitempty"`
-	BillingMode    string        `json:"billing_mode,omitempty"`
-	APIKeys        []APIKey      `json:"api_keys,omitempty"`
-	RateLimits     []RateLimit   `json:"rate_limits,omitempty"`
-	Users          []ProjectUser `json:"users,omitempty"`
+	Object     string `json:"object"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	CreatedAt  *int64 `json:"created_at"`
+	ArchivedAt *int64 `json:"archived_at"`
+	Status     string `json:"status"`
 }
 
 // ProjectUser represents a user associated with a project
@@ -192,13 +186,6 @@ type APIKey struct {
 	Name       string `json:"name"`
 	CreatedAt  *int64 `json:"created_at"`
 	LastUsedAt *int64 `json:"last_used_at,omitempty"`
-}
-
-// CreateProjectRequest represents the request to create a project
-type CreateProjectRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	IsDefault   bool   `json:"is_default,omitempty"`
 }
 
 // Error represents an error from the OpenAI API
