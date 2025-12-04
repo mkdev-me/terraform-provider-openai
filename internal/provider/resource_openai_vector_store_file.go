@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -232,9 +234,13 @@ func resourceOpenAIVectorStoreFileCreate(ctx context.Context, d *schema.Resource
 		return diag.Errorf("Error parsing response: %s", err.Error())
 	}
 
+	tflog.Debug(ctx, fmt.Sprintf("Vector store file created successfully: %s", string(responseBytes)))
+
 	// Set ID and other attributes
 	if id, ok := response["id"]; ok && id != nil {
-		d.SetId(id.(string))
+		fileIDFromResponse := id.(string)
+		d.SetId(fileIDFromResponse)
+		tflog.Info(ctx, fmt.Sprintf("Vector store file ID set to: %s", fileIDFromResponse))
 	} else {
 		return diag.Errorf("Response missing required 'id' field")
 	}
@@ -257,7 +263,85 @@ func resourceOpenAIVectorStoreFileCreate(ctx context.Context, d *schema.Resource
 		}
 	}
 
-	return resourceOpenAIVectorStoreFileRead(ctx, d, m)
+	// Wait for the file to be available in the vector store with retry logic.
+	// This addresses eventual consistency issues where the OpenAI API returns
+	// "No file found" errors immediately after file creation (issue #35).
+	return resourceOpenAIVectorStoreFileReadWithRetry(ctx, d, m, 5)
+}
+
+// containsRetriableError checks if an error message indicates a retriable error.
+// Uses case-insensitive matching to catch "404 Not Found", "No file found", etc.
+func containsRetriableError(message string) bool {
+	lowerMsg := strings.ToLower(message)
+	return strings.Contains(lowerMsg, "no file found") || strings.Contains(lowerMsg, "not found")
+}
+
+// resourceOpenAIVectorStoreFileReadWithRetry attempts to read the vector store file with retry logic
+// to handle eventual consistency issues with the OpenAI API.
+//
+// When a vector store file is created, the OpenAI API may temporarily return "file not found"
+// errors due to eventual consistency delays in their backend. This is especially common when
+// creating multiple files simultaneously.
+//
+// Retry Behavior:
+// - Retries up to maxRetries times (default: 5)
+// - Uses exponential backoff: 1s, 2s, 4s, 8s, 16s (max ~31s total)
+// - Only retries on "not found" errors (case-insensitive)
+// - Returns immediately on other errors (unauthorized, rate limit, etc.)
+// - Logs retry attempts for debugging
+//
+// Parameters:
+//   - ctx: Context for logging
+//   - d: Resource data
+//   - m: Provider metadata containing OpenAI client
+//   - maxRetries: Maximum number of read attempts (must be >= 1)
+//
+// Returns:
+//   - nil diagnostics on success
+//   - diagnostics with error details if all retries are exhausted or non-retriable error occurs
+func resourceOpenAIVectorStoreFileReadWithRetry(ctx context.Context, d *schema.ResourceData, m interface{}, maxRetries int) diag.Diagnostics {
+	// Validate maxRetries configuration
+	if maxRetries <= 0 {
+		return diag.Errorf("maxRetries must be at least 1 for vector store file read retries")
+	}
+
+	var lastErr diag.Diagnostics
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 1s, 2s, 4s, 8s, 16s
+			backoffDuration := time.Duration(1<<uint(attempt-1)) * time.Second
+			tflog.Info(ctx, fmt.Sprintf("Retrying vector store file read after %v (attempt %d/%d)", backoffDuration, attempt+1, maxRetries))
+			time.Sleep(backoffDuration)
+		}
+
+		diags := resourceOpenAIVectorStoreFileRead(ctx, d, m)
+		if diags == nil || !diags.HasError() {
+			return diags
+		}
+
+		// Check if the error is a "file not found" error, which indicates we should retry
+		// Use case-insensitive matching to catch "404 Not Found", "No file found", etc.
+		shouldRetry := false
+		for _, diag := range diags {
+			if containsRetriableError(diag.Summary) || containsRetriableError(diag.Detail) {
+				shouldRetry = true
+				break
+			}
+		}
+
+		if !shouldRetry {
+			// If it's not a "file not found" error, return immediately
+			return diags
+		}
+
+		lastErr = diags
+		tflog.Warn(ctx, fmt.Sprintf("Vector store file not found, will retry (attempt %d/%d)", attempt+1, maxRetries))
+	}
+
+	// All retries exhausted
+	tflog.Error(ctx, fmt.Sprintf("Failed to read vector store file after %d attempts", maxRetries))
+	return lastErr
 }
 
 func resourceOpenAIVectorStoreFileRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -267,10 +351,14 @@ func resourceOpenAIVectorStoreFileRead(ctx context.Context, d *schema.ResourceDa
 	}
 
 	vectorStoreID := d.Get("vector_store_id").(string)
+	fileID := d.Id()
+
+	tflog.Debug(ctx, fmt.Sprintf("Reading vector store file: vector_store_id=%s, file_id=%s", vectorStoreID, fileID))
 
 	// Make API call
-	responseBytes, err := client.DoRequest("GET", fmt.Sprintf("/v1/vector_stores/%s/files/%s", vectorStoreID, d.Id()), nil)
+	responseBytes, err := client.DoRequest("GET", fmt.Sprintf("/v1/vector_stores/%s/files/%s", vectorStoreID, fileID), nil)
 	if err != nil {
+		tflog.Error(ctx, fmt.Sprintf("Failed to read vector store file: %s", err.Error()))
 		return diag.Errorf("Error reading vector store file: %s", err.Error())
 	}
 
