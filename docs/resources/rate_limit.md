@@ -46,9 +46,6 @@ resource "openai_rate_limit" "batch_limits" {
   model      = "gpt-4o"
 
   batch_1_day_max_input_tokens = 1000000
-
-  # Acknowledge that rate limits cannot be truly deleted
-  ignore_rate_limit_warning = true
 }
 ```
 
@@ -63,7 +60,6 @@ resource "openai_rate_limit" "batch_limits" {
 ### Optional
 
 - `batch_1_day_max_input_tokens` (Number) Maximum number of input tokens per day for batch processing.
-- `ignore_rate_limit_warning` (Boolean) Set to true to acknowledge that OpenAI rate limits cannot be truly deleted and will be reset to defaults on removal.
 - `max_audio_megabytes_per_1_minute` (Number) Maximum audio megabytes per minute.
 - `max_images_per_minute` (Number) Maximum number of images per minute.
 - `max_requests_per_1_day` (Number) Maximum number of requests per day.

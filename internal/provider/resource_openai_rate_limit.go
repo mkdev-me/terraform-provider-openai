@@ -74,12 +74,6 @@ func resourceOpenAIRateLimit() *schema.Resource {
 				Computed:    true,
 				Description: "The ID of the rate limit.",
 			},
-			"ignore_rate_limit_warning": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Set to true to acknowledge that OpenAI rate limits cannot be truly deleted and will be reset to defaults on removal.",
-			},
 		},
 	}
 }

@@ -31,7 +31,4 @@ resource "openai_rate_limit" "batch_limits" {
   model      = "gpt-4o"
 
   batch_1_day_max_input_tokens = 1000000
-
-  # Acknowledge that rate limits cannot be truly deleted
-  ignore_rate_limit_warning = true
 }
