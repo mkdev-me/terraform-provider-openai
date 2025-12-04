@@ -13,7 +13,6 @@ func TestAccResourceOpenAIProject_basic(t *testing.T) {
 
 	var projectID string
 	projectName := "tf-acc-test-project"
-	projectDesc := "Terraform acceptance test project"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -21,13 +20,11 @@ func TestAccResourceOpenAIProject_basic(t *testing.T) {
 		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceOpenAIProjectBasic(projectName, projectDesc),
+				Config: testAccResourceOpenAIProjectBasic(projectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
 					resource.TestCheckResourceAttr("openai_project.test", "name", projectName),
-					resource.TestCheckResourceAttr("openai_project.test", "description", projectDesc),
 					resource.TestCheckResourceAttrSet("openai_project.test", "created_at"),
-					resource.TestCheckResourceAttrSet("openai_project.test", "updated_at"),
 				),
 			},
 			{
@@ -44,9 +41,7 @@ func TestAccResourceOpenAIProject_update(t *testing.T) {
 
 	var projectID string
 	projectName := "tf-acc-test-project"
-	projectDesc := "Terraform acceptance test project"
 	projectNameUpdated := "tf-acc-test-project-updated"
-	projectDescUpdated := "Terraform acceptance test project updated"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -54,19 +49,17 @@ func TestAccResourceOpenAIProject_update(t *testing.T) {
 		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceOpenAIProjectBasic(projectName, projectDesc),
+				Config: testAccResourceOpenAIProjectBasic(projectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
 					resource.TestCheckResourceAttr("openai_project.test", "name", projectName),
-					resource.TestCheckResourceAttr("openai_project.test", "description", projectDesc),
 				),
 			},
 			{
-				Config: testAccResourceOpenAIProjectBasic(projectNameUpdated, projectDescUpdated),
+				Config: testAccResourceOpenAIProjectBasic(projectNameUpdated),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
 					resource.TestCheckResourceAttr("openai_project.test", "name", projectNameUpdated),
-					resource.TestCheckResourceAttr("openai_project.test", "description", projectDescUpdated),
 				),
 			},
 		},
@@ -78,7 +71,6 @@ func TestAccResourceOpenAIProject_withUsageLimits(t *testing.T) {
 
 	var projectID string
 	projectName := "tf-acc-test-project-limits"
-	projectDesc := "Terraform acceptance test project with usage limits"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheck(t) },
@@ -86,11 +78,10 @@ func TestAccResourceOpenAIProject_withUsageLimits(t *testing.T) {
 		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceOpenAIProjectWithUsageLimits(projectName, projectDesc, 100.0, 1000000),
+				Config: testAccResourceOpenAIProjectWithUsageLimits(projectName, 100.0, 1000000),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
 					resource.TestCheckResourceAttr("openai_project.test", "name", projectName),
-					resource.TestCheckResourceAttr("openai_project.test", "description", projectDesc),
 					resource.TestCheckResourceAttr("openai_project.test", "usage_limits.0.max_budget", "100"),
 					resource.TestCheckResourceAttr("openai_project.test", "usage_limits.0.max_tokens", "1000000"),
 				),
@@ -141,25 +132,23 @@ func testAccCheckOpenAIProjectDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccResourceOpenAIProjectBasic(name, description string) string {
+func testAccResourceOpenAIProjectBasic(name string) string {
 	return fmt.Sprintf(`
 resource "openai_project" "test" {
-  name        = "%s"
-  description = "%s"
+  name = "%s"
 }
-`, name, description)
+`, name)
 }
 
-func testAccResourceOpenAIProjectWithUsageLimits(name, description string, maxBudget float64, maxTokens int) string {
+func testAccResourceOpenAIProjectWithUsageLimits(name string, maxBudget float64, maxTokens int) string {
 	return fmt.Sprintf(`
 resource "openai_project" "test" {
-  name        = "%s"
-  description = "%s"
-  
+  name = "%s"
+
   usage_limits {
     max_budget = %f
     max_tokens = %d
   }
 }
-`, name, description, maxBudget, maxTokens)
+`, name, maxBudget, maxTokens)
 }

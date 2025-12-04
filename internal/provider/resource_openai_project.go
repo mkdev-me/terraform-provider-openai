@@ -39,11 +39,6 @@ func resourceOpenAIProject() *schema.Resource {
 				Required:    true,
 				Description: "The name of the project",
 			},
-			"description": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "A description of the project",
-			},
 			"created_at": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -73,13 +68,11 @@ func resourceOpenAIProjectCreate(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	name := d.Get("name").(string)
-	description := d.Get("description").(string)
 
 	log.Printf("[DEBUG] Creating OpenAI project with name: %s", name)
 
 	// Create the project using the OpenAI API
-	// Pass false as default value for is_default since it's not in the schema
-	project, err := c.CreateProject(name, description, false)
+	project, err := c.CreateProject(name)
 	if err != nil {
 		return diag.Errorf("error creating project: %s", err)
 	}
@@ -112,10 +105,6 @@ func resourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, meta
 	// Set basic fields
 	if err := d.Set("name", project.Name); err != nil {
 		return diag.Errorf("error setting name: %s", err)
-	}
-
-	if err := d.Set("description", project.Description); err != nil {
-		return diag.Errorf("error setting description: %s", err)
 	}
 
 	if project.Status != "" {
@@ -155,14 +144,12 @@ func resourceOpenAIProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	name := d.Get("name").(string)
-	description := d.Get("description").(string)
 
 	log.Printf("[DEBUG] Updating OpenAI project with ID: %s, name: %s", d.Id(), name)
 
 	// Update the project using the OpenAI API
 	// Note: The API uses POST for updates, not PATCH
-	// Pass false for is_default since it's not in the schema
-	_, err = c.UpdateProject(d.Id(), name, description, false)
+	_, err = c.UpdateProject(d.Id(), name)
 	if err != nil {
 		return diag.Errorf("error updating project: %s", err)
 	}
@@ -213,10 +200,6 @@ func resourceOpenAIProjectImport(ctx context.Context, d *schema.ResourceData, me
 	// Set all fields
 	if err := d.Set("name", project.Name); err != nil {
 		return nil, fmt.Errorf("error setting name: %s", err)
-	}
-
-	if err := d.Set("description", project.Description); err != nil {
-		return nil, fmt.Errorf("error setting description: %s", err)
 	}
 
 	if project.CreatedAt != nil {

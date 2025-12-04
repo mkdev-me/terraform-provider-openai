@@ -144,7 +144,6 @@ type Project struct {
 	Object         string        `json:"object"`
 	ID             string        `json:"id"`
 	Name           string        `json:"name"`
-	Description    string        `json:"description,omitempty"`
 	OrganizationID string        `json:"organization_id,omitempty"`
 	CreatedAt      *int64        `json:"created_at"`
 	ArchivedAt     *int64        `json:"archived_at"`
@@ -1075,21 +1074,11 @@ func (c *OpenAIClient) ListProjects(limit int, includeArchived bool, after strin
 	return &resp, nil
 }
 
-// CreateProject creates a new project with the given name and description
-func (c *OpenAIClient) CreateProject(name, description string, isDefault bool) (*Project, error) {
+// CreateProject creates a new project with the given name
+func (c *OpenAIClient) CreateProject(name string) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
 		"name": name,
-	}
-
-	// Only include description if it's not empty
-	if description != "" {
-		requestBody["description"] = description
-	}
-
-	// Only include is_default if it's true (don't send false)
-	if isDefault {
-		requestBody["is_default"] = isDefault
 	}
 
 	// Debug information
@@ -1140,21 +1129,11 @@ func (c *OpenAIClient) GetProject(id string) (*Project, error) {
 	return &project, nil
 }
 
-// UpdateProject updates an existing project with the given details
-func (c *OpenAIClient) UpdateProject(id, name, description string, isDefault bool) (*Project, error) {
+// UpdateProject updates an existing project with the given name
+func (c *OpenAIClient) UpdateProject(id, name string) (*Project, error) {
 	// Create the request body
 	requestBody := map[string]interface{}{
 		"name": name,
-	}
-
-	// Only include description if it's not empty
-	if description != "" {
-		requestBody["description"] = description
-	}
-
-	// Only include is_default if it's true (don't send false)
-	if isDefault {
-		requestBody["is_default"] = isDefault
 	}
 
 	// Use the exact endpoint structure consistent with the curl command
