@@ -66,30 +66,6 @@ func TestAccResourceOpenAIProject_update(t *testing.T) {
 	})
 }
 
-func TestAccResourceOpenAIProject_withUsageLimits(t *testing.T) {
-	t.Skip("Skipping until properly implemented and OpenAI API credentials are configured for tests")
-
-	var projectID string
-	projectName := "tf-acc-test-project-limits"
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccResourceOpenAIProjectWithUsageLimits(projectName, 100.0, 1000000),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
-					resource.TestCheckResourceAttr("openai_project.test", "name", projectName),
-					resource.TestCheckResourceAttr("openai_project.test", "usage_limits.0.max_budget", "100"),
-					resource.TestCheckResourceAttr("openai_project.test", "usage_limits.0.max_tokens", "1000000"),
-				),
-			},
-		},
-	})
-}
-
 func testAccCheckOpenAIProjectExists(n string, projectID *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
@@ -138,17 +114,4 @@ resource "openai_project" "test" {
   name = "%s"
 }
 `, name)
-}
-
-func testAccResourceOpenAIProjectWithUsageLimits(name string, maxBudget float64, maxTokens int) string {
-	return fmt.Sprintf(`
-resource "openai_project" "test" {
-  name = "%s"
-
-  usage_limits {
-    max_budget = %f
-    max_tokens = %d
-  }
-}
-`, name, maxBudget, maxTokens)
 }

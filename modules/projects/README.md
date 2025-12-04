@@ -98,7 +98,6 @@ output "project_ids" {
 | `project_name` | The name of the project |
 | `project_status` | The status of the project |
 | `project_created_at` | When the project was created |
-| `project_usage_limits` | Usage limits for the project |
 
 ### List Mode (list_mode = true)
 

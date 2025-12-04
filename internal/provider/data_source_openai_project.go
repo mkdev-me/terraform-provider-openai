@@ -14,19 +14,11 @@ import (
 
 // ProjectResponse represents the API response for an OpenAI project
 type ProjectResponse struct {
-	ID          string      `json:"id"`
-	Object      string      `json:"object"`
-	Name        string      `json:"name"`
-	CreatedAt   int         `json:"created_at"`
-	Status      string      `json:"status"`
-	UsageLimits UsageLimits `json:"usage_limits"`
-}
-
-// UsageLimits represents the usage limits for a project
-type UsageLimits struct {
-	MaxMonthlyDollars   float64 `json:"max_monthly_dollars"`
-	MaxParallelRequests int     `json:"max_parallel_requests"`
-	MaxTokens           int     `json:"max_tokens"`
+	ID        string `json:"id"`
+	Object    string `json:"object"`
+	Name      string `json:"name"`
+	CreatedAt int    `json:"created_at"`
+	Status    string `json:"status"`
 }
 
 // dataSourceOpenAIProject returns a schema.Resource that represents a data source for an OpenAI project.
@@ -60,30 +52,6 @@ func dataSourceOpenAIProject() *schema.Resource {
 				Type:        schema.TypeInt,
 				Computed:    true,
 				Description: "Timestamp when the project was created",
-			},
-			"usage_limits": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"max_monthly_dollars": {
-							Type:        schema.TypeFloat,
-							Computed:    true,
-							Description: "Maximum monthly spend in dollars",
-						},
-						"max_parallel_requests": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Maximum number of parallel requests allowed",
-						},
-						"max_tokens": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Maximum number of tokens per request",
-						},
-					},
-				},
-				Description: "Usage limits for the project",
 			},
 		},
 	}
@@ -173,18 +141,6 @@ func dataSourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, m 
 		return diag.FromErr(err)
 	}
 	if err := d.Set("created_at", project.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Set usage limits
-	usageLimits := []map[string]interface{}{
-		{
-			"max_monthly_dollars":   project.UsageLimits.MaxMonthlyDollars,
-			"max_parallel_requests": project.UsageLimits.MaxParallelRequests,
-			"max_tokens":            project.UsageLimits.MaxTokens,
-		},
-	}
-	if err := d.Set("usage_limits", usageLimits); err != nil {
 		return diag.FromErr(err)
 	}
 

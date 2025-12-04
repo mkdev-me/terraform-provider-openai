@@ -20,10 +20,6 @@ output "project_created_at" {
   value       = var.list_mode ? null : (var.create_project ? one(openai_project.project[*].created_at) : one(data.openai_project.project[*].created_at))
 }
 
-output "project_usage_limits" {
-  description = "Usage limits for the project (only in single project mode)"
-  value       = var.list_mode ? null : (var.create_project ? null : one(data.openai_project.project[*].usage_limits))
-}
 
 # List mode outputs
 output "projects" {
