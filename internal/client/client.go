@@ -1302,426 +1302,117 @@ func (c *OpenAIClient) CreateRateLimit(projectID, resourceType, limitType string
 	return &rateLimit, nil
 }
 
-// GetRateLimit retrieves information about a specific rate limit.
+// GetRateLimit retrieves information about a specific rate limit by model name or rate limit ID.
+// It lists all rate limits for the project and finds the matching one.
 //
 // Parameters:
 //   - projectID: The ID of the project the rate limit belongs to
-//   - rateLimitID: The ID of the rate limit to retrieve
+//   - modelOrRateLimitID: Either a model name (e.g., "gpt-4o") or rate limit ID (e.g., "rl-gpt-4o")
 //
 // Returns:
 //   - A RateLimit object with details about the requested rate limit
 //   - An error if the operation failed or the rate limit doesn't exist
 func (c *OpenAIClient) GetRateLimit(projectID, modelOrRateLimitID string) (*RateLimit, error) {
-	// Debug: Input parameters
-	fmt.Printf("[DEBUG] GetRateLimit called with:\n")
-	fmt.Printf("  - Project ID: %s\n", projectID)
-	fmt.Printf("  - Model or Rate Limit ID: %s\n", modelOrRateLimitID)
-
-	// Step 1: List all rate limits for the project
-	fmt.Printf("[DEBUG] Listing all rate limits for project %s\n", projectID)
 	rateLimits, err := c.ListRateLimits(projectID)
 	if err != nil {
-		fmt.Printf("[ERROR] Failed to list rate limits: %v\n", err)
 		return nil, fmt.Errorf("failed to list rate limits: %w", err)
 	}
 
-	// Log the rate limits we got for debugging
-	fmt.Printf("[DEBUG] Found %d rate limits for project\n", len(rateLimits.Data))
-	for i, rl := range rateLimits.Data {
-		fmt.Printf("[DEBUG] Rate limit #%d: ID=%s, Model=%s\n", i+1, rl.ID, rl.Model)
+	// Normalize the search - if it's a rate limit ID, extract the model name
+	searchModel := modelOrRateLimitID
+	if strings.HasPrefix(modelOrRateLimitID, "rl-") {
+		searchModel = strings.TrimPrefix(modelOrRateLimitID, "rl-")
 	}
 
-	// Determine what we're looking for - model or rate limit ID
-	model := ""
-	searchID := modelOrRateLimitID
-
-	if !strings.HasPrefix(modelOrRateLimitID, "rl-") {
-		// If it doesn't have "rl-" prefix, it's a model name
-		model = modelOrRateLimitID
-		searchID = "rl-" + modelOrRateLimitID
-		fmt.Printf("[DEBUG] Searching by MODEL: %s (ID would be %s)\n", model, searchID)
-	} else {
-		// It has the prefix, treat it as an ID but also extract the model
-		// Try to extract model name from the ID
-		parts := strings.Split(modelOrRateLimitID[3:], "-")
-		if len(parts) >= 1 {
-			model = parts[0]
-			if len(parts) > 1 {
-				// For multi-part model names like "gpt-4o-mini"
-				if !containsProjectSuffix(parts[len(parts)-1]) {
-					model = strings.Join(parts, "-")
-				} else {
-					model = strings.Join(parts[:len(parts)-1], "-")
-				}
-			}
-		}
-		fmt.Printf("[DEBUG] Searching by ID: %s (extracted model: %s)\n", searchID, model)
-	}
-
-	// SIMPLE MATCHING STRATEGY:
-	// 1. Try exact ID match first
-	for _, rl := range rateLimits.Data {
-		if rl.ID == searchID {
-			fmt.Printf("[DEBUG] Found exact ID match: %s (Model: %s)\n", rl.ID, rl.Model)
-			return &rl, nil
+	// Search for exact model match first
+	for i := range rateLimits.Data {
+		if rateLimits.Data[i].Model == searchModel {
+			return &rateLimits.Data[i], nil
 		}
 	}
 
-	// 2. Try ID prefix match (accounts for project-specific suffixes)
-	for _, rl := range rateLimits.Data {
-		if strings.HasPrefix(rl.ID, searchID) || rl.ID == searchID {
-			fmt.Printf("[DEBUG] Found ID prefix match: %s (Model: %s)\n", rl.ID, rl.Model)
-			return &rl, nil
+	// Try exact ID match
+	for i := range rateLimits.Data {
+		if rateLimits.Data[i].ID == modelOrRateLimitID {
+			return &rateLimits.Data[i], nil
 		}
 	}
 
-	// 3. Try model name match as fallback
-	if model != "" {
-		for _, rl := range rateLimits.Data {
-			if rl.Model == model {
-				fmt.Printf("[DEBUG] Found by model name match: %s (ID: %s)\n", rl.Model, rl.ID)
-				return &rl, nil
-			}
-		}
-	}
-
-	// 4. Last resort: try partial model matching for compound model names
-	if model != "" && strings.Contains(model, "-") {
-		modelBase := strings.Split(model, "-")[0]
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.Model, modelBase) {
-				fmt.Printf("[DEBUG] Found by partial model name match: %s matches base %s (ID: %s)\n",
-					rl.Model, modelBase, rl.ID)
-				return &rl, nil
-			}
-		}
-	}
-
-	// Not found after all attempts
-	fmt.Printf("[ERROR] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
-	return nil, fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
-		projectID, modelOrRateLimitID)
-}
-
-// Helper function to check if a string looks like a project suffix
-// (typically 8 or fewer characters at the end of a rate limit ID)
-func containsProjectSuffix(s string) bool {
-	return len(s) <= 8 && len(s) > 0
+	return nil, fmt.Errorf("rate limit not found for model/ID '%s' in project '%s'", modelOrRateLimitID, projectID)
 }
 
 // UpdateRateLimit modifies an existing rate limit for a project.
+// Uses POST to /v1/organization/projects/{project_id}/rate_limits/{rate_limit_id}
 func (c *OpenAIClient) UpdateRateLimit(projectID, modelOrRateLimitID string, maxRequestsPerMinute, maxTokensPerMinute, maxImagesPerMinute, batch1DayMaxInputTokens, maxAudioMegabytesPer1Minute, maxRequestsPer1Day *int) (*RateLimit, error) {
-	// Debug: Input parameters
-	fmt.Printf("[UPDATE-RL-DEBUG] ========== UpdateRateLimit DEBUG ==========\n")
-	fmt.Printf("[UPDATE-RL-DEBUG] ProjectID: %s\n", projectID)
-	fmt.Printf("[UPDATE-RL-DEBUG] ModelOrRateLimitID: %s\n", modelOrRateLimitID)
-
-	// Step 1: List all rate limits and find the one we want to update
-	fmt.Printf("[UPDATE-RL-DEBUG] Listing all rate limits to find target rate limit\n")
-	rateLimits, err := c.ListRateLimits(projectID)
+	// First, find the rate limit to get its ID
+	targetRateLimit, err := c.GetRateLimit(projectID, modelOrRateLimitID)
 	if err != nil {
-		fmt.Printf("[UPDATE-RL-DEBUG] Failed to list rate limits: %v\n", err)
-		return nil, fmt.Errorf("failed to list rate limits: %w", err)
+		return nil, fmt.Errorf("failed to find rate limit: %w", err)
 	}
 
-	// Search logic similar to GetRateLimit
-	model := ""
-	searchID := modelOrRateLimitID
-
-	if !strings.HasPrefix(modelOrRateLimitID, "rl-") {
-		// If it doesn't have "rl-" prefix, it's a model name
-		model = modelOrRateLimitID
-		searchID = "rl-" + modelOrRateLimitID
-		fmt.Printf("[UPDATE-RL-DEBUG] Searching by MODEL: %s (ID would be %s)\n", model, searchID)
-	} else {
-		// It has the prefix, treat it as an ID but also extract the model
-		// Try to extract model name from the ID
-		parts := strings.Split(modelOrRateLimitID[3:], "-")
-		if len(parts) >= 1 {
-			model = parts[0]
-			if len(parts) > 1 {
-				// For multi-part model names like "gpt-4o-mini"
-				if !containsProjectSuffix(parts[len(parts)-1]) {
-					model = strings.Join(parts, "-")
-				} else {
-					model = strings.Join(parts[:len(parts)-1], "-")
-				}
-			}
-		}
-		fmt.Printf("[UPDATE-RL-DEBUG] Searching by ID: %s (extracted model: %s)\n", searchID, model)
-	}
-
-	// Find the target rate limit
-	var targetRateLimit *RateLimit
-
-	// 1. Try exact ID match first
-	for _, rl := range rateLimits.Data {
-		if rl.ID == searchID {
-			fmt.Printf("[UPDATE-RL-DEBUG] Found exact ID match: %s (Model: %s)\n", rl.ID, rl.Model)
-			targetRateLimit = &rl
-			break
-		}
-	}
-
-	// 2. Try ID prefix match (accounts for project-specific suffixes)
-	if targetRateLimit == nil {
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.ID, searchID+"-") || rl.ID == searchID {
-				fmt.Printf("[UPDATE-RL-DEBUG] Found ID prefix match: %s (Model: %s)\n", rl.ID, rl.Model)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 3. Try model name match as fallback
-	if targetRateLimit == nil && model != "" {
-		for _, rl := range rateLimits.Data {
-			if rl.Model == model {
-				fmt.Printf("[UPDATE-RL-DEBUG] Found by model name match: %s (ID: %s)\n", rl.Model, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 4. Last resort: try partial model matching for compound model names
-	if targetRateLimit == nil && model != "" && strings.Contains(model, "-") {
-		modelBase := strings.Split(model, "-")[0]
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.Model, modelBase) {
-				fmt.Printf("[UPDATE-RL-DEBUG] Found by partial model name match: %s matches base %s (ID: %s)\n",
-					rl.Model, modelBase, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	if targetRateLimit == nil {
-		fmt.Printf("[UPDATE-RL-DEBUG] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
-		return nil, fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
-			projectID, modelOrRateLimitID)
-	}
-
-	// Now we have the target rate limit, construct the URL for update using the CORRECT ID
-	effectiveRateLimitID := targetRateLimit.ID
-	fmt.Printf("[UPDATE-RL-DEBUG] Found rate limit to update: %s (Model: %s)\n", effectiveRateLimitID, targetRateLimit.Model)
-
-	// Construct the direct path with the rate limit ID included
-	path := fmt.Sprintf("/organization/projects/%s/rate_limits/%s", projectID, effectiveRateLimitID)
-	fmt.Printf("[UPDATE-RL-DEBUG] Using path for update: %s\n", path)
+	// Construct the API path
+	path := fmt.Sprintf("/v1/organization/projects/%s/rate_limits/%s", projectID, targetRateLimit.ID)
 
 	// Create the request body with only non-nil fields
+	// Note: API uses "max_requests_per_1_minute" format (with _1_)
 	req := make(map[string]interface{})
-
-	// Add the required "name" field - use the model name from the target rate limit
-	req["name"] = targetRateLimit.Model
-	fmt.Printf("[UPDATE-RL-DEBUG] Setting name: %s\n", targetRateLimit.Model)
 
 	if maxRequestsPerMinute != nil {
 		req["max_requests_per_1_minute"] = *maxRequestsPerMinute
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting max_requests_per_1_minute: %d\n", *maxRequestsPerMinute)
 	}
 	if maxTokensPerMinute != nil {
 		req["max_tokens_per_1_minute"] = *maxTokensPerMinute
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting max_tokens_per_1_minute: %d\n", *maxTokensPerMinute)
 	}
 	if maxImagesPerMinute != nil {
 		req["max_images_per_1_minute"] = *maxImagesPerMinute
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting max_images_per_1_minute: %d\n", *maxImagesPerMinute)
 	}
 	if batch1DayMaxInputTokens != nil {
 		req["batch_1_day_max_input_tokens"] = *batch1DayMaxInputTokens
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting batch_1_day_max_input_tokens: %d\n", *batch1DayMaxInputTokens)
 	}
 	if maxAudioMegabytesPer1Minute != nil {
 		req["max_audio_megabytes_per_1_minute"] = *maxAudioMegabytesPer1Minute
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting max_audio_megabytes_per_1_minute: %d\n", *maxAudioMegabytesPer1Minute)
 	}
 	if maxRequestsPer1Day != nil {
 		req["max_requests_per_1_day"] = *maxRequestsPer1Day
-		fmt.Printf("[UPDATE-RL-DEBUG] Setting max_requests_per_1_day: %d\n", *maxRequestsPer1Day)
 	}
 
-	// Log the request for debugging
-	reqJson, _ := json.Marshal(req)
-	fmt.Printf("[UPDATE-RL-DEBUG] Request body: %s\n", string(reqJson))
-	fmt.Printf("[UPDATE-RL-DEBUG] Rate limit ID after processing: %s\n", effectiveRateLimitID)
-
-	// Debug: Output the actual API key being used (first/last 4 chars)
-	apiKeyToUse := c.APIKey
-	maskedKey := ""
-	if len(apiKeyToUse) > 8 {
-		maskedKey = apiKeyToUse[:4] + "..." + apiKeyToUse[len(apiKeyToUse)-4:]
-	} else {
-		maskedKey = "***"
-	}
-	fmt.Printf("[UPDATE-RL-DEBUG] Using API key: %s\n", maskedKey)
-
-	// Send POST request to update the rate limit - OpenAI API requires POST, not PUT for this endpoint
-	fmt.Printf("[UPDATE-RL-DEBUG] Using default API key for request\n")
+	// Send POST request to update the rate limit
 	body, err := c.doRequest(http.MethodPost, path, req)
 	if err != nil {
-		fmt.Printf("[UPDATE-RL-DEBUG] Update rate limit request failed: %v\n", err)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 		return nil, err
 	}
-
-	// Debug: Log the response
-	fmt.Printf("[UPDATE-RL-DEBUG] Response from OpenAI API: %s\n", string(body))
 
 	// Parse the response
 	var rateLimit RateLimit
 	if err := json.Unmarshal(body, &rateLimit); err != nil {
-		fmt.Printf("[UPDATE-RL-DEBUG] Failed to unmarshal rate limit response: %v\n", err)
-		fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 		return nil, fmt.Errorf("failed to unmarshal rate limit response: %v", err)
 	}
 
-	// Set the requested values for fields that might not be included in the response
-	if maxRequestsPerMinute != nil {
-		rateLimit.MaxRequestsPer1Minute = *maxRequestsPerMinute
-	}
-	if maxTokensPerMinute != nil {
-		rateLimit.MaxTokensPer1Minute = *maxTokensPerMinute
-	}
-	if maxImagesPerMinute != nil {
-		rateLimit.MaxImagesPer1Minute = *maxImagesPerMinute
-	}
-	if batch1DayMaxInputTokens != nil {
-		rateLimit.Batch1DayMaxInputTokens = *batch1DayMaxInputTokens
-	}
-	if maxAudioMegabytesPer1Minute != nil {
-		rateLimit.MaxAudioMegabytesPer1Minute = *maxAudioMegabytesPer1Minute
-	}
-	if maxRequestsPer1Day != nil {
-		rateLimit.MaxRequestsPer1Day = *maxRequestsPer1Day
-	}
-
-	fmt.Printf("[UPDATE-RL-DEBUG] Final rate limit object: %+v\n", rateLimit)
-	fmt.Printf("[UPDATE-RL-DEBUG] ========== END UpdateRateLimit DEBUG ==========\n\n")
 	return &rateLimit, nil
 }
 
-// DeleteRateLimit removes a rate limit from a project.
-// This will allow the project to operate without this specific limitation.
+// DeleteRateLimit resets a rate limit to default values.
+// Note: OpenAI doesn't support DELETE operations on rate limits.
+// This function resets the rate limit to organization default values.
 //
 // Parameters:
 //   - projectID: The ID of the project the rate limit belongs to
-//   - rateLimitID: The ID of the rate limit to delete
+//   - modelOrRateLimitID: Either a model name or rate limit ID
 //
 // Returns:
 //   - An error if the operation failed
 func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) error {
-	// Note: OpenAI doesn't support DELETE operations on rate limits.
-	// Instead we "reset" them to default values.
-	fmt.Printf("[DELETE-RL-DEBUG] ========== DeleteRateLimit DEBUG ==========\n")
-	fmt.Printf("[DELETE-RL-DEBUG] ProjectID: %s\n", projectID)
-	fmt.Printf("[DELETE-RL-DEBUG] ModelOrRateLimitID: %s\n", modelOrRateLimitID)
-
-	// Step 1: List all rate limits and find the one we want to reset
-	fmt.Printf("[DELETE-RL-DEBUG] Listing all rate limits to find target rate limit\n")
-	rateLimits, err := c.ListRateLimits(projectID)
+	// Find the rate limit to get its ID and model
+	targetRateLimit, err := c.GetRateLimit(projectID, modelOrRateLimitID)
 	if err != nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Failed to list rate limits: %v\n", err)
-		return fmt.Errorf("failed to list rate limits: %w", err)
+		return fmt.Errorf("failed to find rate limit: %w", err)
 	}
 
-	// Search logic similar to GetRateLimit
-	model := ""
-	searchID := modelOrRateLimitID
-
-	if !strings.HasPrefix(modelOrRateLimitID, "rl-") {
-		// If it doesn't have "rl-" prefix, it's a model name
-		model = modelOrRateLimitID
-		searchID = "rl-" + modelOrRateLimitID
-		fmt.Printf("[DELETE-RL-DEBUG] Searching by MODEL: %s (ID would be %s)\n", model, searchID)
-	} else {
-		// It has the prefix, treat it as an ID but also extract the model
-		// Try to extract model name from the ID
-		parts := strings.Split(modelOrRateLimitID[3:], "-")
-		if len(parts) >= 1 {
-			model = parts[0]
-			if len(parts) > 1 {
-				// For multi-part model names like "gpt-4o-mini"
-				if !containsProjectSuffix(parts[len(parts)-1]) {
-					model = strings.Join(parts, "-")
-				} else {
-					model = strings.Join(parts[:len(parts)-1], "-")
-				}
-			}
-		}
-		fmt.Printf("[DELETE-RL-DEBUG] Searching by ID: %s (extracted model: %s)\n", searchID, model)
-	}
-
-	// Find the target rate limit
-	var targetRateLimit *RateLimit
-
-	// 1. Try exact ID match first
-	for _, rl := range rateLimits.Data {
-		if rl.ID == searchID {
-			fmt.Printf("[DELETE-RL-DEBUG] Found exact ID match: %s (Model: %s)\n", rl.ID, rl.Model)
-			targetRateLimit = &rl
-			break
-		}
-	}
-
-	// 2. Try ID prefix match (accounts for project-specific suffixes)
-	if targetRateLimit == nil {
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.ID, searchID+"-") || rl.ID == searchID {
-				fmt.Printf("[DELETE-RL-DEBUG] Found ID prefix match: %s (Model: %s)\n", rl.ID, rl.Model)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 3. Try model name match as fallback
-	if targetRateLimit == nil && model != "" {
-		for _, rl := range rateLimits.Data {
-			if rl.Model == model {
-				fmt.Printf("[DELETE-RL-DEBUG] Found by model name match: %s (ID: %s)\n", rl.Model, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	// 4. Last resort: try partial model matching for compound model names
-	if targetRateLimit == nil && model != "" && strings.Contains(model, "-") {
-		modelBase := strings.Split(model, "-")[0]
-		for _, rl := range rateLimits.Data {
-			if strings.HasPrefix(rl.Model, modelBase) {
-				fmt.Printf("[DELETE-RL-DEBUG] Found by partial model name match: %s matches base %s (ID: %s)\n",
-					rl.Model, modelBase, rl.ID)
-				targetRateLimit = &rl
-				break
-			}
-		}
-	}
-
-	if targetRateLimit == nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Rate limit not found for ID/model: %s\n", modelOrRateLimitID)
-		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
-		return fmt.Errorf("API error: Project with ID '%s' not found or rate limit '%s' does not exist",
-			projectID, modelOrRateLimitID)
-	}
-
-	// Now we have the target rate limit, construct the URL for update
-	effectiveRateLimitID := targetRateLimit.ID
-	effectiveModel := targetRateLimit.Model
-	fmt.Printf("[DELETE-RL-DEBUG] Found rate limit to reset: %s (Model: %s)\n", effectiveRateLimitID, effectiveModel)
-
-	// Construct the direct path with the rate limit ID included
-	path := fmt.Sprintf("/organization/projects/%s/rate_limits/%s", projectID, effectiveRateLimitID)
-	fmt.Printf("[DELETE-RL-DEBUG] Using path for reset: %s\n", path)
+	// Construct the API path
+	path := fmt.Sprintf("/v1/organization/projects/%s/rate_limits/%s", projectID, targetRateLimit.ID)
 
 	// Get default values for this model
-	defaultValues := getDefaultRateLimitValues(effectiveModel)
-	fmt.Printf("[DELETE-RL-DEBUG] Default values for model %s: %+v\n", effectiveModel, defaultValues)
+	defaultValues := getDefaultRateLimitValues(targetRateLimit.Model)
 
 	// Create the request body with default values
 	req := map[string]interface{}{
@@ -1743,33 +1434,9 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) err
 		req["max_requests_per_1_day"] = defaultValues.MaxRequestsPer1Day
 	}
 
-	// Log the request for debugging
-	reqJson, _ := json.Marshal(req)
-	fmt.Printf("[DELETE-RL-DEBUG] Request body with default values: %s\n", string(reqJson))
-
-	// Debug: Output the actual API key being used (first/last 4 chars)
-	apiKeyToUse := c.APIKey
-	maskedKey := ""
-	if len(apiKeyToUse) > 8 {
-		maskedKey = apiKeyToUse[:4] + "..." + apiKeyToUse[len(apiKeyToUse)-4:]
-	} else {
-		maskedKey = "***"
-	}
-	fmt.Printf("[DELETE-RL-DEBUG] Using API key: %s\n", maskedKey)
-
 	// Send POST request to reset the rate limit to default values
-	fmt.Printf("[DELETE-RL-DEBUG] Using default API key for request\n")
-	body, err := c.doRequest(http.MethodPost, path, req)
-	if err != nil {
-		fmt.Printf("[DELETE-RL-DEBUG] Reset rate limit request failed: %v\n", err)
-		fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
-		return err
-	}
-
-	// Debug: Log the response
-	fmt.Printf("[DELETE-RL-DEBUG] Response from OpenAI API: %s\n", string(body))
-	fmt.Printf("[DELETE-RL-DEBUG] ========== END DeleteRateLimit DEBUG ==========\n\n")
-	return nil
+	_, err = c.doRequest(http.MethodPost, path, req)
+	return err
 }
 
 // AddProjectUser adds a user to a project.
@@ -2670,42 +2337,17 @@ func (c *OpenAIClient) DeleteInvite(inviteID string) error {
 
 // ListRateLimits retrieves all rate limits for a specific project.
 func (c *OpenAIClient) ListRateLimits(projectID string) (*RateLimitListResponse, error) {
-	// Use consistent URL format with other methods, avoiding the absolute URL approach
-	url := fmt.Sprintf("/organization/projects/%s/rate_limits", projectID)
-
-	// Debug info about the request
-	fmt.Printf("\n\n[LIST-RL-DEBUG] ========== LIST RATE LIMITS DEBUG ==========\n")
-	fmt.Printf("[LIST-RL-DEBUG] ProjectID: %s\n", projectID)
-	maskedKey := "*****"
-	if len(c.APIKey) > 5 {
-		maskedKey = c.APIKey[:5] + "*****"
-	}
-	fmt.Printf("[LIST-RL-DEBUG] Using API key (masked): %s\n", maskedKey)
-	fmt.Printf("[LIST-RL-DEBUG] Client API URL: %s\n", c.APIURL)
-	fmt.Printf("[LIST-RL-DEBUG] Organization ID: %s\n", c.OrganizationID)
-	fmt.Printf("[LIST-RL-DEBUG] API URL: %s\n", url)
+	url := fmt.Sprintf("/v1/organization/projects/%s/rate_limits", projectID)
 
 	respBody, err := c.doRequest("GET", url, nil)
 	if err != nil {
-		fmt.Printf("[LIST-RL-DEBUG] Error listing rate limits: %v\n", err)
-		fmt.Printf("[LIST-RL-DEBUG] ========== END LIST RATE LIMITS DEBUG ==========\n\n")
 		return nil, fmt.Errorf("failed to list rate limits: %w", err)
 	}
 
 	var response RateLimitListResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		fmt.Printf("[LIST-RL-DEBUG] Failed to parse rate limits response: %v\n", err)
-		fmt.Printf("[LIST-RL-DEBUG] ========== END LIST RATE LIMITS DEBUG ==========\n\n")
 		return nil, fmt.Errorf("failed to parse rate limits response: %w", err)
 	}
-
-	// Print all rate limits for debugging
-	fmt.Printf("[LIST-RL-DEBUG] Successfully listed %d rate limits\n", len(response.Data))
-	for i, rl := range response.Data {
-		fmt.Printf("[LIST-RL-DEBUG] Rate Limit #%d - ID: %s, Model: %s, MaxRequests: %d, MaxTokens: %d\n",
-			i+1, rl.ID, rl.Model, rl.MaxRequestsPer1Minute, rl.MaxTokensPer1Minute)
-	}
-	fmt.Printf("[LIST-RL-DEBUG] ========== END LIST RATE LIMITS DEBUG ==========\n\n")
 
 	return &response, nil
 }
