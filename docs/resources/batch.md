@@ -3,12 +3,12 @@
 page_title: "openai_batch Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI Batch.
 ---
 
 # openai_batch (Resource)
 
-
+Manages an OpenAI Batch.
 
 ## Example Usage
 
@@ -46,23 +46,61 @@ output "batch_id" {
 
 ### Required
 
-- `endpoint` (String) The endpoint to use for the batch request (e.g., 'chat/completions')
-- `input_file_id` (String) The ID of the file containing the inputs for the batch
+- `endpoint` (String) The endpoint to use for the batch request (e.g., '/v1/chat/completions').
+- `input_file_id` (String) The ID of the input file.
 
 ### Optional
 
-- `completion_window` (String) The maximum time to wait for the batch to complete (e.g., '24h')
-- `metadata` (Map of String) Set of 16 key-value pairs that can be attached to the batch object
-- `project_id` (String) The ID of the project to use for this batch. If not specified, the default project will be used.
+- `completion_window` (String) The time frame within which the batch should be processed. Currently only '24h' is supported.
+- `metadata` (Map of String) Metadata.
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the batch was created
-- `error` (String) Information about the error that occurred during processing, if any
-- `expires_at` (Number) The timestamp for when the batch expires
-- `id` (String) The ID of this resource.
-- `output_file_id` (String) The ID of the output file
-- `status` (String) The status of the batch (validating, validation_failed, processing, processing_failed, completed)
+- `cancelled_at` (Number)
+- `cancelling_at` (Number)
+- `completed_at` (Number)
+- `created_at` (Number)
+- `error` (String) ID of the error file (legacy field naming).
+- `error_file_id` (String)
+- `errors` (Attributes) (see [below for nested schema](#nestedatt--errors))
+- `expired_at` (Number)
+- `expires_at` (Number)
+- `failed_at` (Number)
+- `finalizing_at` (Number)
+- `id` (String) The identifier of the batch.
+- `in_progress_at` (Number)
+- `output_file_id` (String)
+- `request_counts` (Attributes) (see [below for nested schema](#nestedatt--request_counts))
+- `status` (String)
+
+<a id="nestedatt--errors"></a>
+### Nested Schema for `errors`
+
+Read-Only:
+
+- `data` (Attributes List) (see [below for nested schema](#nestedatt--errors--data))
+- `object` (String)
+
+<a id="nestedatt--errors--data"></a>
+### Nested Schema for `errors.data`
+
+Read-Only:
+
+- `code` (String)
+- `line` (Number)
+- `message` (String)
+- `param` (String)
+
+
+
+<a id="nestedatt--request_counts"></a>
+### Nested Schema for `request_counts`
+
+Read-Only:
+
+- `completed` (Number)
+- `failed` (Number)
+- `total` (Number)
 
 ## Import
 

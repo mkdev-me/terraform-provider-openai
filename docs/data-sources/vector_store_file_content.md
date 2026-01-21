@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file_content Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Data source for retrieving content of a file in a vector store.
 ---
 
 # openai_vector_store_file_content (Data Source)
 
-
+Data source for retrieving content of a file in a vector store.
 
 
 
@@ -17,10 +17,10 @@ description: |-
 
 ### Required
 
-- `file_id` (String) The ID of the file within the vector store.
-- `vector_store_id` (String) The ID of the vector store.
+- `file_id` (String)
+- `vector_store_id` (String)
 
 ### Read-Only
 
-- `content` (String) The content of the file.
+- `content` (String)
 - `id` (String) The ID of this resource.

@@ -3,12 +3,12 @@
 page_title: "openai_fine_tuned_model Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Creates and manages a fine-tuned model job (legacy resource name, equivalent to fine_tuning_job).
 ---
 
 # openai_fine_tuned_model (Resource)
 
-
+Creates and manages a fine-tuned model job (legacy resource name, equivalent to fine_tuning_job).
 
 
 
@@ -17,29 +17,26 @@ description: |-
 
 ### Required
 
-- `model` (String) The name of the base model to fine-tune
-- `training_file` (String) The ID of the file containing training data
+- `model` (String) The name of the model to fine-tune.
+- `training_file` (String) The ID of an uploaded file that contains training data.
 
 ### Optional
 
-- `completion_window` (Number) Time in seconds to wait for job to complete during creation. 0 means don't wait.
-- `hyperparameters` (Block List, Max: 1) Hyperparameters for the fine-tuning job (see [below for nested schema](#nestedblock--hyperparameters))
-- `suffix` (String) A suffix to append to the fine-tuned model name
-- `validation_file` (String) The ID of the file containing validation data
+- `batch_size` (String) The batch size to use for training. Can be 'auto' or an integer.
+- `learning_rate_multiplier` (Number) The learning rate multiplier to use for training.
+- `n_epochs` (String) The number of epochs to train the model for. Can be a string 'auto' or an integer value.
+- `suffix` (String) A string of up to 40 characters that will be added to your fine-tuned model name.
+- `validation_file` (String) The ID of an uploaded file that contains validation data.
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the fine-tuning job was created
-- `fine_tuned_model` (String) The name of the fine-tuned model
-- `finished_at` (Number) The timestamp for when the fine-tuning job completed
+- `created_at` (Number)
+- `fine_tuned_model` (String)
+- `finished_at` (Number)
 - `id` (String) The ID of this resource.
-- `status` (String) The status of the fine-tuning job
-
-<a id="nestedblock--hyperparameters"></a>
-### Nested Schema for `hyperparameters`
-
-Optional:
-
-- `batch_size` (Number) Batch size to use for training
-- `learning_rate_multiplier` (Number) Learning rate multiplier to use for training
-- `n_epochs` (String) Number of epochs to train for. Can be an integer or 'auto'
+- `object` (String)
+- `organization_id` (String)
+- `result_files` (List of String)
+- `role` (String)
+- `status` (String)
+- `trained_tokens` (Number)

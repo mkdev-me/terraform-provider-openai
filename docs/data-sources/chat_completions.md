@@ -3,12 +3,12 @@
 page_title: "openai_chat_completions Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of chat completions.
 ---
 
 # openai_chat_completions (Data Source)
 
-
+Use this data source to retrieve a list of chat completions.
 
 
 
@@ -17,16 +17,17 @@ description: |-
 
 ### Optional
 
-- `after` (String) Identifier for the last chat completion from the previous pagination request
-- `limit` (Number) Number of chat completions to retrieve (defaults to 20, max 100)
-- `metadata` (Map of String) A list of metadata keys to filter the chat completions by
-- `model` (String) The model used to generate the chat completions
-- `order` (String) Sort order for chat completions by timestamp. Use 'asc' for ascending order or 'desc' for descending order. Defaults to 'asc'.
+- `after` (String)
+- `before` (String)
+- `limit` (Number)
+- `metadata` (Map of String)
+- `model` (String)
+- `order` (String)
 
 ### Read-Only
 
-- `chat_completions` (List of Object) The list of chat completions (see [below for nested schema](#nestedatt--chat_completions))
-- `has_more` (Boolean) Whether there are more chat completions to retrieve
+- `chat_completions` (Attributes List) (see [below for nested schema](#nestedatt--chat_completions))
+- `has_more` (Boolean)
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--chat_completions"></a>
@@ -34,32 +35,33 @@ description: |-
 
 Read-Only:
 
-- `choices` (List of Object) (see [below for nested schema](#nestedobjatt--chat_completions--choices))
+- `choices` (Attributes List) (see [below for nested schema](#nestedatt--chat_completions--choices))
 - `created` (Number)
 - `id` (String)
 - `model` (String)
 - `object` (String)
 - `usage` (Map of Number)
 
-<a id="nestedobjatt--chat_completions--choices"></a>
+<a id="nestedatt--chat_completions--choices"></a>
 ### Nested Schema for `chat_completions.choices`
 
 Read-Only:
 
 - `finish_reason` (String)
 - `index` (Number)
-- `message` (List of Object) (see [below for nested schema](#nestedobjatt--chat_completions--choices--message))
+- `message` (Attributes List) (see [below for nested schema](#nestedatt--chat_completions--choices--message))
 
-<a id="nestedobjatt--chat_completions--choices--message"></a>
+<a id="nestedatt--chat_completions--choices--message"></a>
 ### Nested Schema for `chat_completions.choices.message`
 
 Read-Only:
 
 - `content` (String)
-- `function_call` (List of Object) (see [below for nested schema](#nestedobjatt--chat_completions--choices--message--function_call))
+- `function_call` (Attributes List) (see [below for nested schema](#nestedatt--chat_completions--choices--message--function_call))
+- `name` (String)
 - `role` (String)
 
-<a id="nestedobjatt--chat_completions--choices--message--function_call"></a>
+<a id="nestedatt--chat_completions--choices--message--function_call"></a>
 ### Nested Schema for `chat_completions.choices.message.function_call`
 
 Read-Only:

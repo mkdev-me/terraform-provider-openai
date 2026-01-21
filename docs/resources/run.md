@@ -3,12 +3,12 @@
 page_title: "openai_run Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI assistant run.
 ---
 
 # openai_run (Resource)
 
-
+Manages an OpenAI assistant run.
 
 ## Example Usage
 
@@ -21,9 +21,11 @@ resource "openai_assistant" "code_reviewer" {
 
   instructions = "You are an expert code reviewer. Analyze code for bugs, security issues, performance problems, and suggest improvements. Be constructive and educational in your feedback."
 
-  tools {
-    type = "code_interpreter"
-  }
+  tools = [
+    {
+      type = "code_interpreter"
+    }
+  ]
 
   metadata = {
     version = "1.0"
@@ -33,10 +35,12 @@ resource "openai_assistant" "code_reviewer" {
 
 # Create a thread with code to review
 resource "openai_thread" "code_review_thread" {
-  messages {
-    role    = "user"
-    content = "Please review this Python function for security and performance:\n\n```python\ndef process_user_input(user_data):\n    query = f\"SELECT * FROM users WHERE id = {user_data['id']}\"\n    result = db.execute(query)\n    return result\n```"
-  }
+  messages = [
+    {
+      role    = "user"
+      content = "Please review this Python function for security and performance:\n\n```python\ndef process_user_input(user_data):\n    query = f\"SELECT * FROM users WHERE id = {user_data['id']}\"\n    result = db.execute(query)\n    return result\n```"
+    }
+  ]
 
   metadata = {
     review_type = "security-performance"
@@ -90,7 +94,7 @@ resource "openai_run" "optimization_run" {
   temperature = 0.7
 
   # Optional: Set maximum tokens
-  max_tokens = 1000
+  max_completion_tokens = 1000
 
   metadata = {
     optimization_type = "algorithm"
@@ -109,9 +113,11 @@ resource "openai_assistant" "docs_assistant" {
 
   instructions = "You help users find and understand documentation."
 
-  tools {
-    type = "file_search"
-  }
+  tools = [
+    {
+      type = "file_search"
+    }
+  ]
 
   tool_resources = {
     file_search = {
@@ -133,9 +139,11 @@ resource "openai_run" "docs_search_run" {
   thread_id    = openai_thread.docs_thread.id
   assistant_id = openai_assistant.docs_assistant.id
 
-  tools {
-    type = "file_search"
-  }
+  tools = [
+    {
+      type = "file_search"
+    }
+  ]
 
   metadata = {
     search_type = "documentation"
@@ -154,32 +162,79 @@ output "code_review_run_id" {
 
 ### Required
 
-- `assistant_id` (String) The ID of the assistant to use for the run.
-- `thread_id` (String) The ID of the thread to run the assistant on.
+- `assistant_id` (String) The ID of the assistant to run.
+- `thread_id` (String) The ID of the thread to run.
 
 ### Optional
 
-- `completion_window` (Number) The maximum amount of time to wait for the run to complete, in seconds. If not provided, the run will be created but not waited for.
-- `instructions` (String) Override the default instructions of the assistant for the run.
-- `max_tokens` (Number) The maximum number of tokens to generate in the run. The default value is inf.
-- `metadata` (Map of String) Metadata to associate with the run.
-- `model` (String) The model to use for the run. If not provided, the assistant's model will be used.
-- `stream_for_tool` (Boolean) Streaming for tool use is only available in the Chat Completions API.
-- `temperature` (Number) The sampling temperature to use. Higher values make the output more random, lower values make it more deterministic.
-- `tools` (List of Map of String) Override the tools of the assistant for the run.
-- `top_p` (Number) An alternative to sampling with temperature. Defaults to 1.
+- `instructions` (String) Instructions for the run.
+- `max_completion_tokens` (Number)
+- `max_prompt_tokens` (Number)
+- `metadata` (Map of String) Metadata.
+- `model` (String) The model to use for the run.
+- `response_format` (Attributes) (see [below for nested schema](#nestedatt--response_format))
+- `stream` (Boolean)
+- `temperature` (Number)
+- `tools` (Attributes List) Override tools for the run. (see [below for nested schema](#nestedatt--tools))
+- `top_p` (Number)
+- `truncation_strategy` (Attributes) (see [below for nested schema](#nestedatt--truncation_strategy))
 
 ### Read-Only
 
-- `completed_at` (Number) The timestamp for when the run was completed.
-- `created_at` (Number) The timestamp for when the run was created.
-- `file_ids` (List of String) The IDs of the files used in the run.
-- `id` (String) The ID of this resource.
-- `object` (String) The object type, which is always 'thread.run'.
-- `started_at` (Number) The timestamp for when the run was started.
-- `status` (String) The status of the run (queued, in_progress, completed, failed, etc.).
-- `steps` (List of Object) The steps of the run. (see [below for nested schema](#nestedatt--steps))
-- `usage` (Map of Number) Usage statistics for the run.
+- `completed_at` (Number)
+- `created_at` (Number)
+- `file_ids` (List of String)
+- `id` (String) The identifier of the run.
+- `object` (String)
+- `started_at` (Number)
+- `status` (String)
+- `steps` (Attributes List) (see [below for nested schema](#nestedatt--steps))
+- `usage` (Attributes) (see [below for nested schema](#nestedatt--usage))
+
+<a id="nestedatt--response_format"></a>
+### Nested Schema for `response_format`
+
+Required:
+
+- `type` (String)
+
+
+<a id="nestedatt--tools"></a>
+### Nested Schema for `tools`
+
+Required:
+
+- `type` (String) The type of tool (code_interpreter, retrieval, function).
+
+Optional:
+
+- `function` (Attributes) (see [below for nested schema](#nestedatt--tools--function))
+
+<a id="nestedatt--tools--function"></a>
+### Nested Schema for `tools.function`
+
+Required:
+
+- `name` (String)
+
+Optional:
+
+- `description` (String)
+- `parameters` (String)
+
+
+
+<a id="nestedatt--truncation_strategy"></a>
+### Nested Schema for `truncation_strategy`
+
+Required:
+
+- `type` (String)
+
+Optional:
+
+- `last_n_messages` (Number)
+
 
 <a id="nestedatt--steps"></a>
 ### Nested Schema for `steps`
@@ -192,3 +247,13 @@ Read-Only:
 - `object` (String)
 - `status` (String)
 - `type` (String)
+
+
+<a id="nestedatt--usage"></a>
+### Nested Schema for `usage`
+
+Read-Only:
+
+- `completion_tokens` (Number)
+- `prompt_tokens` (Number)
+- `total_tokens` (Number)

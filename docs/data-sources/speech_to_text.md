@@ -3,12 +3,12 @@
 page_title: "openai_speech_to_text Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a speech-to-text transcription. Since transcriptions in OpenAI are not retrievable after creation, this data source is primarily for documentation and import.
 ---
 
 # openai_speech_to_text (Data Source)
 
-
+Use this data source to retrieve information about a speech-to-text transcription. Since transcriptions in OpenAI are not retrievable after creation, this data source is primarily for documentation and import.
 
 
 
@@ -22,7 +22,7 @@ description: |-
 ### Optional
 
 - `created_at` (Number) The timestamp when the transcription was generated.
-- `model` (String) The model used for transcription. Options include 'whisper-1', 'gpt-4o-transcribe', and 'gpt-4o-mini-transcribe'.
+- `model` (String) The model used for transcription.
 - `text` (String) The transcribed text.
 
 ### Read-Only

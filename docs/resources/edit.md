@@ -3,12 +3,12 @@
 page_title: "openai_edit Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The edit resource allows you to edit text using OpenAI's models.
 ---
 
 # openai_edit (Resource)
 
-
+The edit resource allows you to edit text using OpenAI's models.
 
 
 
@@ -23,25 +23,15 @@ description: |-
 ### Optional
 
 - `input` (String) The input text to edit
-- `n` (Number) How many edits to generate for the input and instruction
-- `project_id` (String) The project to use for this request
-- `temperature` (Number) Sampling temperature between 0 and 2. Higher values make output more random, lower values make it more deterministic
-- `top_p` (Number) Nuclear sampling: consider the results of the tokens with top_p probability mass. Range from 0 to 1
+- `n` (Number) How many edits to generate
+- `temperature` (Number) Sampling temperature
+- `top_p` (Number) Nucleus sampling parameter
 
 ### Read-Only
 
-- `choices` (List of Object) The list of edit choices the model generated (see [below for nested schema](#nestedatt--choices))
 - `created` (Number) The Unix timestamp (in seconds) of when the edit was created
 - `edit_id` (String) The ID of the edit
-- `id` (String) The ID of this resource.
+- `id` (String) The ID of the edit
 - `model_used` (String) The model used for the edit
-- `object` (String) The object type, which is always 'edit'
-- `usage` (Map of Number) Usage statistics for the edit request
-
-<a id="nestedatt--choices"></a>
-### Nested Schema for `choices`
-
-Read-Only:
-
-- `index` (Number)
-- `text` (String)
+- `object` (String) The object type (always 'edit')
+- `text` (String) The edited text (from the first choice)

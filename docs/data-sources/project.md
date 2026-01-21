@@ -3,12 +3,12 @@
 page_title: "openai_project Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI project.
 ---
 
 # openai_project (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI project.
 
 ## Example Usage
 
@@ -37,15 +37,15 @@ locals {
 
 ### Required
 
-- `project_id` (String) The ID of the project to retrieve
+- `project_id` (String) The ID of the project to retrieve.
 
 ### Optional
 
-- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default API key will be used.
+- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default Admin API key will be used.
 
 ### Read-Only
 
-- `created_at` (Number) Timestamp when the project was created
-- `id` (String) The ID of this resource.
-- `name` (String) The name of the project
-- `status` (String) The status of the project
+- `created_at` (Number) The Unix timestamp (in seconds) for when the project was created.
+- `id` (String) The ID of the project.
+- `name` (String) The name of the project.
+- `status` (String) The status of the project.

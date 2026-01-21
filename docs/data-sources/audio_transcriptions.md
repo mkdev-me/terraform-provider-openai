@@ -3,12 +3,12 @@
 page_title: "openai_audio_transcriptions Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Retrieving all audio transcriptions is not supported by the OpenAI API.
 ---
 
 # openai_audio_transcriptions (Data Source)
 
-
+Retrieving all audio transcriptions is not supported by the OpenAI API.
 
 
 
@@ -17,23 +17,9 @@ description: |-
 
 ### Optional
 
-- `model` (String) Filter transcriptions by model. Options include 'whisper-1', 'gpt-4o-transcribe', and 'gpt-4o-mini-transcribe'.
-- `project_id` (String) The ID of the project associated with the audio transcriptions. If not specified, the API key's default project will be used.
+- `model` (String) Filter by model.
+- `project_id` (String) The ID of the project.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `transcriptions` (List of Object) (see [below for nested schema](#nestedatt--transcriptions))
-
-<a id="nestedatt--transcriptions"></a>
-### Nested Schema for `transcriptions`
-
-Read-Only:
-
-- `created_at` (Number)
-- `duration` (Number)
-- `id` (String)
-- `language` (String)
-- `model` (String)
-- `status` (String)
-- `text` (String)
+- `transcriptions` (List of String) List of transcriptions (Empty as not supported).

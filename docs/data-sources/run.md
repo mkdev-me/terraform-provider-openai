@@ -3,12 +3,12 @@
 page_title: "openai_run Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI run.
 ---
 
 # openai_run (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI run.
 
 
 
@@ -17,21 +17,35 @@ description: |-
 
 ### Required
 
-- `run_id` (String) The ID of the run to retrieve
-- `thread_id` (String) The ID of the thread the run belongs to
+- `id` (String) The ID of the run.
+- `thread_id` (String) The ID of the thread the run belongs to.
 
 ### Read-Only
 
-- `assistant_id` (String) The ID of the assistant used for the run
-- `completed_at` (Number) The timestamp for when the run was completed
-- `created_at` (Number) The timestamp for when the run was created
-- `file_ids` (List of String) The IDs of the files used in the run
-- `id` (String) The ID of this resource.
-- `instructions` (String) The instructions used for the run
-- `metadata` (Map of String) Metadata associated with the run
-- `model` (String) The ID of the model used for the run
-- `object` (String) The object type, which is always 'thread.run'
-- `started_at` (Number) The timestamp for when the run was started
-- `status` (String) The status of the run (queued, in_progress, completed, failed, etc.)
-- `tools` (List of Map of String) The tools available to the assistant for the run
-- `usage` (Map of Number) Usage statistics for the run
+- `assistant_id` (String) The ID of the assistant used for execution of this run.
+- `cancelled_at` (Number) The Unix timestamp (in seconds) for when the run was cancelled.
+- `completed_at` (Number) The Unix timestamp (in seconds) for when the run was completed.
+- `created_at` (Number) The Unix timestamp (in seconds) for when the run was created.
+- `expires_at` (Number) The Unix timestamp (in seconds) for when the run will expire.
+- `failed_at` (Number) The Unix timestamp (in seconds) for when the run failed.
+- `instructions` (String) The instructions that the assistant used for this run.
+- `max_completion_tokens` (Number) The maximum number of completion tokens specified to have been used over the course of the run.
+- `max_prompt_tokens` (Number) The maximum number of prompt tokens specified to have been used over the course of the run.
+- `metadata` (Map of String) Set of 16 key-value pairs that can be attached to an object.
+- `model` (String) The model that the assistant used for this run.
+- `object` (String) The object type, which is always 'thread.run'.
+- `response_format` (String) The response format used for this run.
+- `started_at` (Number) The Unix timestamp (in seconds) for when the run was started.
+- `status` (String) The status of the run, which can be either queued, in_progress, requires_action, cancelling, cancelled, failed, completed, or expired.
+- `temperature` (Number) The sampling temperature used for this run.
+- `top_p` (Number) The nucleus sampling value used for this run.
+- `usage` (Attributes) Usage statistics related to the run. (see [below for nested schema](#nestedatt--usage))
+
+<a id="nestedatt--usage"></a>
+### Nested Schema for `usage`
+
+Read-Only:
+
+- `completion_tokens` (Number) Number of completion tokens used.
+- `prompt_tokens` (Number) Number of prompt tokens used.
+- `total_tokens` (Number) Total number of tokens used.

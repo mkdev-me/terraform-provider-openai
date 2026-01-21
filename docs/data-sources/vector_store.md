@@ -3,12 +3,12 @@
 page_title: "openai_vector_store Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI vector store.
 ---
 
 # openai_vector_store (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI vector store.
 
 ## Example Usage
 
@@ -38,32 +38,37 @@ output "vector_store_id" {
 
 ### Required
 
-- `id` (String) The ID of the vector store to retrieve.
+- `id` (String) The ID of the vector store.
 
 ### Read-Only
 
-- `chunking_strategy` (List of Object) The chunking strategy used for the files in the store. (see [below for nested schema](#nestedatt--chunking_strategy))
-- `created_at` (Number) The timestamp for when the vector store was created.
-- `expires_after` (List of Object) The expiration policy for the vector store. (see [below for nested schema](#nestedatt--expires_after))
-- `file_count` (Number) The number of files in the vector store.
-- `file_ids` (List of String) The list of file IDs in the vector store.
-- `metadata` (Map of String) Set of key-value pairs attached to the vector store.
+- `created_at` (Number) The Unix timestamp (in seconds) for when the vector store was created.
+- `expires_after` (Attributes) The expiration policy for a vector store. (see [below for nested schema](#nestedatt--expires_after))
+- `expires_at` (Number) The Unix timestamp (in seconds) for when the vector store will expire.
+- `file_counts` (Attributes) Counts of files in various states within the vector store. (see [below for nested schema](#nestedatt--file_counts))
+- `last_active_at` (Number) The Unix timestamp (in seconds) for when the vector store was last active.
+- `metadata` (Map of String) Set of key-value pairs that can be attached to an object.
 - `name` (String) The name of the vector store.
-- `object` (String) The object type (always 'vector_store').
-- `status` (String) The current status of the vector store.
-
-<a id="nestedatt--chunking_strategy"></a>
-### Nested Schema for `chunking_strategy`
-
-Read-Only:
-
-- `type` (String)
-
+- `object` (String) The object type, which is always 'vector_store'.
+- `status` (String) The status of the vector store, which can be 'expired', 'in_progress', or 'completed'.
+- `usage_bytes` (Number) The total number of bytes used by the files in the vector store.
 
 <a id="nestedatt--expires_after"></a>
 ### Nested Schema for `expires_after`
 
 Read-Only:
 
-- `anchor` (String)
-- `days` (Number)
+- `anchor` (String) Anchor timestamp type for the expiration policy.
+- `days` (Number) The number of days after the anchor time that the vector store will expire.
+
+
+<a id="nestedatt--file_counts"></a>
+### Nested Schema for `file_counts`
+
+Read-Only:
+
+- `cancelled` (Number) Number of files cancelled.
+- `completed` (Number) Number of files completed.
+- `failed` (Number) Number of files failed.
+- `in_progress` (Number) Number of files in progress.
+- `total` (Number) Total number of files.

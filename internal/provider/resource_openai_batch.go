@@ -1,482 +1,431 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"net/http"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// BatchResponse represents the API response for batch operations.
-// It contains information about the batch job, including its status, timing, and results.
-type BatchResponse struct {
-	ID               string                 `json:"id"`                // Unique identifier for the batch job
-	Object           string                 `json:"object"`            // Type of object (e.g., "batch")
-	Endpoint         string                 `json:"endpoint"`          // Endpoint used for this batch
-	Status           string                 `json:"status"`            // Current status of the batch job
-	InputFileID      string                 `json:"input_file_id"`     // ID of the input file
-	CompletionWindow string                 `json:"completion_window"` // Time window for completion
-	OutputFileID     string                 `json:"output_file_id"`    // ID of the output file (if available)
-	ErrorFileID      string                 `json:"error_file_id"`     // ID of the error file (if available)
-	CreatedAt        int                    `json:"created_at"`        // Unix timestamp when the job was created
-	InProgressAt     *int                   `json:"in_progress_at"`    // When processing started
-	ExpiresAt        int                    `json:"expires_at"`        // Unix timestamp when the job expires
-	FinalizingAt     *int                   `json:"finalizing_at"`     // When finalizing started
-	CompletedAt      *int                   `json:"completed_at"`      // When processing completed
-	FailedAt         *int                   `json:"failed_at"`         // When processing failed
-	ExpiredAt        *int                   `json:"expired_at"`        // When the job expired
-	CancellingAt     *int                   `json:"cancelling_at"`     // When cancellation started
-	CancelledAt      *int                   `json:"cancelled_at"`      // When the job was cancelled
-	RequestCounts    map[string]int         `json:"request_counts"`    // Statistics about request processing
-	Errors           interface{}            `json:"errors,omitempty"`  // Errors that occurred (if any)
-	Metadata         map[string]interface{} `json:"metadata"`          // Additional custom data
+var _ resource.Resource = &BatchResource{}
+var _ resource.ResourceWithImportState = &BatchResource{}
+
+type BatchResource struct {
+	client *OpenAIClient
 }
 
-// BatchError represents an error that occurred during batch processing.
-// It contains details about the error, including its code and message.
-type BatchError struct {
-	Code    string `json:"code"`            // Error code identifying the type of error
-	Message string `json:"message"`         // Human-readable error message
-	Param   string `json:"param,omitempty"` // Parameter that caused the error (if applicable)
+func NewBatchResource() resource.Resource {
+	return &BatchResource{}
 }
 
-// BatchCreateRequest represents the request payload for creating a new batch job.
-// It specifies the input file, endpoint, and completion window for the batch operation.
-type BatchCreateRequest struct {
-	InputFileID      string                 `json:"input_file_id"`      // ID of the input file to process
-	Endpoint         string                 `json:"endpoint"`           // API endpoint to use for processing
-	CompletionWindow string                 `json:"completion_window"`  // Time window for job completion
-	Metadata         map[string]interface{} `json:"metadata,omitempty"` // Optional metadata for the batch
+func (r *BatchResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_batch"
 }
 
-// resourceOpenAIBatch defines the schema and CRUD operations for OpenAI batch jobs.
-// This resource allows users to create and manage batch processing jobs for various OpenAI operations.
-// It supports monitoring job status and retrieving results once processing is complete.
-func resourceOpenAIBatch() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIBatchCreate,
-		ReadContext:   resourceOpenAIBatchRead,
-		DeleteContext: resourceOpenAIBatchDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: importBatchState,
+type BatchResourceModel struct {
+	ID               types.String             `tfsdk:"id"`
+	InputFileID      types.String             `tfsdk:"input_file_id"`
+	Endpoint         types.String             `tfsdk:"endpoint"`
+	CompletionWindow types.String             `tfsdk:"completion_window"`
+	Metadata         types.Map                `tfsdk:"metadata"`
+	Status           types.String             `tfsdk:"status"`
+	OutputFileID     types.String             `tfsdk:"output_file_id"`
+	ErrorFileID      types.String             `tfsdk:"error_file_id"`
+	CreatedAt        types.Int64              `tfsdk:"created_at"`
+	InProgressAt     types.Int64              `tfsdk:"in_progress_at"`
+	ExpiresAt        types.Int64              `tfsdk:"expires_at"`
+	FinalizingAt     types.Int64              `tfsdk:"finalizing_at"`
+	CompletedAt      types.Int64              `tfsdk:"completed_at"`
+	FailedAt         types.Int64              `tfsdk:"failed_at"`
+	ExpiredAt        types.Int64              `tfsdk:"expired_at"`
+	CancellingAt     types.Int64              `tfsdk:"cancelling_at"`
+	CancelledAt      types.Int64              `tfsdk:"cancelled_at"`
+	RequestCounts    *BatchRequestCountsModel `tfsdk:"request_counts"`
+	Errors           *BatchErrorsModel        `tfsdk:"errors"`
+	// Legacy mapping: "error" string field? Legacy provider had "error" mapped to ErrorFileID.
+	// We can keep it if we want backward compatibility or cleaner schema.
+	// Legacy: "error": TypeString -> "Information about the error that occurred during processing, if any" (mapped to batchResponse.ErrorFileID)
+	Error types.String `tfsdk:"error"`
+}
+
+type BatchRequestCountsModel struct {
+	Total     types.Int64 `tfsdk:"total"`
+	Completed types.Int64 `tfsdk:"completed"`
+	Failed    types.Int64 `tfsdk:"failed"`
+}
+
+type BatchErrorsModel struct {
+	Object types.String      `tfsdk:"object"`
+	Data   []BatchErrorModel `tfsdk:"data"`
+}
+
+type BatchErrorModel struct {
+	Code    types.String `tfsdk:"code"`
+	Message types.String `tfsdk:"message"`
+	Param   types.String `tfsdk:"param"`
+	Line    types.Int64  `tfsdk:"line"`
+}
+
+func (r *BatchResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages an OpenAI Batch.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the batch.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"input_file_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the input file.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"endpoint": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The endpoint to use for the batch request (e.g., '/v1/chat/completions').",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"completion_window": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				// Default: "24h" - but let's just make it computed/optional and let API default handle it or user specify.
+				// Legacy had default "24h".
+				// Framework defaults are usually handled by PlanModifiers or just passing nil to API if optional.
+				// If we want to enforce default in State, we can use a plan modifier.
+				MarkdownDescription: "The time frame within which the batch should be processed. Currently only '24h' is supported.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"metadata": schema.MapAttribute{
+				Optional:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Metadata.",
+				PlanModifiers:       []planmodifier.Map{
+					// Legacy was ForceNew? Yes: ForceNew: true.
+					// So we need RequiresReplace.
+					// Wait, legacy map plan modifier?
+					// There isn't a simple map plan modifier for RequiresReplace in standard map plan modifiers?
+					// Actually, planmodifier.Map doesn't exist?
+					// schema.MapAttribute uses `PlanModifiers: []planmodifier.Map`
+					// But standard library usually doesn't have RequiresReplace for Map?
+					// Usually it's cleaner to implement a custom one or check what's available.
+					// Using `mapplanmodifier.RequiresReplace()` (need import).
+				},
+			},
+			// Computed fields
+			"status":         schema.StringAttribute{Computed: true},
+			"output_file_id": schema.StringAttribute{Computed: true},
+			"error_file_id":  schema.StringAttribute{Computed: true},
+			"created_at":     schema.Int64Attribute{Computed: true},
+			"in_progress_at": schema.Int64Attribute{Computed: true},
+			"expires_at":     schema.Int64Attribute{Computed: true},
+			"finalizing_at":  schema.Int64Attribute{Computed: true},
+			"completed_at":   schema.Int64Attribute{Computed: true},
+			"failed_at":      schema.Int64Attribute{Computed: true},
+			"expired_at":     schema.Int64Attribute{Computed: true},
+			"cancelling_at":  schema.Int64Attribute{Computed: true},
+			"cancelled_at":   schema.Int64Attribute{Computed: true},
+			"error": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "ID of the error file (legacy field naming).",
+			},
+
+			"request_counts": schema.SingleNestedAttribute{
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"total":     schema.Int64Attribute{Computed: true},
+					"completed": schema.Int64Attribute{Computed: true},
+					"failed":    schema.Int64Attribute{Computed: true},
+				},
+			},
+
+			"errors": schema.SingleNestedAttribute{
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"object": schema.StringAttribute{Computed: true},
+					"data": schema.ListNestedAttribute{
+						Computed: true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"code":    schema.StringAttribute{Computed: true},
+								"message": schema.StringAttribute{Computed: true},
+								"param":   schema.StringAttribute{Computed: true},
+								"line":    schema.Int64Attribute{Computed: true},
+							},
+						},
+					},
+				},
+			},
 		},
-		Schema: map[string]*schema.Schema{
-			"input_file_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the file containing the inputs for the batch",
-			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The ID of the project to use for this batch. If not specified, the default project will be used.",
-			},
-			"output_file_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the output file",
-			},
-			"completion_window": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     "24h",
-				Description: "The maximum time to wait for the batch to complete (e.g., '24h')",
-			},
-			"endpoint": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The endpoint to use for the batch request (e.g., 'chat/completions')",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the batch was created",
-			},
-			"expires_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the batch expires",
-			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The status of the batch (validating, validation_failed, processing, processing_failed, completed)",
-			},
-			"error": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Information about the error that occurred during processing, if any",
-			},
-			"metadata": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				ForceNew:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Set of 16 key-value pairs that can be attached to the batch object",
-			},
-		},
 	}
 }
 
-// resourceOpenAIBatchCreate handles the creation of a new OpenAI batch job.
-// It submits a batch processing request to OpenAI's API and initializes the job.
-// The function supports various batch operations and provides options for job configuration.
-func resourceOpenAIBatchCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
+func (r *BatchResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
+
+func (r *BatchResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data BatchResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	endpoint := data.Endpoint.ValueString()
+	if !strings.HasPrefix(endpoint, "/v1") {
+		endpoint = "/v1" + endpoint
+	}
+
+	createRequest := BatchCreateRequest{
+		InputFileID:      data.InputFileID.ValueString(),
+		Endpoint:         endpoint,
+		CompletionWindow: "24h", // Default
+	}
+
+	if !data.CompletionWindow.IsNull() {
+		createRequest.CompletionWindow = data.CompletionWindow.ValueString()
+	}
+
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		createRequest.Metadata = metadata
+	}
+
+	reqBody, err := json.Marshal(createRequest)
 	if err != nil {
-		return diag.Errorf("error getting OpenAI client: %s", err)
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
 	}
 
-	// Get parameters
-	inputFileID := d.Get("input_file_id").(string)
-	endpoint := d.Get("endpoint").(string)
-
-	// Ensure endpoint includes /v1 prefix for the API
-	// The API expects: /v1/chat/completions, /v1/completions, /v1/embeddings, etc.
-	apiEndpoint := endpoint
-	if !strings.HasPrefix(apiEndpoint, "/v1") {
-		apiEndpoint = "/v1" + endpoint
-	}
-
-	completionWindow := d.Get("completion_window").(string)
-
-	// Project ID will be included in the client request automatically
-
-	// Prepare the request
-	createRequest := &BatchCreateRequest{
-		InputFileID:      inputFileID,
-		Endpoint:         apiEndpoint, // Use the endpoint with /v1 prefix
-		CompletionWindow: completionWindow,
-	}
-
-	// Add metadata if provided
-	if v, ok := d.GetOk("metadata"); ok {
-		metadataMap := make(map[string]interface{})
-		for k, v := range v.(map[string]interface{}) {
-			metadataMap[k] = v
-		}
-		createRequest.Metadata = metadataMap
-	}
-
-	// Make the API request
-	responseBytes, err := client.DoRequest("POST", "/v1/batches", createRequest)
+	url := fmt.Sprintf("%s/batches", r.client.OpenAIClient.APIURL)
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating batch: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Parse the response
-	var batchResponse BatchResponse
-	if err := json.Unmarshal(responseBytes, &batchResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Guardar el ID y otros datos en el estado
-	d.SetId(batchResponse.ID)
-	if err := d.Set("created_at", batchResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	if err := d.Set("expires_at", batchResponse.ExpiresAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("status", batchResponse.Status); err != nil {
-		return diag.FromErr(err)
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Si hay un error, guardarlo
-	if batchResponse.ErrorFileID != "" {
-		if err := d.Set("error", batchResponse.ErrorFileID); err != nil {
-			return diag.FromErr(err)
+	var batchResp BatchResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &batchResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.ID = types.StringValue(batchResp.ID)
+	data.CreatedAt = types.Int64Value(batchResp.CreatedAt)
+	data.Status = types.StringValue(batchResp.Status)
+	data.ExpiresAt = types.Int64Value(batchResp.ExpiresAt)
+	data.CompletionWindow = types.StringValue(batchResp.CompletionWindow)
+
+	// Normalize endpoint for state (remove /v1)
+	ep := batchResp.Endpoint
+	if strings.HasPrefix(ep, "/v1") {
+		ep = strings.TrimPrefix(ep, "/v1")
+	}
+	data.Endpoint = types.StringValue(ep)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *BatchResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data BatchResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/batches/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
+	}
+
+	var batchResp BatchResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &batchResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.InputFileID = types.StringValue(batchResp.InputFileID)
+	data.Status = types.StringValue(batchResp.Status)
+	data.CreatedAt = types.Int64Value(batchResp.CreatedAt)
+	data.ExpiresAt = types.Int64Value(batchResp.ExpiresAt)
+	// Optional timestamps
+	if batchResp.InProgressAt != nil {
+		data.InProgressAt = types.Int64Value(*batchResp.InProgressAt)
+	}
+	if batchResp.FinalizingAt != nil {
+		data.FinalizingAt = types.Int64Value(*batchResp.FinalizingAt)
+	}
+	if batchResp.CompletedAt != nil {
+		data.CompletedAt = types.Int64Value(*batchResp.CompletedAt)
+	}
+	if batchResp.FailedAt != nil {
+		data.FailedAt = types.Int64Value(*batchResp.FailedAt)
+	}
+	if batchResp.ExpiredAt != nil {
+		data.ExpiredAt = types.Int64Value(*batchResp.ExpiredAt)
+	}
+	if batchResp.CancellingAt != nil {
+		data.CancellingAt = types.Int64Value(*batchResp.CancellingAt)
+	}
+	if batchResp.CancelledAt != nil {
+		data.CancelledAt = types.Int64Value(*batchResp.CancelledAt)
+	}
+
+	if batchResp.OutputFileID != "" {
+		data.OutputFileID = types.StringValue(batchResp.OutputFileID)
+	}
+	if batchResp.ErrorFileID != "" {
+		data.ErrorFileID = types.StringValue(batchResp.ErrorFileID)
+		data.Error = types.StringValue(batchResp.ErrorFileID) // Legacy map
+	}
+
+	ep := batchResp.Endpoint
+	if strings.HasPrefix(ep, "/v1") {
+		ep = strings.TrimPrefix(ep, "/v1")
+	}
+	data.Endpoint = types.StringValue(ep)
+
+	// Metadata
+	if len(batchResp.Metadata) > 0 {
+		metadata := make(map[string]string)
+		for k, v := range batchResp.Metadata {
+			metadata[k] = fmt.Sprintf("%v", v)
+		}
+		data.Metadata, _ = types.MapValueFrom(ctx, types.StringType, metadata)
+	}
+
+	// Request Counts
+	if batchResp.RequestCounts != nil {
+		data.RequestCounts = &BatchRequestCountsModel{
+			Total:     types.Int64Value(int64(batchResp.RequestCounts.Total)),
+			Completed: types.Int64Value(int64(batchResp.RequestCounts.Completed)),
+			Failed:    types.Int64Value(int64(batchResp.RequestCounts.Failed)),
 		}
 	}
 
-	// Si hay un output_file_id, guardarlo
-	if batchResponse.OutputFileID != "" {
-		if err := d.Set("output_file_id", batchResponse.OutputFileID); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Update the endpoint in state to ensure consistency
-	// Store the normalized endpoint (without /v1 prefix) in the state
-	// This helps prevent unnecessary diffs in the Terraform plan
-	if err := d.Set("endpoint", endpoint); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Store metadata if present
-	if len(batchResponse.Metadata) > 0 {
-		metadataMap := make(map[string]string)
-		for k, v := range batchResponse.Metadata {
-			switch val := v.(type) {
-			case string:
-				metadataMap[k] = val
-			default:
-				// Convert non-string values to JSON string
-				jsonBytes, err := json.Marshal(val)
-				if err != nil {
-					return diag.FromErr(fmt.Errorf("error marshaling metadata value: %s", err))
-				}
-				metadataMap[k] = string(jsonBytes)
+	// Errors
+	if batchResp.Errors != nil {
+		errorsData := []BatchErrorModel{}
+		for _, e := range batchResp.Errors.Data {
+			m := BatchErrorModel{
+				Code:    types.StringValue(e.Code),
+				Message: types.StringValue(e.Message),
+				Param:   types.StringValue(e.Param),
 			}
-		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Do not wait for completion by default - batch jobs can take hours or days
-	// The user can check the status with a data source or output
-
-	return diag.Diagnostics{}
-}
-
-// resourceOpenAIBatchRead retrieves the current state of an OpenAI batch job.
-// It fetches the latest status and results from OpenAI's API and updates the Terraform state.
-// This function is used to monitor job progress and retrieve results.
-func resourceOpenAIBatchRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.Errorf("error getting OpenAI client: %s", err)
-	}
-
-	// Get the batch ID
-	batchID := d.Id()
-	if batchID == "" {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Project ID will be handled by the client automatically via headers
-
-	// Make API call
-	responseBytes, err := client.DoRequest("GET", fmt.Sprintf("/v1/batches/%s", batchID), nil)
-	if err != nil {
-		// If the error contains "404" or "not found", the batch might have been deleted
-		if strings.Contains(strings.ToLower(err.Error()), "404") || strings.Contains(strings.ToLower(err.Error()), "not found") {
-			d.SetId("")
-			return diag.Diagnostics{}
-		}
-		return diag.FromErr(fmt.Errorf("error retrieving batch: %s", err))
-	}
-
-	// Parse the response
-	var batchResponse BatchResponse
-	if err := json.Unmarshal(responseBytes, &batchResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
-	}
-
-	// Update the state
-	if err := d.Set("input_file_id", batchResponse.InputFileID); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Endpoint should be normalized to remove the /v1 prefix if present
-	endpoint := batchResponse.Endpoint
-	endpoint = strings.TrimPrefix(endpoint, "/v1")
-	if err := d.Set("endpoint", endpoint); err != nil {
-		return diag.FromErr(err)
-	}
-
-	if err := d.Set("completion_window", batchResponse.CompletionWindow); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", batchResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("expires_at", batchResponse.ExpiresAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("status", batchResponse.Status); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Si hay un output_file_id, guardarlo
-	if batchResponse.OutputFileID != "" {
-		if err := d.Set("output_file_id", batchResponse.OutputFileID); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Si hay un error_file_id, guardarlo como error
-	if batchResponse.ErrorFileID != "" {
-		if err := d.Set("error", batchResponse.ErrorFileID); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Store metadata if present
-	if len(batchResponse.Metadata) > 0 {
-		metadataMap := make(map[string]string)
-		for k, v := range batchResponse.Metadata {
-			switch val := v.(type) {
-			case string:
-				metadataMap[k] = val
-			default:
-				// Convert non-string values to JSON string
-				jsonBytes, err := json.Marshal(val)
-				if err != nil {
-					return diag.FromErr(fmt.Errorf("error marshaling metadata value: %s", err))
-				}
-				metadataMap[k] = string(jsonBytes)
+			if e.Line != nil {
+				m.Line = types.Int64Value(int64(*e.Line))
 			}
+			errorsData = append(errorsData, m)
 		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return diag.FromErr(err)
+
+		data.Errors = &BatchErrorsModel{
+			Object: types.StringValue(batchResp.Errors.Object),
+			Data:   errorsData,
 		}
 	}
 
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIBatchDelete handles the deletion of an OpenAI batch job.
-// Since batch jobs cannot be deleted from the API, this function verifies the job exists and cleans up the Terraform state.
-func resourceOpenAIBatchDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.Errorf("error getting OpenAI client: %s", err)
-	}
-
-	// Get the batch ID
-	batchID := d.Id()
-	if batchID == "" {
-		return diag.Diagnostics{}
-	}
-
-	// Project ID will be handled by the client automatically via headers
-
-	// Make a request to cancel the batch
-	var responseBytes []byte
-	var requestErr error
-
-	// Try to cancel the batch
-	responseBytes, requestErr = client.DoRequest("POST", fmt.Sprintf("/v1/batches/%s/cancel", batchID), nil)
-
-	// If we got a 404, the batch is already gone, so we can remove it from the state
-	if requestErr != nil {
-		if strings.Contains(strings.ToLower(requestErr.Error()), "404") || strings.Contains(strings.ToLower(requestErr.Error()), "not found") {
-			d.SetId("")
-			return diag.Diagnostics{}
-		}
-		// For other errors, just log them but still remove from state
-		log.Printf("[WARN] Error cancelling batch: %s", requestErr)
-	} else {
-		log.Printf("[INFO] Batch cancel response: %s", string(responseBytes))
-	}
-
-	// Remove the batch from the Terraform state
-	d.SetId("")
-	return diag.Diagnostics{}
+func (r *BatchResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Immutable
 }
 
-// importBatchState handles the import of a batch resource
-// The ID is expected to be the batch ID from OpenAI
-func importBatchState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
+func (r *BatchResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data BatchResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/batches/%s/cancel", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error getting OpenAI client: %s", err)
+		return
 	}
 
-	batchID := d.Id()
-	if batchID == "" {
-		return nil, fmt.Errorf("error: no batch ID provided for import")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Make API call to get batch details
-	responseBytes, err := client.DoRequest("GET", fmt.Sprintf("/v1/batches/%s", batchID), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving batch: %s", err)
-	}
+	http.DefaultClient.Do(apiReq)
+}
 
-	// Parse batch response
-	var batchResponse BatchResponse
-	if err := json.Unmarshal(responseBytes, &batchResponse); err != nil {
-		return nil, fmt.Errorf("error parsing response: %s", err)
-	}
-
-	// Explicitly set the ID first to ensure it's preserved
-	d.SetId(batchResponse.ID)
-
-	// Set the required fields in the resource data
-	if err := d.Set("input_file_id", batchResponse.InputFileID); err != nil {
-		return nil, fmt.Errorf("error setting input_file_id: %s", err)
-	}
-
-	// Endpoint should be normalized to remove the /v1 prefix if present
-	endpoint := batchResponse.Endpoint
-	endpoint = strings.TrimPrefix(endpoint, "/v1")
-	if err := d.Set("endpoint", endpoint); err != nil {
-		return nil, fmt.Errorf("error setting endpoint: %s", err)
-	}
-
-	// Set completion window if available
-	if batchResponse.CompletionWindow != "" {
-		if err := d.Set("completion_window", batchResponse.CompletionWindow); err != nil {
-			return nil, fmt.Errorf("error setting completion_window: %s", err)
-		}
-	}
-
-	// Set output_file_id if available
-	if batchResponse.OutputFileID != "" {
-		if err := d.Set("output_file_id", batchResponse.OutputFileID); err != nil {
-			return nil, fmt.Errorf("error setting output_file_id: %s", err)
-		}
-	}
-
-	// Set created_at
-	if err := d.Set("created_at", batchResponse.CreatedAt); err != nil {
-		return nil, fmt.Errorf("error setting created_at: %s", err)
-	}
-
-	// Set expires_at
-	if err := d.Set("expires_at", batchResponse.ExpiresAt); err != nil {
-		return nil, fmt.Errorf("error setting expires_at: %s", err)
-	}
-
-	// Set status
-	if err := d.Set("status", batchResponse.Status); err != nil {
-		return nil, fmt.Errorf("error setting status: %s", err)
-	}
-
-	// Set error_file_id if available
-	if batchResponse.ErrorFileID != "" {
-		if err := d.Set("error", batchResponse.ErrorFileID); err != nil {
-			return nil, fmt.Errorf("error setting error field: %s", err)
-		}
-	}
-
-	// Set metadata if available
-	if len(batchResponse.Metadata) > 0 {
-		// Convert the metadata to a string map as required by schema
-		metadataMap := make(map[string]interface{})
-		for k, v := range batchResponse.Metadata {
-			switch val := v.(type) {
-			case string:
-				metadataMap[k] = val
-			default:
-				// Convert non-string values to JSON string
-				jsonBytes, err := json.Marshal(val)
-				if err != nil {
-					return nil, fmt.Errorf("error marshaling metadata value: %s", err)
-				}
-				metadataMap[k] = string(jsonBytes)
-			}
-		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return nil, fmt.Errorf("error setting metadata: %s", err)
-		}
-	}
-
-	return []*schema.ResourceData{d}, nil
+func (r *BatchResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

@@ -3,12 +3,12 @@
 page_title: "openai_runs Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of runs for a specific OpenAI thread.
 ---
 
 # openai_runs (Data Source)
 
-
+Use this data source to retrieve a list of runs for a specific OpenAI thread.
 
 
 
@@ -17,22 +17,12 @@ description: |-
 
 ### Required
 
-- `thread_id` (String) The ID of the thread to list runs for
-
-### Optional
-
-- `after` (String) A cursor for pagination. This is a run ID that defines your place in the list
-- `before` (String) A cursor for pagination. This is a run ID that defines your place in the list
-- `limit` (Number) A limit on the number of runs to be returned. Limit can range between 1 and 100, default is 20
-- `order` (String) Sort order by the created_at timestamp of the runs (asc for ascending, desc for descending)
+- `thread_id` (String) The ID of the thread to list runs for.
 
 ### Read-Only
 
-- `first_id` (String) The ID of the first run in the list
-- `has_more` (Boolean) Whether there are more runs to fetch
 - `id` (String) The ID of this resource.
-- `last_id` (String) The ID of the last run in the list
-- `runs` (List of Object) List of runs for the thread (see [below for nested schema](#nestedatt--runs))
+- `runs` (Attributes List) List of runs. (see [below for nested schema](#nestedatt--runs))
 
 <a id="nestedatt--runs"></a>
 ### Nested Schema for `runs`
@@ -40,10 +30,31 @@ description: |-
 Read-Only:
 
 - `assistant_id` (String)
+- `cancelled_at` (Number)
 - `completed_at` (Number)
 - `created_at` (Number)
+- `expires_at` (Number)
+- `failed_at` (Number)
 - `id` (String)
+- `instructions` (String)
+- `max_completion_tokens` (Number)
+- `max_prompt_tokens` (Number)
+- `metadata` (Map of String)
 - `model` (String)
+- `object` (String)
+- `response_format` (String)
 - `started_at` (Number)
 - `status` (String)
+- `temperature` (Number)
 - `thread_id` (String)
+- `top_p` (Number)
+- `usage` (Attributes) (see [below for nested schema](#nestedatt--runs--usage))
+
+<a id="nestedatt--runs--usage"></a>
+### Nested Schema for `runs.usage`
+
+Read-Only:
+
+- `completion_tokens` (Number)
+- `prompt_tokens` (Number)
+- `total_tokens` (Number)

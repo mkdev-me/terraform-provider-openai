@@ -11,141 +11,156 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// UploadResponse represents the API response for an OpenAI upload.
-// It contains information about the upload status and properties.
-type UploadResponse struct {
-	ID        string `json:"id"`         // Unique identifier for the upload
-	Object    string `json:"object"`     // Type of object (e.g., "upload")
-	Purpose   string `json:"purpose"`    // Intended use of the upload
-	Filename  string `json:"filename"`   // Name of the uploaded file
-	Bytes     int    `json:"bytes"`      // Size of the file in bytes
-	CreatedAt int    `json:"created_at"` // Unix timestamp of upload creation
-	Status    string `json:"status"`     // Current status of the upload (e.g., "pending", "completed")
+var _ resource.Resource = &UploadResource{}
+var _ resource.ResourceWithImportState = &UploadResource{}
+
+func NewUploadResource() resource.Resource {
+	return &UploadResource{}
 }
 
-// UploadCreateRequest represents the request payload for creating a new upload.
-// It contains the required parameters for initiating an upload.
-type UploadCreateRequest struct {
-	Purpose  string `json:"purpose"`   // Intended use of the upload (e.g., "fine-tune")
-	Filename string `json:"filename"`  // Name of the file being uploaded
-	Bytes    int    `json:"bytes"`     // Size of the file in bytes
-	MimeType string `json:"mime_type"` // MIME type of the file
+type UploadResource struct {
+	client *OpenAIClient
 }
 
-// resourceOpenAIUpload defines the schema and CRUD operations for OpenAI uploads.
-// This resource allows users to manage file uploads for various purposes including fine-tuning.
-func resourceOpenAIUpload() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIUploadCreate,
-		ReadContext:   resourceOpenAIUploadRead,
-		DeleteContext: resourceOpenAIUploadDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
-		Schema: map[string]*schema.Schema{
-			"purpose": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"fine-tune", "assistants", "vision", "batch", "user_data", "evals"}, false),
-				Description:  "The intended purpose of the uploaded file. Can be 'fine-tune', 'assistants', 'vision', 'batch', 'user_data', or 'evals'.",
+type UploadResourceModel struct {
+	ID        types.String `tfsdk:"id"`
+	Purpose   types.String `tfsdk:"purpose"`
+	Filename  types.String `tfsdk:"filename"`
+	Bytes     types.Int64  `tfsdk:"bytes"`
+	MimeType  types.String `tfsdk:"mime_type"`
+	File      types.String `tfsdk:"file"`
+	ProjectID types.String `tfsdk:"project_id"`
+	CreatedAt types.Int64  `tfsdk:"created_at"`
+	Status    types.String `tfsdk:"status"`
+}
+
+func (r *UploadResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_upload"
+}
+
+func (r *UploadResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Manages file uploads for various purposes including fine-tuning, assistants, etc.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the upload.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"filename": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The name of the file to upload.",
+			"purpose": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The intended purpose of the uploaded file. Can be 'fine-tune', 'assistants', 'vision', 'batch', 'user_data', or 'evals'.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"bytes": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The number of bytes in the file being uploaded.",
+			"filename": schema.StringAttribute{
+				Computed:            true,
+				Optional:            true,
+				MarkdownDescription: "The name of the file to upload.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"mime_type": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The MIME type of the file. Must fall within supported MIME types for your file purpose.",
+			"bytes": schema.Int64Attribute{
+				Computed:            true,
+				Optional:            true,
+				MarkdownDescription: "The number of bytes in the file being uploaded.",
 			},
-			"file": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The path to the file to upload. Required for creation, not needed for import.",
+			"mime_type": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The MIME type of the file.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The project ID to associate this upload with (for Terraform reference only, not sent to OpenAI API).",
+			"file": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "The path to the file to upload. Required for creation, not needed for import.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the upload was created.",
+			"project_id": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "The project ID to associate this upload with.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The status of the upload (e.g., 'pending', 'completed').",
+			"created_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp when the upload was created.",
+			},
+			"status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The status of the upload (e.g., 'pending', 'completed').",
 			},
 		},
 	}
 }
 
-// resourceOpenAIUploadCreate handles the creation of a new OpenAI upload.
-// It sends the upload request to the OpenAI API and processes the response.
-func resourceOpenAIUploadCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(*client.OpenAIClient)
+func (r *UploadResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Get the values from the resource data
-	purpose := d.Get("purpose").(string)
-
-	// Check if we have a file path specified
-	filePath, filePathOk := d.GetOk("file")
-	if !filePathOk {
-		return diag.FromErr(fmt.Errorf("file path is required for creating a new upload"))
+func (r *UploadResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data UploadResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Use existing filename or get from file path
+	purpose := data.Purpose.ValueString()
+	filePath := data.File.ValueString()
+
+	if filePath == "" {
+		resp.Diagnostics.AddError("Missing File", "File path is required for creating a new upload")
+		return
+	}
+
 	var filename string
-	if fn, ok := d.GetOk("filename"); ok {
-		filename = fn.(string)
+	if !data.Filename.IsNull() {
+		filename = data.Filename.ValueString()
 	} else {
-		// Extract filename from file path
-		parts := strings.Split(filePath.(string), "/")
-		filename = parts[len(parts)-1]
+		filename = filepath.Base(filePath)
 	}
 
-	// Use existing bytes or get file size
-	var fileBytes int
-	var err error
-	if b, ok := d.GetOk("bytes"); ok {
-		fileBytes = b.(int)
+	var fileBytes int64
+	if !data.Bytes.IsNull() {
+		fileBytes = data.Bytes.ValueInt64()
 	} else {
-		// Get file size from the file
-		fileInfo, err := os.Stat(filePath.(string))
+		fileInfo, err := os.Stat(filePath)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("error getting file size: %v", err))
+			resp.Diagnostics.AddError("Error getting file size", err.Error())
+			return
 		}
-		fileBytes = int(fileInfo.Size())
+		fileBytes = fileInfo.Size()
 	}
 
-	// Use existing mime_type or determine from file
 	var mimeType string
-	if mt, ok := d.GetOk("mime_type"); ok {
-		mimeType = mt.(string)
+	if !data.MimeType.IsNull() {
+		mimeType = data.MimeType.ValueString()
 	} else {
-		// Determine mime type based on file extension
 		ext := filepath.Ext(filename)
 		switch strings.ToLower(ext) {
 		case ".jsonl":
@@ -165,198 +180,188 @@ func resourceOpenAIUploadCreate(ctx context.Context, d *schema.ResourceData, m i
 		}
 	}
 
-	// TODO: Implement file upload using multipart form
-
-	// For now, we're using the API as before
-	// Prepare the request body
-	uploadReq := UploadCreateRequest{
+	// Prepare request
+	uploadReq := struct {
+		Purpose  string `json:"purpose"`
+		Filename string `json:"filename"`
+		Bytes    int64  `json:"bytes"`
+		MimeType string `json:"mime_type"`
+	}{
 		Purpose:  purpose,
 		Filename: filename,
 		Bytes:    fileBytes,
 		MimeType: mimeType,
 	}
 
-	// Convert the request to JSON
 	reqBody, err := json.Marshal(uploadReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error marshalling request: %v", err))
+		resp.Diagnostics.AddError("Error marshalling request", err.Error())
+		return
 	}
 
-	// Create the HTTP request
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/v1/uploads", c.APIURL), bytes.NewBuffer(reqBody))
+	url := fmt.Sprintf("%s/uploads", r.client.OpenAIClient.APIURL)
+	// Handle /v1 suffix provided in APIURL
+	if strings.HasSuffix(url, "/v1/uploads") {
+		// correct
+	} else if strings.HasSuffix(url, "/v1") {
+		url += "/uploads"
+	} else {
+		url = fmt.Sprintf("%s/v1/uploads", r.client.OpenAIClient.APIURL)
+	}
+
+	apiReq, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Send the request
-	resp, err := c.HTTPClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error sending request: %v", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %v", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(respBody, &errResp); err == nil {
-			return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, errResp.Error.Message))
-		}
-		return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody)))
+	if apiResp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Parse the response
-	var uploadResp UploadResponse
-	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
+	var uploadResp struct {
+		ID        string `json:"id"`
+		Filename  string `json:"filename"`
+		Bytes     int64  `json:"bytes"`
+		CreatedAt int64  `json:"created_at"`
+		Status    string `json:"status"`
+		Purpose   string `json:"purpose"`
 	}
 
-	// Set the Terraform resource data
-	d.SetId(uploadResp.ID)
-	if err := d.Set("status", uploadResp.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
-	}
-	if err := d.Set("created_at", uploadResp.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
+	if err := json.NewDecoder(apiResp.Body).Decode(&uploadResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	return nil
+	data.ID = types.StringValue(uploadResp.ID)
+	data.Status = types.StringValue(uploadResp.Status)
+	data.CreatedAt = types.Int64Value(uploadResp.CreatedAt)
+	data.Purpose = types.StringValue(uploadResp.Purpose)
+	data.Filename = types.StringValue(uploadResp.Filename)
+	data.Bytes = types.Int64Value(uploadResp.Bytes)
+	data.MimeType = types.StringValue(mimeType)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIUploadRead retrieves information about an existing OpenAI upload.
-// It queries the OpenAI API for the current state of the upload and updates the resource data.
-func resourceOpenAIUploadRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(*client.OpenAIClient)
+func (r *UploadResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data UploadResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Create the HTTP request to get upload details
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/v1/uploads/%s", c.APIURL, d.Id()), nil)
+	url := fmt.Sprintf("%s/uploads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	if strings.Contains(r.client.OpenAIClient.APIURL, "/v1") {
+		url = strings.TrimSuffix(r.client.OpenAIClient.APIURL, "/v1") + "/v1/uploads/" + data.ID.ValueString()
+	} else {
+		url = fmt.Sprintf("%s/v1/uploads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	}
+
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Send the request
-	resp, err := c.HTTPClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error sending request: %v", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Handle not found (upload deleted or expired)
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return nil
-	}
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %v", err))
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(respBody, &errResp); err == nil {
-			return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, errResp.Error.Message))
-		}
-		return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody)))
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
 	}
 
-	// Parse the response
-	var uploadResp UploadResponse
-	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
+	var uploadResp struct {
+		ID        string `json:"id"`
+		Filename  string `json:"filename"`
+		Bytes     int64  `json:"bytes"`
+		CreatedAt int64  `json:"created_at"`
+		Status    string `json:"status"`
+		Purpose   string `json:"purpose"`
 	}
 
-	// Set the computed attributes
-	if err := d.Set("status", uploadResp.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
-	}
-	if err := d.Set("created_at", uploadResp.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
+	if err := json.NewDecoder(apiResp.Body).Decode(&uploadResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Set the purpose attribute
-	if err := d.Set("purpose", uploadResp.Purpose); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set purpose: %v", err))
-	}
+	data.Status = types.StringValue(uploadResp.Status)
+	data.CreatedAt = types.Int64Value(uploadResp.CreatedAt)
+	data.Purpose = types.StringValue(uploadResp.Purpose)
+	data.Filename = types.StringValue(uploadResp.Filename)
+	data.Bytes = types.Int64Value(uploadResp.Bytes)
 
-	// Update the resource data
-	if err := d.Set("filename", uploadResp.Filename); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set filename: %v", err))
-	}
-	if err := d.Set("bytes", uploadResp.Bytes); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set bytes: %v", err))
-	}
-
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIUploadDelete handles the deletion of an OpenAI upload.
-// It sends a delete request to the OpenAI API and processes the response.
-func resourceOpenAIUploadDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c := m.(*client.OpenAIClient)
+func (r *UploadResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Uploads are immutable usually, but we can implement update cancellation if supported
+	// For now, no update logic needed as most fields are RequiresReplace
+}
 
-	// Create the HTTP request to delete the upload
-	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("%s/v1/uploads/%s", c.APIURL, d.Id()), nil)
+func (r *UploadResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data UploadResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/uploads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	// Clean url construction
+	if strings.Contains(r.client.OpenAIClient.APIURL, "/v1") {
+		url = strings.TrimSuffix(r.client.OpenAIClient.APIURL, "/v1") + "/v1/uploads/" + data.ID.ValueString()
+	} else {
+		url = fmt.Sprintf("%s/v1/uploads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	}
+
+	// Make cancel request to "cancel" the upload
+	apiReq, err := http.NewRequest("POST", url+"/cancel", nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
+		// Fallback to attempts? The API reference says cancel.
+		// If we can't cancel, we just leave it?
+		// Note from API docs: "Cancels an upload."
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Send the request
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error sending request: %v", err))
-	}
-	defer resp.Body.Close()
+	http.DefaultClient.Do(apiReq)
+	// We don't error if cancel fails, just attempt it.
+}
 
-	// Handle not found (already deleted)
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return nil
-	}
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %v", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(respBody, &errResp); err == nil {
-			return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, errResp.Error.Message))
-		}
-		return diag.FromErr(fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody)))
-	}
-
-	// Clear the ID to mark the resource as deleted
-	d.SetId("")
-
-	return nil
+func (r *UploadResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

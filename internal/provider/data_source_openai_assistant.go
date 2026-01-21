@@ -4,304 +4,316 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// dataSourceOpenAIAssistant returns a schema.Resource that represents a data source for a single OpenAI assistant.
-func dataSourceOpenAIAssistant() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIAssistantRead,
-		Schema: map[string]*schema.Schema{
-			"assistant_id": {
-				Type:        schema.TypeString,
+var _ datasource.DataSource = &AssistantDataSource{}
+
+func NewAssistantDataSource() datasource.DataSource {
+	return &AssistantDataSource{}
+}
+
+type AssistantDataSource struct {
+	client *OpenAIClient
+}
+
+type AssistantDataSourceModel struct {
+	ID             types.String                           `tfsdk:"id"`
+	Name           types.String                           `tfsdk:"name"`
+	Description    types.String                           `tfsdk:"description"`
+	Model          types.String                           `tfsdk:"model"`
+	Instructions   types.String                           `tfsdk:"instructions"`
+	CreatedAt      types.Int64                            `tfsdk:"created_at"`
+	Object         types.String                           `tfsdk:"object"`
+	Metadata       types.Map                              `tfsdk:"metadata"`
+	Tools          []AssistantToolModel                   `tfsdk:"tools"`
+	ToolResources  *AssistantDataSourceToolResourcesModel `tfsdk:"tool_resources"`
+	Temperature    types.Float64                          `tfsdk:"temperature"`
+	TopP           types.Float64                          `tfsdk:"top_p"`
+	ResponseFormat types.String                           `tfsdk:"response_format"`
+}
+
+type AssistantDataSourceToolResourcesModel struct {
+	CodeInterpreter *AssistantDataSourceCodeInterpreterResourcesModel `tfsdk:"code_interpreter"`
+	FileSearch      *AssistantDataSourceFileSearchResourcesModel      `tfsdk:"file_search"`
+}
+
+type AssistantDataSourceCodeInterpreterResourcesModel struct {
+	FileIDs []types.String `tfsdk:"file_ids"`
+}
+
+type AssistantDataSourceFileSearchResourcesModel struct {
+	VectorStoreIDs []types.String `tfsdk:"vector_store_ids"`
+}
+
+func (d *AssistantDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_assistant"
+}
+
+func (d *AssistantDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific OpenAI assistant.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of the assistant.",
 				Required:    true,
-				Description: "The ID of the assistant to retrieve",
 			},
-			"object": {
-				Type:        schema.TypeString,
+			"name": schema.StringAttribute{
+				Description: "The name of the assistant.",
 				Computed:    true,
-				Description: "The object type, which is always 'assistant'",
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
+			"description": schema.StringAttribute{
+				Description: "The description of the assistant.",
 				Computed:    true,
-				Description: "The timestamp for when the assistant was created",
 			},
-			"name": {
-				Type:        schema.TypeString,
+			"model": schema.StringAttribute{
+				Description: "The ID of the model used by the assistant.",
 				Computed:    true,
-				Description: "The name of the assistant",
 			},
-			"description": {
-				Type:        schema.TypeString,
+			"instructions": schema.StringAttribute{
+				Description: "The system instructions that the assistant uses.",
 				Computed:    true,
-				Description: "The description of the assistant",
 			},
-			"model": {
-				Type:        schema.TypeString,
+			"created_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the assistant was created.",
 				Computed:    true,
-				Description: "The model used by the assistant",
 			},
-			"instructions": {
-				Type:        schema.TypeString,
+			"object": schema.StringAttribute{
+				Description: "The object type, which is always 'assistant'.",
 				Computed:    true,
-				Description: "The system instructions of the assistant",
 			},
-			"tools": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"type": {
-							Type:        schema.TypeString,
+			"metadata": schema.MapAttribute{
+				Description: "Set of 16 key-value pairs that can be attached to an object.",
+				ElementType: types.StringType,
+				Computed:    true,
+			},
+			"tools": schema.ListNestedAttribute{
+				Description: "A list of tools enabled on the assistant.",
+				Computed:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{
+							Description: "The type of tool. Can be 'code_interpreter', 'retrieval', or 'function'.",
 							Computed:    true,
-							Description: "The type of tool",
 						},
-						"function": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"name": {
-										Type:        schema.TypeString,
+						"function": schema.ListNestedAttribute{
+							Description: "The function definition, if the tool type is 'function'.",
+							Computed:    true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"name": schema.StringAttribute{
+										Description: "The name of the function.",
 										Computed:    true,
-										Description: "The name of the function",
 									},
-									"description": {
-										Type:        schema.TypeString,
+									"description": schema.StringAttribute{
+										Description: "The description of the function.",
 										Computed:    true,
-										Description: "The description of the function",
 									},
-									"parameters": {
-										Type:        schema.TypeString,
+									"parameters": schema.StringAttribute{
+										Description: "The parameters of the function in JSON format.",
 										Computed:    true,
-										Description: "The parameters of the function in JSON format",
 									},
 								},
 							},
 						},
 					},
 				},
-				Description: "The tools enabled on the assistant",
 			},
-			"file_ids": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
+			"tool_resources": schema.SingleNestedAttribute{
+				Description: "A set of resources that are used by the assistant's tools.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"code_interpreter": schema.SingleNestedAttribute{
+						Description: "Resources for the code_interpreter tool.",
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"file_ids": schema.ListAttribute{
+								Description: "A list of file IDs attached to this assistant.",
+								ElementType: types.StringType,
+								Computed:    true,
+							},
+						},
+					},
+					"file_search": schema.SingleNestedAttribute{
+						Description: "Resources for the file_search tool.",
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"vector_store_ids": schema.ListAttribute{
+								Description: "A list of vector store IDs attached to this assistant.",
+								ElementType: types.StringType,
+								Computed:    true,
+							},
+						},
+					},
 				},
-				Description: "List of file IDs attached to the assistant",
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
+			"temperature": schema.Float64Attribute{
+				Description: "What sampling temperature to use, between 0 and 2.",
 				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Metadata attached to the assistant",
 			},
-			"response_format": {
-				Type:        schema.TypeString,
+			"top_p": schema.Float64Attribute{
+				Description: "An alternative to sampling with temperature, called nucleus sampling.",
 				Computed:    true,
-				Description: "The format of responses from the assistant",
 			},
-			"reasoning_effort": {
-				Type:        schema.TypeString,
+			"response_format": schema.StringAttribute{
+				Description: "The format of the response.",
 				Computed:    true,
-				Description: "Constrains the effort spent on reasoning for reasoning models (low, medium, or high)",
-			},
-			"temperature": {
-				Type:        schema.TypeFloat,
-				Computed:    true,
-				Description: "What sampling temperature to use for this assistant",
-			},
-			"top_p": {
-				Type:        schema.TypeFloat,
-				Computed:    true,
-				Description: "An alternative to sampling with temperature, called nucleus sampling",
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIAssistantRead handles the read operation for the OpenAI assistant data source.
-// It retrieves details about a specific assistant from the OpenAI API.
-func dataSourceOpenAIAssistantRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	c, err := GetOpenAIClient(m)
+func (d *AssistantDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+}
+
+func (d *AssistantDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data AssistantDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	assistantID := data.ID.ValueString()
+
+	path := fmt.Sprintf("assistants/%s", assistantID)
+
+	apiClient := d.client.OpenAIClient
+
+	respBody, err := apiClient.DoRequest(http.MethodGet, path, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %s", err))
+		resp.Diagnostics.AddError(
+			"Error Reading Assistant",
+			fmt.Sprintf("Could not read assistant with ID %s: %s", assistantID, err.Error()),
+		)
+		return
 	}
 
-	// Get assistant ID from the schema
-	assistantID := d.Get("assistant_id").(string)
-
-	// Build URL for the request
-	url := fmt.Sprintf("%s/assistants/%s", c.APIURL, assistantID)
-
-	// Prepare HTTP request
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+	var assistantResponse AssistantResponse
+	if err := json.Unmarshal(respBody, &assistantResponse); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Parsing Assistant Response",
+			fmt.Sprintf("Could not parse response for assistant %s: %s", assistantID, err.Error()),
+		)
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
-	}
+	// Map response to model
+	data.ID = types.StringValue(assistantResponse.ID)
+	data.Name = types.StringValue(assistantResponse.Name)
+	data.Description = types.StringValue(assistantResponse.Description)
+	data.Model = types.StringValue(assistantResponse.Model)
+	data.Instructions = types.StringValue(assistantResponse.Instructions)
+	data.CreatedAt = types.Int64Value(int64(assistantResponse.CreatedAt))
+	data.Object = types.StringValue(assistantResponse.Object)
 
-	// Make the request
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %s", err))
-	}
-
-	// Check for errors in the response
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		if err := json.Unmarshal(respBody, &errResp); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d, body: %s",
-				err, resp.StatusCode, string(respBody)))
+	// Map Metadata
+	if len(assistantResponse.Metadata) > 0 {
+		metadataVals := make(map[string]attr.Value)
+		for k, v := range assistantResponse.Metadata {
+			metadataVals[k] = types.StringValue(fmt.Sprintf("%v", v))
 		}
-		return diag.FromErr(fmt.Errorf("error retrieving assistant: %s - %s",
-			errResp.Error.Type, errResp.Error.Message))
+		data.Metadata, _ = types.MapValue(types.StringType, metadataVals)
+	} else {
+		data.Metadata = types.MapNull(types.StringType)
 	}
 
-	// Parse the response to a map first to handle all possible fields
-	var assistantMap map[string]interface{}
-	if err := json.Unmarshal(respBody, &assistantMap); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing assistant response to map: %s", err))
+	// Map Tools
+	if len(assistantResponse.Tools) > 0 {
+		var tools []AssistantToolModel
+		for _, t := range assistantResponse.Tools {
+			toolModel := AssistantToolModel{
+				Type: types.StringValue(t.Type),
+			}
+			if t.Function != nil {
+				paramStr := string(t.Function.Parameters)
+				toolModel.Function = []AssistantToolFunctionModel{{
+					Name:        types.StringValue(t.Function.Name),
+					Description: types.StringValue(t.Function.Description),
+					Parameters:  types.StringValue(paramStr),
+				}}
+			}
+			tools = append(tools, toolModel)
+		}
+		data.Tools = tools
+	} else {
+		data.Tools = nil
 	}
 
-	// Parse the response to the standard struct
-	var assistant AssistantResponse
-	if err := json.Unmarshal(respBody, &assistant); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing assistant response: %s", err))
-	}
+	// Map Tool Resources
+	if assistantResponse.ToolResources != nil {
+		trModel := &AssistantDataSourceToolResourcesModel{}
+		hasResources := false
 
-	// Set the ID in the resource data
-	d.SetId(assistant.ID)
-
-	// Set the basic assistant properties
-	if err := d.Set("object", assistant.Object); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting object: %s", err))
-	}
-	if err := d.Set("created_at", assistant.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %s", err))
-	}
-	if err := d.Set("name", assistant.Name); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
-	}
-	if err := d.Set("description", assistant.Description); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting description: %s", err))
-	}
-	if err := d.Set("model", assistant.Model); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting model: %s", err))
-	}
-	if err := d.Set("instructions", assistant.Instructions); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting instructions: %s", err))
-	}
-
-	// Set tools
-	toolsList := make([]interface{}, 0, len(assistant.Tools))
-	for _, tool := range assistant.Tools {
-		toolMap := map[string]interface{}{
-			"type": tool.Type,
+		if assistantResponse.ToolResources.CodeInterpreter != nil {
+			fileIDs := []types.String{}
+			for _, id := range assistantResponse.ToolResources.CodeInterpreter.FileIDs {
+				fileIDs = append(fileIDs, types.StringValue(id))
+			}
+			trModel.CodeInterpreter = &AssistantDataSourceCodeInterpreterResourcesModel{
+				FileIDs: fileIDs,
+			}
+			hasResources = true
 		}
 
-		// Add function details if present
-		if tool.Function != nil {
-			functionMap := map[string]interface{}{
-				"name":       tool.Function.Name,
-				"parameters": string(tool.Function.Parameters),
+		if assistantResponse.ToolResources.FileSearch != nil {
+			vsIDs := []types.String{}
+			for _, id := range assistantResponse.ToolResources.FileSearch.VectorStoreIDs {
+				vsIDs = append(vsIDs, types.StringValue(id))
 			}
-			if tool.Function.Description != "" {
-				functionMap["description"] = tool.Function.Description
+			trModel.FileSearch = &AssistantDataSourceFileSearchResourcesModel{
+				VectorStoreIDs: vsIDs,
 			}
-			toolMap["function"] = []interface{}{functionMap}
+			hasResources = true
 		}
 
-		toolsList = append(toolsList, toolMap)
-	}
-	if err := d.Set("tools", toolsList); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting tools: %s", err))
-	}
-
-	// Set file_ids
-	if err := d.Set("file_ids", assistant.FileIDs); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting file_ids: %s", err))
-	}
-
-	// Set metadata
-	metadataMap := make(map[string]string)
-	for k, v := range assistant.Metadata {
-		if strVal, ok := v.(string); ok {
-			metadataMap[k] = strVal
-		} else {
-			// Convert non-string values to JSON string
-			jsonBytes, err := json.Marshal(v)
-			if err != nil {
-				return diag.FromErr(fmt.Errorf("error marshaling metadata value for key %s: %s", k, err))
-			}
-			metadataMap[k] = string(jsonBytes)
-		}
-	}
-	if err := d.Set("metadata", metadataMap); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting metadata: %s", err))
-	}
-
-	// Set additional properties from the map
-	if responseFormat, ok := assistantMap["response_format"]; ok {
-		if str, ok := responseFormat.(string); ok {
-			if err := d.Set("response_format", str); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting response_format: %s", err))
-			}
-		} else if obj, ok := responseFormat.(map[string]interface{}); ok {
-			// Convert map to JSON string for storing complex response_format
-			jsonBytes, err := json.Marshal(obj)
-			if err != nil {
-				return diag.FromErr(fmt.Errorf("error marshaling response_format: %s", err))
-			}
-			if err := d.Set("response_format", string(jsonBytes)); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting response_format as JSON: %s", err))
-			}
+		if hasResources {
+			data.ToolResources = trModel
 		}
 	}
 
-	if reasoningEffort, ok := assistantMap["reasoning_effort"]; ok {
-		if str, ok := reasoningEffort.(string); ok {
-			if err := d.Set("reasoning_effort", str); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting reasoning_effort: %s", err))
-			}
-		}
+	// Map other fields
+	if assistantResponse.Temperature != 0 {
+		data.Temperature = types.Float64Value(assistantResponse.Temperature)
+	} else {
+		data.Temperature = types.Float64Null()
 	}
 
-	if temperature, ok := assistantMap["temperature"]; ok {
-		if num, ok := temperature.(float64); ok {
-			if err := d.Set("temperature", num); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting temperature: %s", err))
-			}
-		}
+	if assistantResponse.TopP != 0 {
+		data.TopP = types.Float64Value(assistantResponse.TopP)
+	} else {
+		data.TopP = types.Float64Null()
 	}
 
-	if topP, ok := assistantMap["top_p"]; ok {
-		if num, ok := topP.(float64); ok {
-			if err := d.Set("top_p", num); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting top_p: %s", err))
-			}
-		}
+	if assistantResponse.ResponseFormat != nil {
+		rfStr := fmt.Sprintf("%v", assistantResponse.ResponseFormat)
+		data.ResponseFormat = types.StringValue(rfStr)
+	} else {
+		data.ResponseFormat = types.StringNull()
 	}
 
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

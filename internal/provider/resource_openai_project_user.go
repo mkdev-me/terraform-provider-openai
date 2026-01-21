@@ -1,435 +1,322 @@
 package provider
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// resourceOpenAIProjectUser defines the schema and CRUD operations for OpenAI project users.
-// This resource allows users to manage project users through Terraform,
-// including adding, reading, updating, and removing users from projects.
-func resourceOpenAIProjectUser() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIProjectUserCreate,
-		ReadContext:   resourceOpenAIProjectUserRead,
-		UpdateContext: resourceOpenAIProjectUserUpdate,
-		DeleteContext: resourceOpenAIProjectUserDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIProjectUserImport,
-		},
-		Schema: map[string]*schema.Schema{
-			"project_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the project the user will be added to",
-			},
-			"user_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the user to add to the project",
-			},
-			"role": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"owner", "member"}, false),
-				Description:  "The role to assign to the user (owner or member)",
-			},
-			"email": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The email address of the user",
-			},
-			"added_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "Timestamp when the user was added to the project",
-			},
-		},
-	}
+var _ resource.Resource = &ProjectUserResource{}
+var _ resource.ResourceWithImportState = &ProjectUserResource{}
+
+type ProjectUserResource struct {
+	client *OpenAIClient
 }
 
-// findProjectUser finds a user in a project by ID with automatic pagination.
-// This helper function ensures we search through all pages of users to properly detect drift.
-func findProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
-	clientInstance, err := GetOpenAIClientWithAdminKey(c)
-	if err != nil {
-		return nil, false, err
-	}
-
-	const batchSize = 100
-	tflog.Debug(ctx, fmt.Sprintf("Finding user %s in project %s with pagination", userID, projectID))
-
-	var after string
-	hasMore := true
-	pageCount := 0
-
-	for hasMore {
-		pageCount++
-		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
-
-		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
-		if err != nil {
-			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
-		}
-
-		// Look for the user in this page
-		for _, user := range userList.Data {
-			if user.ID == userID {
-				tflog.Debug(ctx, fmt.Sprintf("Found user %s in project %s on page %d", userID, projectID, pageCount))
-				return &user, true, nil
-			}
-		}
-
-		// Check if there are more pages
-		hasMore = userList.HasMore
-		if hasMore && userList.LastID != "" {
-			after = userList.LastID
-		}
-	}
-
-	tflog.Debug(ctx, fmt.Sprintf("User %s not found in project %s after checking %d pages", userID, projectID, pageCount))
-	return nil, false, nil
+func NewProjectUserResource() resource.Resource {
+	return &ProjectUserResource{}
 }
 
-// resourceOpenAIProjectUserCreate adds a user to an OpenAI project.
-// It requires the project_id, user_id, and role to be specified.
-func resourceOpenAIProjectUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	projectID := d.Get("project_id").(string)
-	userID := d.Get("user_id").(string)
-	role := d.Get("role").(string)
-
-	// Generate a unique ID for the resource
-	id := fmt.Sprintf("%s:%s", projectID, userID)
-	d.SetId(id)
-
-	// First check if the user is already in the project
-	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s already exists in project %s", userID, projectID))
-	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
-	if err != nil {
-		tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
-		return diag.Errorf("Error checking if user exists in project: %s", err)
-	}
-
-	if exists {
-		tflog.Info(ctx, fmt.Sprintf("User %s already exists in project %s, using existing user", userID, projectID))
-		// Update the Terraform state with values from the existing user
-		if err := d.Set("email", existingUser.Email); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set email: %v", err))
-		}
-		if err := d.Set("added_at", existingUser.AddedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
-		}
-		if err := d.Set("role", existingUser.Role); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set role: %v", err))
-		}
-
-		// If the role in the configuration is different from the existing role, update it
-		if existingUser.Role != role {
-			tflog.Info(ctx, fmt.Sprintf("User's current role '%s' differs from desired role '%s', updating...", existingUser.Role, role))
-			return resourceOpenAIProjectUserUpdate(ctx, d, m)
-		}
-
-		return diag.Diagnostics{}
-	}
-
-	// Add the user to the project
-	tflog.Debug(ctx, fmt.Sprintf("Adding user %s to project %s with role %s", userID, projectID, role))
-	projectUser, err := c.AddProjectUser(projectID, userID, role)
-	if err != nil {
-		// Check if error is because user already exists
-		if strings.Contains(err.Error(), "already exists in project") {
-			tflog.Info(ctx, fmt.Sprintf("User %s already exists in project, continuing: %s", userID, err))
-
-			// Try to get user details again
-			existingUser, exists, findErr := findProjectUser(ctx, m, projectID, userID)
-			if findErr == nil && exists {
-				// Update the Terraform state with values from the existing user
-				if err := d.Set("email", existingUser.Email); err != nil {
-					return diag.FromErr(fmt.Errorf("failed to set email: %v", err))
-				}
-				if err := d.Set("added_at", existingUser.AddedAt); err != nil {
-					return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
-				}
-				if err := d.Set("role", existingUser.Role); err != nil {
-					return diag.FromErr(fmt.Errorf("failed to set role: %v", err))
-				}
-
-				// If the role in the configuration is different from the existing role, update it
-				if existingUser.Role != role {
-					tflog.Info(ctx, fmt.Sprintf("User's current role '%s' differs from desired role '%s', updating...", existingUser.Role, role))
-					return resourceOpenAIProjectUserUpdate(ctx, d, m)
-				}
-
-				return diag.Diagnostics{}
-			}
-
-			// If we can't get the user details, just continue with the state as is
-			return diag.Diagnostics{}
-		}
-
-		// For other errors, return an error diagnostic
-		tflog.Error(ctx, fmt.Sprintf("Failed to add user to project: %v", err))
-		return diag.Errorf("Error adding user to project: %s", err)
-	}
-
-	// Update the Terraform state with computed values
-	if err := d.Set("email", projectUser.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set email: %v", err))
-	}
-	if err := d.Set("added_at", projectUser.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
-	}
-
-	return diag.Diagnostics{}
+func (r *ProjectUserResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_project_user"
 }
 
-// resourceOpenAIProjectUserRead retrieves information about a user in a project.
-// This implementation now tries to verify if the user exists in the project.
-func resourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	projectID := d.Get("project_id").(string)
-	userID := d.Get("user_id").(string)
-
-	// Check if the user exists in the project
-	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
-	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
-	if err != nil {
-		// If it's a permissions error, just keep the state
-		if strings.Contains(err.Error(), "insufficient permissions") {
-			tflog.Warn(ctx, fmt.Sprintf("Permission error reading user from project, using local state: %s", err))
-
-			return diag.Diagnostics{}
-		}
-
-		tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
-		return diag.Errorf("Error checking if user exists in project: %s", err)
-	}
-
-	if !exists {
-		// User doesn't exist in the project, remove from state
-		tflog.Warn(ctx, fmt.Sprintf("User %s no longer exists in project %s, removing from state", userID, projectID))
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Update state with non-role values from API
-	if err := d.Set("email", existingUser.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set email: %v", err))
-	}
-	if err := d.Set("added_at", existingUser.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
-	}
-
-	// Get the configured role (what's in .tf file) and the role from API
-	configuredRole := d.Get("role").(string)
-
-	// Log if there's a mismatch but DO NOT update the role in the state
-	// This ensures the configuration remains the source of truth
-	if configuredRole != existingUser.Role {
-		tflog.Warn(ctx, fmt.Sprintf("Role mismatch: terraform=%s, API=%s for user %s in project %s. "+
-			"Terraform configuration will take precedence.",
-			configuredRole, existingUser.Role, userID, projectID))
-	} else {
-		tflog.Debug(ctx, fmt.Sprintf("Role in sync: terraform=%s, API=%s for user %s in project %s",
-			configuredRole, existingUser.Role, userID, projectID))
-	}
-
-	// IMPORTANT: We deliberately DO NOT update the role from the API
-	// This ensures that the Terraform config remains the source of truth
-	// If you want to synchronize with the API state, use terraform import
-
-	return diag.Diagnostics{}
+type ProjectUserResourceModel struct {
+	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
+	UserID    types.String `tfsdk:"user_id"`
+	Role      types.String `tfsdk:"role"`
+	Email     types.String `tfsdk:"email"`
+	AddedAt   types.Int64  `tfsdk:"added_at"`
 }
 
-// resourceOpenAIProjectUserUpdate updates a user's role in a project.
-// Only the role can be updated, as other attributes like user_id and project_id require recreating the resource.
-func resourceOpenAIProjectUserUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
+func (r *ProjectUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages a user in an OpenAI Project.",
 
-	// Check if the role has changed
-	if !d.HasChange("role") {
-		return diag.Diagnostics{}
-	}
-
-	projectID := d.Get("project_id").(string)
-	userID := d.Get("user_id").(string)
-	role := d.Get("role").(string)
-
-	// First check: Is this user an organization owner?
-	// Get information about the user in the organization first
-	// This is a preventive check, as attempting to change the role of an org owner will fail
-	orgUser, exists, err := c.GetUser(userID)
-	if err == nil && exists && orgUser.Role == "owner" {
-		// This is an organization owner, they can't have their project role changed from owner
-		tflog.Error(ctx, fmt.Sprintf("Cannot change role for user %s (email: %s) because they are an organization owner. "+
-			"Organization owners must maintain 'owner' role in all projects.",
-			userID, orgUser.Email))
-
-		// Return detailed diagnostic explaining the issue
-		return diag.Diagnostics{
-			diag.Diagnostic{
-				Severity: diag.Error,
-				Summary:  "Cannot change role for organization owner",
-				Detail:   fmt.Sprintf("User %s (email: %s) is an organization owner. Organization owners must maintain 'owner' role in all projects. The OpenAI API does not allow changing their role to 'member'.", userID, orgUser.Email),
-			},
-		}
-	}
-
-	// Update the user's role in the project
-	tflog.Info(ctx, fmt.Sprintf("Updating user %s in project %s to role %s via API call", userID, projectID, role))
-
-	// Call the API to update the user's role
-	updatedUser, err := c.UpdateProjectUser(projectID, userID, role)
-	if err != nil {
-		// Handle specific error for organization owners
-		if strings.Contains(err.Error(), "owner of the organization") ||
-			strings.Contains(err.Error(), "organization owner") {
-			tflog.Error(ctx, fmt.Sprintf("Cannot update user %s as they are an organization owner: %s", userID, err))
-
-			return diag.Diagnostics{
-				diag.Diagnostic{
-					Severity: diag.Error,
-					Summary:  "Cannot change role for organization owner",
-					Detail:   fmt.Sprintf("User %s is an organization owner. Organization owners must maintain 'owner' role in all projects. The OpenAI API does not allow changing their role to 'member'. Error from API: %s", userID, err),
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the project user (project_id:user_id).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
-			}
-		}
-
-		tflog.Error(ctx, fmt.Sprintf("Error updating user role: %v", err))
-		return diag.Errorf("Error updating user role in project: %s", err)
-	}
-
-	// Verify the update was successful by checking the returned role
-	if updatedUser.Role != role {
-		tflog.Warn(ctx, fmt.Sprintf("API returned role %s after update, which doesn't match requested role %s. "+
-			"This likely means the role change was not applied correctly.",
-			updatedUser.Role, role))
-
-		return diag.Diagnostics{
-			diag.Diagnostic{
-				Severity: diag.Error,
-				Summary:  "Role change was not applied",
-				Detail:   fmt.Sprintf("The API returned role '%s' after attempting to change to '%s'. This typically happens when trying to change the role of an organization owner or due to permission issues.", updatedUser.Role, role),
 			},
-		}
-	} else {
-		tflog.Info(ctx, fmt.Sprintf("Successfully updated user %s to role %s in project %s",
-			userID, role, projectID))
+			"project_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the project.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"user_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the user.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"role": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The role of the user in the project (owner or member).",
+			},
+			"email": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The email of the user.",
+			},
+			"added_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp when the user was added to the project.",
+			},
+		},
 	}
-
-	// Update the Terraform state with the updated user info
-	if err := d.Set("role", updatedUser.Role); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set role: %v", err))
-	}
-	if err := d.Set("email", updatedUser.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set email: %v", err))
-	}
-	if err := d.Set("added_at", updatedUser.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set added_at: %v", err))
-	}
-
-	return diag.Diagnostics{}
 }
 
-// resourceOpenAIProjectUserDelete removes a user from a project.
-// It now makes an actual API call to remove the user, with appropriate error handling.
-func resourceOpenAIProjectUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *ProjectUserResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
-
-	projectID := d.Get("project_id").(string)
-	userID := d.Get("user_id").(string)
-
-	// Attempt to remove the user from the project
-	tflog.Debug(ctx, fmt.Sprintf("Removing user %s from project %s", userID, projectID))
-	err = c.RemoveProjectUser(projectID, userID)
-	if err != nil {
-		// Check if this is a case where the user is an organization owner
-		if strings.Contains(err.Error(), "owner of the organization") {
-			tflog.Warn(ctx, fmt.Sprintf("Cannot remove user %s as they are an organization owner: %s", userID, err))
-
-			// Since we can't actually remove the user, just remove from Terraform state
-			tflog.Info(ctx, "Removing user from Terraform state only, since they cannot be removed from the project")
-			d.SetId("")
-			return diag.Diagnostics{}
-		}
-
-		// If the error indicates the user doesn't exist, consider the delete successful
-		if strings.Contains(err.Error(), "not found") {
-			tflog.Info(ctx, fmt.Sprintf("User %s not found in project %s, considering delete successful", userID, projectID))
-			d.SetId("")
-			return diag.Diagnostics{}
-		}
-
-		// For any other error, return an error diagnostic
-		tflog.Error(ctx, fmt.Sprintf("Error removing user from project: %v", err))
-		return diag.Errorf("Error removing user from project: %s", err)
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
 	}
-
-	// Remove from Terraform state
-	d.SetId("")
-
-	return diag.Diagnostics{}
+	r.client = client
 }
 
-// resourceOpenAIProjectUserImport imports an existing project user into Terraform state.
-// The ID should be in the format "project_id:user_id".
-func resourceOpenAIProjectUserImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	// Split the ID to get project_id and user_id
-	parts := strings.Split(d.Id(), ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid ID format for project user import. Expected 'project_id:user_id', got: %s", d.Id())
+func (r *ProjectUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ProjectUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	projectID := parts[0]
-	userID := parts[1]
-
-	// Set the required fields in the resource data
-	if err := d.Set("project_id", projectID); err != nil {
-		return nil, fmt.Errorf("error setting project_id: %s", err)
-	}
-	if err := d.Set("user_id", userID); err != nil {
-		return nil, fmt.Errorf("error setting user_id: %s", err)
+	// Add user to project
+	// POST /organization/projects/{project_id}/users
+	reqMap := map[string]interface{}{
+		"user_id": data.UserID.ValueString(),
+		"role":    data.Role.ValueString(),
 	}
 
-	// Find the user in the project to get additional details
-	existingUser, exists, err := findProjectUser(ctx, m, projectID, userID)
+	reqBody, _ := json.Marshal(reqMap)
+
+	url := fmt.Sprintf("%s/organization/projects/%s/users", r.client.OpenAIClient.APIURL, data.ProjectID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving project user: %s", err)
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	if !exists {
-		return nil, fmt.Errorf("user %s not found in project %s", userID, projectID)
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set the computed fields based on the API response
-	if err := d.Set("email", existingUser.Email); err != nil {
-		return nil, fmt.Errorf("error setting email: %s", err)
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	if err := d.Set("role", existingUser.Role); err != nil {
-		return nil, fmt.Errorf("error setting role: %s", err)
-	}
-	if err := d.Set("added_at", existingUser.AddedAt); err != nil {
-		return nil, fmt.Errorf("error setting added_at: %s", err)
+	defer apiResp.Body.Close()
+
+	// If conflict (user already exists), we might want to check ownership or just read.
+	// However, SDKv2 logic was complex. Framework simple: if it fails, it fails.
+	// Terraform should handle basic errors.
+
+	if apiResp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	return []*schema.ResourceData{d}, nil
+	var userResp ProjectUserResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &userResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.ID = types.StringValue(fmt.Sprintf("%s:%s", data.ProjectID.ValueString(), userResp.ID))
+	data.Email = types.StringValue(userResp.Email)
+	// data.Role already set
+	data.AddedAt = types.Int64Value(userResp.AddedAt)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectUserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ProjectUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	idParts := strings.Split(data.ID.ValueString(), ":")
+	if len(idParts) != 2 {
+		resp.Diagnostics.AddError("Invalid ID", "ID must be project_id:user_id")
+		return
+	}
+	projectID := idParts[0]
+	userID := idParts[1]
+
+	// API to get project user: GET /organization/projects/{project_id}/users/{user_id}
+	url := fmt.Sprintf("%s/organization/projects/%s/users/%s", r.client.OpenAIClient.APIURL, projectID, userID)
+	apiReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
+	}
+
+	var userResp ProjectUserResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &userResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.ProjectID = types.StringValue(projectID)
+	data.UserID = types.StringValue(userResp.ID)
+	data.Role = types.StringValue(userResp.Role)
+	data.Email = types.StringValue(userResp.Email)
+	data.AddedAt = types.Int64Value(userResp.AddedAt)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data ProjectUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Update role
+	// POST /organization/projects/{project_id}/users/{user_id}
+	reqMap := map[string]interface{}{
+		"role": data.Role.ValueString(),
+	}
+	reqBody, _ := json.Marshal(reqMap)
+
+	idParts := strings.Split(data.ID.ValueString(), ":")
+	if len(idParts) != 2 {
+		return
+	}
+	projectID := idParts[0]
+	userID := idParts[1]
+
+	url := fmt.Sprintf("%s/organization/projects/%s/users/%s", r.client.OpenAIClient.APIURL, projectID, userID)
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		return
+	}
+
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
+	}
+
+	var userResp ProjectUserResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &userResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.Role = types.StringValue(userResp.Role)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectUserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ProjectUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	idParts := strings.Split(data.ID.ValueString(), ":")
+	if len(idParts) != 2 {
+		return
+	}
+	projectID := idParts[0]
+	userID := idParts[1]
+
+	url := fmt.Sprintf("%s/organization/projects/%s/users/%s", r.client.OpenAIClient.APIURL, projectID, userID)
+	apiReq, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return
+	}
+
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	http.DefaultClient.Do(apiReq)
+}
+
+func (r *ProjectUserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

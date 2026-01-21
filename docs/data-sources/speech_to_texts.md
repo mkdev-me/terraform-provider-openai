@@ -3,12 +3,12 @@
 page_title: "openai_speech_to_texts Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Retrieving all speech-to-text transcriptions is not supported by the OpenAI API.
 ---
 
 # openai_speech_to_texts (Data Source)
 
-
+Retrieving all speech-to-text transcriptions is not supported by the OpenAI API.
 
 
 
@@ -17,22 +17,9 @@ description: |-
 
 ### Optional
 
-- `model` (String) Filter by model. Options include 'whisper-1', 'gpt-4o-transcribe', and 'gpt-4o-mini-transcribe'.
-- `project_id` (String) The ID of the project associated with the speech-to-text conversions. If not specified, the API key's default project will be used.
+- `model` (String) Filter by model.
+- `project_id` (String) The ID of the project.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `speech_to_texts` (List of Object) (see [below for nested schema](#nestedatt--speech_to_texts))
-
-<a id="nestedatt--speech_to_texts"></a>
-### Nested Schema for `speech_to_texts`
-
-Read-Only:
-
-- `created_at` (Number)
-- `duration` (Number)
-- `id` (String)
-- `model` (String)
-- `status` (String)
-- `text` (String)
+- `transcriptions` (List of String) List of transcriptions (Empty as not supported).

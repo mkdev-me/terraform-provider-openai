@@ -3,12 +3,12 @@
 page_title: "openai_messages Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of messages for a specific OpenAI thread.
 ---
 
 # openai_messages (Data Source)
 
-
+Use this data source to retrieve a list of messages for a specific OpenAI thread.
 
 
 
@@ -17,22 +17,12 @@ description: |-
 
 ### Required
 
-- `thread_id` (String) The ID of the thread containing the messages
-
-### Optional
-
-- `after` (String) A cursor for pagination. Return objects after this message ID.
-- `before` (String) A cursor for pagination. Return objects before this message ID.
-- `limit` (Number) A limit on the number of messages to be returned. Maximum of 100.
-- `order` (String) Sort order by creation timestamp. One of: asc, desc (default)
+- `thread_id` (String) The ID of the thread to list messages for.
 
 ### Read-Only
 
-- `first_id` (String) The ID of the first message in the list
-- `has_more` (Boolean) Whether there are more items available in the list
 - `id` (String) The ID of this resource.
-- `last_id` (String) The ID of the last message in the list
-- `messages` (List of Object) List of messages in the thread (see [below for nested schema](#nestedatt--messages))
+- `messages` (Attributes List) List of messages. (see [below for nested schema](#nestedatt--messages))
 
 <a id="nestedatt--messages"></a>
 ### Nested Schema for `messages`
@@ -40,8 +30,8 @@ description: |-
 Read-Only:
 
 - `assistant_id` (String)
-- `attachments` (List of Object) (see [below for nested schema](#nestedobjatt--messages--attachments))
-- `content` (String)
+- `attachments` (Attributes List) (see [below for nested schema](#nestedatt--messages--attachments))
+- `content` (Attributes List) (see [below for nested schema](#nestedatt--messages--content))
 - `created_at` (Number)
 - `id` (String)
 - `metadata` (Map of String)
@@ -50,12 +40,35 @@ Read-Only:
 - `run_id` (String)
 - `thread_id` (String)
 
-<a id="nestedobjatt--messages--attachments"></a>
+<a id="nestedatt--messages--attachments"></a>
 ### Nested Schema for `messages.attachments`
 
 Read-Only:
 
-- `assistant_id` (String)
-- `created_at` (Number)
-- `id` (String)
+- `file_id` (String)
+- `tools` (Attributes List) (see [below for nested schema](#nestedatt--messages--attachments--tools))
+
+<a id="nestedatt--messages--attachments--tools"></a>
+### Nested Schema for `messages.attachments.tools`
+
+Read-Only:
+
 - `type` (String)
+
+
+
+<a id="nestedatt--messages--content"></a>
+### Nested Schema for `messages.content`
+
+Read-Only:
+
+- `text` (Attributes) (see [below for nested schema](#nestedatt--messages--content--text))
+- `type` (String)
+
+<a id="nestedatt--messages--content--text"></a>
+### Nested Schema for `messages.content.text`
+
+Read-Only:
+
+- `annotations` (List of String)
+- `value` (String)

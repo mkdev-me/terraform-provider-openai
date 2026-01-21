@@ -46,41 +46,33 @@ output "transcription_text" {
 
 ### Required
 
-- `file` (String) Path to the audio file to transcribe (format: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm)
-- `model` (String) ID of the model to use (e.g., 'whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe')
+- `file` (String) Path to the audio file to transcribe.
+- `model` (String) ID of the model to use (e.g., 'whisper-1', 'gpt-4o-transcribe').
 
 ### Optional
 
-- `include` (List of String) Additional information to include in the transcription response. 'logprobs' will return the log probabilities of the tokens in the response. Only works with response_format set to 'json' and only with gpt-4o models.
-- `language` (String) The language of the input audio (ISO-639-1 format)
-- `prompt` (String) An optional text to guide the model's style or continue a previous audio segment
-- `response_format` (String) The format of the transcript output. Note: For gpt-4o-transcribe and gpt-4o-mini-transcribe, only 'json' is supported.
-- `stream` (Boolean) If set to true, the model response data will be streamed to the client as it is generated. Not supported for whisper-1 model.
-- `temperature` (Number) The sampling temperature, between 0 and 1
-- `timestamp_granularities` (List of String) The timestamp granularities to populate for this transcription. response_format must be set to verbose_json to use timestamp granularities. Either or both of these options are supported: 'word', or 'segment'.
+- `include` (List of String) Additional information to include (e.g. 'logprobs').
+- `language` (String) The language of the input audio (ISO-639-1 format).
+- `prompt` (String) An optional text to guide the model's style or continue a previous audio segment.
+- `response_format` (String) The format of the transcript output (e.g. json, text, srt).
+- `temperature` (Number) The sampling temperature, between 0 and 1.
 
 ### Read-Only
 
-- `duration` (Number) The duration of the audio in seconds
-- `id` (String) The ID of this resource.
-- `segments` (List of Object) (see [below for nested schema](#nestedatt--segments))
-- `text` (String) The transcribed text
+- `duration` (Number) Duration of the audio in seconds.
+- `id` (String) The identifier of the transcription (randomly generated).
+- `segments` (List of Object) Segments of the transcription. (see [below for nested schema](#nestedatt--segments))
+- `text` (String) The transcribed text.
 
 <a id="nestedatt--segments"></a>
 ### Nested Schema for `segments`
 
 Read-Only:
 
-- `avg_logprob` (Number)
-- `compression_ratio` (Number)
 - `end` (Number)
 - `id` (Number)
-- `no_speech_prob` (Number)
-- `seek` (Number)
 - `start` (Number)
-- `temperature` (Number)
 - `text` (String)
-- `tokens` (List of Number)
 
 ## Import
 

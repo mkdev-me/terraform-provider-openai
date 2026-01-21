@@ -3,12 +3,12 @@
 page_title: "openai_thread Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Creates a thread that the assistant can interact with.
 ---
 
 # openai_thread (Resource)
 
-
+Creates a thread that the assistant can interact with.
 
 ## Example Usage
 
@@ -87,26 +87,69 @@ output "support_thread_id" {
 
 ### Optional
 
-- `messages` (Block List) (see [below for nested schema](#nestedblock--messages))
-- `metadata` (Map of String) Set of key-value pairs that can be attached to the thread
+- `messages` (Attributes List) A list of messages to start the thread with. (see [below for nested schema](#nestedatt--messages))
+- `metadata` (Map of String) Set of key-value pairs that can be attached to the thread.
+- `tool_resources` (Attributes List) (see [below for nested schema](#nestedatt--tool_resources))
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the thread was created
-- `id` (String) The ID of this resource.
+- `created_at` (Number) The timestamp for when the thread was created.
+- `id` (String) The identifier of the thread.
 
-<a id="nestedblock--messages"></a>
+<a id="nestedatt--messages"></a>
 ### Nested Schema for `messages`
 
 Required:
 
-- `content` (String) The content of the message
+- `content` (String) The content of the message.
 - `role` (String) The role of the entity that is creating the message. Currently only 'user' is supported.
 
 Optional:
 
-- `file_ids` (List of String) A list of file IDs that the message should use
-- `metadata` (Map of String) Set of key-value pairs that can be attached to the message
+- `attachments` (Attributes List) A list of files attached to the message, and the tools they should be added to. (see [below for nested schema](#nestedatt--messages--attachments))
+- `file_ids` (List of String) A list of file IDs that the message should use (Legacy).
+- `metadata` (Map of String) Set of key-value pairs that can be attached to the message.
+
+<a id="nestedatt--messages--attachments"></a>
+### Nested Schema for `messages.attachments`
+
+Required:
+
+- `file_id` (String) The ID of the file to attach.
+- `tools` (Attributes List) (see [below for nested schema](#nestedatt--messages--attachments--tools))
+
+<a id="nestedatt--messages--attachments--tools"></a>
+### Nested Schema for `messages.attachments.tools`
+
+Required:
+
+- `type` (String) The type of tool.
+
+
+
+
+<a id="nestedatt--tool_resources"></a>
+### Nested Schema for `tool_resources`
+
+Optional:
+
+- `code_interpreter` (Attributes List) (see [below for nested schema](#nestedatt--tool_resources--code_interpreter))
+- `file_search` (Attributes List) (see [below for nested schema](#nestedatt--tool_resources--file_search))
+
+<a id="nestedatt--tool_resources--code_interpreter"></a>
+### Nested Schema for `tool_resources.code_interpreter`
+
+Optional:
+
+- `file_ids` (List of String)
+
+
+<a id="nestedatt--tool_resources--file_search"></a>
+### Nested Schema for `tool_resources.file_search`
+
+Optional:
+
+- `vector_store_ids` (List of String)
 
 ## Import
 

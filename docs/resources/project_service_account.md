@@ -3,12 +3,12 @@
 page_title: "openai_project_service_account Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI Project Service Account.
 ---
 
 # openai_project_service_account (Resource)
 
-
+Manages an OpenAI Project Service Account.
 
 
 
@@ -17,27 +17,14 @@ description: |-
 
 ### Required
 
-- `name` (String) The name of the service account
-- `project_id` (String) The ID of the project to which the service account belongs
-
-### Optional
-
-- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `name` (String) The name of the service account.
+- `project_id` (String) The ID of the project to which the service account belongs.
 
 ### Read-Only
 
-- `api_key_id` (String) The ID of the API key associated with the service account
-- `api_key_value` (String, Sensitive) The value of the API key associated with the service account (only available upon creation)
-- `created_at` (Number) The timestamp (in Unix time) when the service account was created
-- `id` (String) The ID of this resource.
-- `role` (String) The role of the service account
-- `service_account_id` (String) The ID of the service account
-
-<a id="nestedblock--timeouts"></a>
-### Nested Schema for `timeouts`
-
-Optional:
-
-- `create` (String)
-- `delete` (String)
-- `read` (String)
+- `api_key_id` (String) The ID of the API key associated with the service account.
+- `api_key_value` (String, Sensitive) The value of the API key associated with the service account (only available upon creation).
+- `created_at` (Number) The timestamp (in Unix time) when the service account was created.
+- `id` (String) The identifier of the project service account (project_id:service_account_id).
+- `role` (String) The role of the service account.
+- `service_account_id` (String) The ID of the service account.

@@ -3,25 +3,23 @@
 page_title: "openai_project_user Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages a user in an OpenAI Project.
 ---
 
 # openai_project_user (Resource)
 
-
+Manages a user in an OpenAI Project.
 
 ## Example Usage
 
 ```terraform
 # First, create a project
 resource "openai_project" "development" {
-  name        = "Development Environment"
-  description = "Project for development and testing"
+  name = "Development Environment"
 }
 
 resource "openai_project" "production" {
-  name        = "Production API"
-  description = "Production API project with critical services"
+  name = "Production API"
 }
 
 # IMPORTANT: Replace these user_id values with actual user IDs from your organization
@@ -101,12 +99,12 @@ output "development_project_id" {
 
 ### Required
 
-- `project_id` (String) The ID of the project the user will be added to
-- `role` (String) The role to assign to the user (owner or member)
-- `user_id` (String) The ID of the user to add to the project
+- `project_id` (String) The ID of the project.
+- `role` (String) The role of the user in the project (owner or member).
+- `user_id` (String) The ID of the user.
 
 ### Read-Only
 
-- `added_at` (Number) Timestamp when the user was added to the project
-- `email` (String) The email address of the user
-- `id` (String) The ID of this resource.
+- `added_at` (Number) The timestamp when the user was added to the project.
+- `email` (String) The email of the user.
+- `id` (String) The identifier of the project user (project_id:user_id).

@@ -1,18 +1,42 @@
 package main
 
-//go:generate terraform fmt -recursive ./examples/
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
-
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
+	"context"
+	"flag"
+	"log"
+
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/mkdev-me/terraform-provider-openai/internal/provider"
 )
 
-// main is the entry point for the Terraform provider.
-// It uses the Terraform plugin SDK to serve the provider implementation.
+// Run "go generate" to format example terraform files and generate the docs for the registry/website
+
+//go:generate terraform fmt -recursive ./examples/
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+
+var (
+	// these will be set by the goreleaser configuration
+	// to appropriate values for the compiled binary.
+	version string = "2.0.0"
+
+	// goreleaser can also tag the specific commit that release was built on.
+	// commit  string = ""
+)
+
 func main() {
-	// Serve the provider
-	plugin.Serve(&plugin.ServeOpts{
-		ProviderFunc: provider.Provider,
-	})
+	var debug bool
+
+	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
+	flag.Parse()
+
+	opts := providerserver.ServeOpts{
+		Address: "registry.terraform.io/mkdev-me/openai",
+		Debug:   debug,
+	}
+
+	err := providerserver.Serve(context.Background(), provider.NewFrameworkProvider(version), opts)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 }

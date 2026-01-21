@@ -3,12 +3,12 @@
 page_title: "openai_fine_tuning_job Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI fine-tuning job.
 ---
 
 # openai_fine_tuning_job (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI fine-tuning job.
 
 ## Example Usage
 
@@ -33,26 +33,26 @@ output "job_status" {
 
 ### Read-Only
 
-- `created_at` (Number) Unix timestamp of when the job was created
-- `error` (Map of String) Error information if job failed
-- `estimated_finish` (Number) Estimated finish time in Unix timestamp format
-- `fine_tuned_model` (String) ID of the resulting fine-tuned model
-- `finished_at` (Number) Unix timestamp of when the job finished
-- `hyperparameters` (Map of String) Hyperparameters used for the fine-tuning job
-- `id` (String) The ID of the fine-tuning job
-- `integrations` (List of Object) Integrations associated with the fine-tuning job (see [below for nested schema](#nestedatt--integrations))
-- `metadata` (Map of String) Metadata associated with the fine-tuning job
-- `method` (List of Object) The fine-tuning method used (see [below for nested schema](#nestedatt--method))
-- `model` (String) The base model being fine-tuned
-- `object` (String) The object type, always 'fine_tuning.job'
-- `organization_id` (String) The organization ID the model belongs to
-- `result_files` (List of String) List of result file IDs
-- `seed` (Number) Seed for reproducibility
-- `status` (String) Current status of the fine-tuning job
-- `trained_tokens` (Number) Number of tokens processed during training
-- `training_file` (String) ID of the training data file
-- `user_provided_suffix` (String) User-provided suffix for the fine-tuned model
-- `validation_file` (String) Optional ID of validation data file
+- `created_at` (Number)
+- `error` (Map of String)
+- `estimated_finish` (Number)
+- `fine_tuned_model` (String)
+- `finished_at` (Number)
+- `hyperparameters` (Map of String)
+- `id` (String) The ID of this resource.
+- `integrations` (Attributes List) (see [below for nested schema](#nestedatt--integrations))
+- `metadata` (Map of String)
+- `method` (Attributes List) (see [below for nested schema](#nestedatt--method))
+- `model` (String)
+- `object` (String)
+- `organization_id` (String)
+- `result_files` (List of String)
+- `seed` (Number)
+- `status` (String)
+- `trained_tokens` (Number)
+- `training_file` (String)
+- `user_provided_suffix` (String)
+- `validation_file` (String)
 
 <a id="nestedatt--integrations"></a>
 ### Nested Schema for `integrations`
@@ -61,9 +61,9 @@ Read-Only:
 
 - `id` (String)
 - `type` (String)
-- `wandb` (List of Object) (see [below for nested schema](#nestedobjatt--integrations--wandb))
+- `wandb` (Attributes List) (see [below for nested schema](#nestedatt--integrations--wandb))
 
-<a id="nestedobjatt--integrations--wandb"></a>
+<a id="nestedatt--integrations--wandb"></a>
 ### Nested Schema for `integrations.wandb`
 
 Read-Only:
@@ -80,18 +80,18 @@ Read-Only:
 
 Read-Only:
 
-- `dpo` (List of Object) (see [below for nested schema](#nestedobjatt--method--dpo))
-- `supervised` (List of Object) (see [below for nested schema](#nestedobjatt--method--supervised))
+- `dpo` (Attributes List) (see [below for nested schema](#nestedatt--method--dpo))
+- `supervised` (Attributes List) (see [below for nested schema](#nestedatt--method--supervised))
 - `type` (String)
 
-<a id="nestedobjatt--method--dpo"></a>
+<a id="nestedatt--method--dpo"></a>
 ### Nested Schema for `method.dpo`
 
 Read-Only:
 
-- `hyperparameters` (List of Object) (see [below for nested schema](#nestedobjatt--method--dpo--hyperparameters))
+- `hyperparameters` (Attributes List) (see [below for nested schema](#nestedatt--method--dpo--hyperparameters))
 
-<a id="nestedobjatt--method--dpo--hyperparameters"></a>
+<a id="nestedatt--method--dpo--hyperparameters"></a>
 ### Nested Schema for `method.dpo.hyperparameters`
 
 Read-Only:
@@ -100,14 +100,14 @@ Read-Only:
 
 
 
-<a id="nestedobjatt--method--supervised"></a>
+<a id="nestedatt--method--supervised"></a>
 ### Nested Schema for `method.supervised`
 
 Read-Only:
 
-- `hyperparameters` (List of Object) (see [below for nested schema](#nestedobjatt--method--supervised--hyperparameters))
+- `hyperparameters` (Attributes List) (see [below for nested schema](#nestedatt--method--supervised--hyperparameters))
 
-<a id="nestedobjatt--method--supervised--hyperparameters"></a>
+<a id="nestedatt--method--supervised--hyperparameters"></a>
 ### Nested Schema for `method.supervised.hyperparameters`
 
 Read-Only:

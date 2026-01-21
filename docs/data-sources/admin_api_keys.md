@@ -3,12 +3,12 @@
 page_title: "openai_admin_api_keys Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of all admin API keys.
 ---
 
 # openai_admin_api_keys (Data Source)
 
-
+Use this data source to retrieve a list of all admin API keys.
 
 
 
@@ -17,13 +17,13 @@ description: |-
 
 ### Optional
 
-- `after` (String) Cursor for pagination, API key ID to fetch results after
-- `limit` (Number) Maximum number of API keys to return
+- `after` (String) Cursor for pagination, API key ID to fetch results after.
+- `limit` (Number) Maximum number of API keys to return. Default is 20.
 
 ### Read-Only
 
-- `api_keys` (List of Object) List of admin API keys (see [below for nested schema](#nestedatt--api_keys))
-- `has_more` (Boolean) Whether there are more API keys available beyond the limit
+- `api_keys` (Attributes List) List of admin API keys. (see [below for nested schema](#nestedatt--api_keys))
+- `has_more` (Boolean) Whether there are more API keys available beyond the limit.
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--api_keys"></a>
@@ -31,10 +31,10 @@ description: |-
 
 Read-Only:
 
-- `created_at` (String)
-- `expires_at` (Number)
-- `id` (String)
-- `last_used_at` (String)
-- `name` (String)
-- `object` (String)
-- `scopes` (List of String)
+- `created_at` (String) Timestamp when the admin API key was created.
+- `expires_at` (Number) Timestamp when the admin API key expires (optional).
+- `id` (String) The ID of the admin API key.
+- `last_used_at` (String) Timestamp when the admin API key was last used.
+- `name` (String) The name of the admin API key.
+- `object` (String) The object type.
+- `scopes` (List of String) Scopes assigned to the admin API key.

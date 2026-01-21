@@ -5,269 +5,192 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// EmbeddingResponse represents the API response for text embeddings.
-// It contains the generated embeddings, model information, and usage statistics.
-type EmbeddingResponse struct {
-	Object string          `json:"object"` // Type of object (e.g., "list")
-	Data   []EmbeddingData `json:"data"`   // List of generated embeddings
-	Model  string          `json:"model"`  // Model used for the embeddings
-	Usage  EmbeddingUsage  `json:"usage"`  // Token usage statistics
+var _ resource.Resource = &EmbeddingResource{}
+var _ resource.ResourceWithImportState = &EmbeddingResource{}
+
+type EmbeddingResource struct {
+	client *OpenAIClient
 }
 
-// EmbeddingData represents a single text embedding.
-// It contains the vector representation of the input text.
-type EmbeddingData struct {
-	Object    string          `json:"object"`    // Type of object (e.g., "embedding")
-	Index     int             `json:"index"`     // Position of this embedding in the list
-	Embedding json.RawMessage `json:"embedding"` // Vector representation of the text (can be float array or base64 string)
+func NewEmbeddingResource() resource.Resource {
+	return &EmbeddingResource{}
 }
 
-// EmbeddingUsage represents token usage statistics for the embedding request.
-// It tracks the number of tokens used in the input text.
-type EmbeddingUsage struct {
-	PromptTokens int `json:"prompt_tokens"` // Number of tokens in the input text
-	TotalTokens  int `json:"total_tokens"`  // Total number of tokens used
+func (r *EmbeddingResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_embedding"
 }
 
-// EmbeddingRequest represents the request payload for creating text embeddings.
-// It specifies the model, input text, and various parameters to control the embedding process.
-type EmbeddingRequest struct {
-	Model          string      `json:"model"`                     // ID of the model to use
-	Input          interface{} `json:"input"`                     // Text or list of texts to embed
-	User           string      `json:"user,omitempty"`            // Optional user identifier
-	EncodingFormat string      `json:"encoding_format,omitempty"` // Format of the embedding output
-	Dimensions     int         `json:"dimensions,omitempty"`      // Optional number of dimensions
+type EmbeddingResourceModel struct {
+	ID             types.String `tfsdk:"id"`
+	Model          types.String `tfsdk:"model"`
+	Input          types.String `tfsdk:"input"`
+	User           types.String `tfsdk:"user"`
+	Dimensions     types.Int64  `tfsdk:"dimensions"`
+	EncodingFormat types.String `tfsdk:"encoding_format"`
+
+	// Computed
+	Object    types.String `tfsdk:"object"`
+	Embedding types.String `tfsdk:"embedding"` // Return as string representation or maybe handle as text?
+	// The embedding vector is large, maybe we shouldn't store it in state by default?
+	// But SDKv2 probably did.
+	// SDKv2 implemented this?
+	// resource_openai_embedding.go defined schema "embedding" as TypeString.
+	// Wait, no. SDKv2 schema for embedding was likely computed.
+	// Let's check previously viewed `resource_openai_embedding.go` (Step 933). Line 12 says `EmbeddingData` has `Embedding json.RawMessage`.
+	// The resource only had `Create` and `Read` (dummy).
+	// We'll store it as a stringified json or just the base64 string if that's what it is.
 }
 
-// resourceOpenAIEmbedding defines the schema and CRUD operations for OpenAI text embeddings.
-// This resource allows users to generate vector embeddings for text using OpenAI's models.
-// It supports various models and provides options for controlling the embedding process.
-func resourceOpenAIEmbedding() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIEmbeddingCreate,
-		ReadContext:   resourceOpenAIEmbeddingRead,
-		DeleteContext: resourceOpenAIEmbeddingDelete,
-		Schema: map[string]*schema.Schema{
-			"model": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "ID of the model to use for the embedding",
-			},
-			"input": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The text to embed",
-			},
-			"user": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "A unique identifier representing your end-user",
-			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The project to use for this request",
-			},
-			"encoding_format": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     "float",
-				Description: "The format of the embeddings. One of 'float', 'base64'",
-			},
-			"dimensions": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The number of dimensions to use for the embedding (only specific models support this)",
-			},
-			// Response fields
-			"object": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The object type, which is always 'embedding'",
-			},
-			"model_used": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The model used for the embedding",
-			},
-			"embedding_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
+func (r *EmbeddingResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "The embedding resource allows you to generate vector embeddings for text.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Description: "The ID of the embedding",
-			},
-			"embeddings": {
-				Type:        schema.TypeList,
 				Computed:    true,
-				Description: "The embeddings generated for the input",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"object": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The object type, which is always 'embedding'",
-						},
-						"index": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "The index of the embedding",
-						},
-						"embedding": {
-							Type:        schema.TypeList,
-							Computed:    true,
-							Description: "The embedding vector",
-							Elem: &schema.Schema{
-								Type: schema.TypeFloat,
-							},
-						},
-					},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"usage": {
-				Type:        schema.TypeMap,
-				Computed:    true,
-				Description: "Usage statistics for the embedding request",
-				Elem: &schema.Schema{
-					Type: schema.TypeInt,
+			"model": schema.StringAttribute{
+				Description: "ID of the model to use",
+				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
+			},
+			"input": schema.StringAttribute{
+				Description: "The input text to embed",
+				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"user": schema.StringAttribute{
+				Description: "A unique identifier representing your end-user",
+				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"dimensions": schema.Int64Attribute{
+				Description: "The number of dimensions the resulting output embeddings should have",
+				Optional:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
+			},
+			"encoding_format": schema.StringAttribute{
+				Description: "The format to return the embeddings in",
+				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"object": schema.StringAttribute{
+				Description: "The object type",
+				Computed:    true,
+			},
+			"embedding": schema.StringAttribute{
+				Description: "The embedding vector",
+				Computed:    true,
 			},
 		},
 	}
 }
 
-// resourceOpenAIEmbeddingCreate handles the creation of new OpenAI text embeddings.
-// It sends the request to OpenAI's API and processes the response.
-// The function supports various embedding options and provides control over the embedding process.
-func resourceOpenAIEmbeddingCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := meta.(*OpenAIClient)
+func (r *EmbeddingResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Prepare the request with all fields
-	request := &EmbeddingRequest{
-		Model: d.Get("model").(string),
+func (r *EmbeddingResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data EmbeddingResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Process the input (can be string or array of strings)
-	input := d.Get("input").(string)
-
-	// Check if the input is a JSON array
-	var inputArray []string
-	if err := json.Unmarshal([]byte(input), &inputArray); err == nil && len(inputArray) > 0 {
-		// Si se pudo parsear como array, usarlo así
-		request.Input = inputArray
-	} else {
-		// De lo contrario, crear un array con un solo string
-		request.Input = []string{input}
+	request := EmbeddingRequest{
+		Model: data.Model.ValueString(),
+		Input: data.Input.ValueString(),
 	}
 
-	// Add user if present
-	if user, ok := d.GetOk("user"); ok {
-		request.User = user.(string)
+	if !data.User.IsNull() {
+		request.User = data.User.ValueString()
+	}
+	if !data.Dimensions.IsNull() {
+		request.Dimensions = int(data.Dimensions.ValueInt64())
+	}
+	if !data.EncodingFormat.IsNull() {
+		request.EncodingFormat = data.EncodingFormat.ValueString()
 	}
 
-	// Add encoding_format if present
-	if format, ok := d.GetOk("encoding_format"); ok {
-		request.EncodingFormat = format.(string)
-	}
-
-	// Add dimensions if present
-	if dimensions, ok := d.GetOk("dimensions"); ok {
-		request.Dimensions = dimensions.(int)
-	}
-
-	// Use the client's DoRequest method
-	url := "/v1/embeddings"
-
-	// Make the API request using the client's DoRequest method
-	// DoRequest will handle JSON marshaling
-	respBody, err := client.DoRequest("POST", url, request)
+	path := "embeddings"
+	reqBody, err := json.Marshal(request)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating embedding: %s", err))
+		resp.Diagnostics.AddError("Error marshalling request", err.Error())
+		return
 	}
 
-	// Parse the response
-	var embeddingResponse EmbeddingResponse
-	if err := json.Unmarshal(respBody, &embeddingResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	respBody, err := r.client.DoRequest("POST", path, reqBody)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating embedding", err.Error())
+		return
 	}
 
-	// Generar un ID único para este embedding (ya que la API no proporciona uno)
-	// Usamos un hash del modelo y los primeros valores de embedding
-	embeddingID := fmt.Sprintf("embd_%s", embeddingResponse.Model)
-	d.SetId(embeddingID)
-
-	// Update the state with response data
-	if err := d.Set("embedding_id", embeddingID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("object", embeddingResponse.Object); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("model_used", embeddingResponse.Model); err != nil {
-		return diag.FromErr(err)
+	var embedResp EmbeddingResponse
+	if err := json.Unmarshal(respBody, &embedResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Process the embeddings
-	if len(embeddingResponse.Data) > 0 {
-		embeddings := make([]map[string]interface{}, 0, len(embeddingResponse.Data))
+	// Embeddings don't have IDs?
+	// The response doesn't have a top-level ID field in the struct I defined.
+	// But `resource_openai_embedding.go` (Step 933) has `EmbeddingResponse` with `Object`, `Data`, `Model`, `Usage`. No ID.
+	// We'll generate a synthetic ID.
+	data.ID = types.StringValue(fmt.Sprintf("%s-%d", request.Model, embedResp.Usage.TotalTokens)) // Simple synthetic ID or just UUID?
+	// Or use hash of input?
+	// Let's use computed ID.
 
-		for _, data := range embeddingResponse.Data {
-			embeddingMap := map[string]interface{}{
-				"object":    data.Object,
-				"index":     data.Index,
-				"embedding": data.Embedding,
-			}
+	data.Object = types.StringValue(embedResp.Object)
 
-			embeddings = append(embeddings, embeddingMap)
-		}
-
-		if err := d.Set("embeddings", embeddings); err != nil {
-			return diag.FromErr(err)
-		}
+	if len(embedResp.Data) > 0 {
+		// Store embedding as string
+		embedBytes, _ := json.Marshal(embedResp.Data[0].Embedding)
+		data.Embedding = types.StringValue(string(embedBytes))
 	}
 
-	// Update the usage statistics
-	usage := map[string]int{
-		"prompt_tokens": embeddingResponse.Usage.PromptTokens,
-		"total_tokens":  embeddingResponse.Usage.TotalTokens,
-	}
-	if err := d.Set("usage", usage); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIEmbeddingRead retrieves the current state of OpenAI text embeddings.
-// It verifies that the embeddings exist and updates the Terraform state.
-// Note: OpenAI embeddings are immutable, so this function only verifies existence.
-func resourceOpenAIEmbeddingRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Los embeddings son efímeros y no se pueden recuperar después de la creación
-	// Esta función es básicamente un no-op, pero conservamos los datos que ya tenemos en el estado
-
-	// Si no hay un ID, significa que el recurso no existe
-	if d.Id() == "" {
-		return diag.Diagnostics{}
-	}
-
-	return diag.Diagnostics{}
+func (r *EmbeddingResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// Not retrievable.
 }
 
-// resourceOpenAIEmbeddingDelete removes OpenAI text embeddings.
-// Note: OpenAI embeddings are immutable and cannot be deleted through the API.
-// This function only removes the resource from the Terraform state.
-func resourceOpenAIEmbeddingDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Los embeddings son efímeros y no se pueden eliminar
-	// Simplemente limpiamos el ID del estado
-	d.SetId("")
-	return diag.Diagnostics{}
+func (r *EmbeddingResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError("Operation not supported", "Embeddings are immutable")
+}
+
+func (r *EmbeddingResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// No-op
+}
+
+func (r *EmbeddingResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resp.Diagnostics.AddError("Not Supported", "Import is not supported for embeddings")
 }

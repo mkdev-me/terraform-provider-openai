@@ -3,12 +3,12 @@
 page_title: "openai_projects Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of available OpenAI projects.
 ---
 
 # openai_projects (Data Source)
 
-
+Use this data source to retrieve a list of available OpenAI projects.
 
 ## Example Usage
 
@@ -30,19 +30,19 @@ output "project_count" {
 
 ### Optional
 
-- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default API key will be used.
+- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default Admin API key will be used.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `projects` (List of Object) List of available projects (see [below for nested schema](#nestedatt--projects))
+- `projects` (Attributes List) List of available projects. (see [below for nested schema](#nestedatt--projects))
 
 <a id="nestedatt--projects"></a>
 ### Nested Schema for `projects`
 
 Read-Only:
 
-- `created_at` (Number)
-- `id` (String)
-- `name` (String)
-- `status` (String)
+- `created_at` (Number) The Unix timestamp (in seconds) for when the project was created.
+- `id` (String) The ID of the project.
+- `name` (String) The name of the project.
+- `status` (String) The status of the project.

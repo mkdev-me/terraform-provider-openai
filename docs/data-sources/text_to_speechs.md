@@ -3,12 +3,12 @@
 page_title: "openai_text_to_speechs Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Retrieving all text-to-speech conversions is not supported by the OpenAI API.
 ---
 
 # openai_text_to_speechs (Data Source)
 
-
+Retrieving all text-to-speech conversions is not supported by the OpenAI API.
 
 
 
@@ -17,24 +17,10 @@ description: |-
 
 ### Optional
 
-- `model` (String) Filter by model. Options include 'tts-1', 'tts-1-hd', and 'tts-1-1106'.
-- `project_id` (String) The ID of the project associated with the text-to-speech conversions. If not specified, the API key's default project will be used.
-- `voice` (String) Filter by voice. Options include 'alloy', 'echo', 'fable', 'onyx', 'nova', and 'shimmer'.
+- `model` (String) Filter by model.
+- `project_id` (String) The ID of the project.
+- `voice` (String) Filter by voice.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `text_to_speechs` (List of Object) (see [below for nested schema](#nestedatt--text_to_speechs))
-
-<a id="nestedatt--text_to_speechs"></a>
-### Nested Schema for `text_to_speechs`
-
-Read-Only:
-
-- `created_at` (Number)
-- `duration` (Number)
-- `id` (String)
-- `input` (String)
-- `model` (String)
-- `status` (String)
-- `voice` (String)
+- `text_to_speechs` (List of String) List of conversions (Empty as not supported).

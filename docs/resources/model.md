@@ -3,12 +3,12 @@
 page_title: "openai_model Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The model resource allows you to pull information about a specific model.
 ---
 
 # openai_model (Resource)
 
-
+The model resource allows you to pull information about a specific model.
 
 
 
@@ -22,7 +22,6 @@ description: |-
 ### Read-Only
 
 - `created_at` (Number) The timestamp when the model was created
-- `id` (String) The ID of this resource.
 - `object` (String) The object type (always 'model')
 - `owned_by` (String) The organization that owns the model
 - `permission` (List of Object) (see [below for nested schema](#nestedatt--permission))

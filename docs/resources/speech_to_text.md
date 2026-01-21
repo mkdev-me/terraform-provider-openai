@@ -3,12 +3,12 @@
 page_title: "openai_speech_to_text Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  Creates a speech-to-text transcription. Note: This resource does not support updates - any configuration change will create a new resource.
+  Creates a speech to text transcription.
 ---
 
 # openai_speech_to_text (Resource)
 
-Creates a speech-to-text transcription. Note: This resource does not support updates - any configuration change will create a new resource.
+Creates a speech to text transcription.
 
 ## Example Usage
 
@@ -99,21 +99,20 @@ output "podcast_text" {
 
 ### Required
 
-- `file` (String) The path to the audio file to transcribe. Supported formats: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm.
-- `model` (String) The model to use for speech-to-text transcription. Options include 'whisper-1', 'gpt-4o-transcribe', and 'gpt-4o-mini-transcribe'.
+- `file` (String)
+- `model` (String)
 
 ### Optional
 
-- `include` (List of String) Additional information to include in the transcription response. 'logprobs' will return the log probabilities of the tokens in the response to understand the model's confidence in the transcription. Only works with response_format set to 'json' and only with gpt-4o models.
-- `language` (String) The language of the input audio. Supplying the input language in ISO-639-1 format will improve accuracy and latency.
-- `prompt` (String) An optional text to guide the model's style or continue a previous audio segment.
-- `response_format` (String) The format of the transcript output. Options include 'json', 'text', 'srt', 'verbose_json', or 'vtt'. Note: For gpt-4o-transcribe and gpt-4o-mini-transcribe, only 'json' is supported.
-- `stream` (Boolean) If set to true, the model response data will be streamed to the client as it is generated. Not supported for whisper-1 model.
-- `temperature` (Number) The sampling temperature, between 0 and 1. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic.
-- `timestamp_granularities` (List of String) The timestamp granularities to populate for this transcription. response_format must be set to verbose_json to use timestamp granularities. Either or both of these options are supported: 'word', or 'segment'.
+- `include` (List of String)
+- `language` (String)
+- `prompt` (String)
+- `response_format` (String)
+- `stream` (Boolean)
+- `temperature` (Number)
+- `timestamp_granularities` (List of String)
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp when the transcription was generated.
 - `id` (String) The ID of this resource.
-- `text` (String) The transcribed text.
+- `text` (String)

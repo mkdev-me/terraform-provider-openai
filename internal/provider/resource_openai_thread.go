@@ -8,432 +8,459 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// ThreadResponse represents the API response for an OpenAI thread.
-// It contains the thread's identifier, creation timestamp, and associated metadata.
-type ThreadResponse struct {
-	ID        string                 `json:"id"`
-	Object    string                 `json:"object"`
-	CreatedAt int                    `json:"created_at"`
-	Metadata  map[string]interface{} `json:"metadata"`
+var _ resource.Resource = &ThreadResource{}
+var _ resource.ResourceWithImportState = &ThreadResource{}
+
+type ThreadResource struct {
+	client *OpenAIClient
 }
 
-// ThreadCreateRequest represents the request payload for creating a thread in the OpenAI API.
-// It can include initial messages and metadata for the thread.
-type ThreadCreateRequest struct {
-	Messages []ThreadMessage        `json:"messages,omitempty"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+func NewThreadResource() resource.Resource {
+	return &ThreadResource{}
 }
 
-// ThreadMessage represents a message within a thread.
-// Each message has a role, content, optional file attachments, and metadata.
-type ThreadMessage struct {
-	Role     string                 `json:"role"`
-	Content  string                 `json:"content"`
-	FileIDs  []string               `json:"file_ids,omitempty"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+func (r *ThreadResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_thread"
 }
 
-// resourceOpenAIThread defines the schema and CRUD operations for OpenAI threads.
-// This resource allows users to create, read, update, and delete threads through the OpenAI API.
-func resourceOpenAIThread() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIThreadCreate,
-		ReadContext:   resourceOpenAIThreadRead,
-		UpdateContext: resourceOpenAIThreadUpdate,
-		DeleteContext: resourceOpenAIThreadDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
-		Schema: map[string]*schema.Schema{
-			"messages": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"role": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "The role of the entity that is creating the message. Currently only 'user' is supported.",
+type ThreadResourceModel struct {
+	ID            types.String         `tfsdk:"id"`
+	Messages      []ThreadMessageModel `tfsdk:"messages"`
+	Metadata      types.Map            `tfsdk:"metadata"`
+	CreatedAt     types.Int64          `tfsdk:"created_at"`
+	ToolResources []ToolResourcesModel `tfsdk:"tool_resources"`
+}
+
+type ThreadMessageModel struct {
+	Role        types.String             `tfsdk:"role"`
+	Content     types.String             `tfsdk:"content"`
+	Attachments []MessageAttachmentModel `tfsdk:"attachments"`
+	FileIDs     []types.String           `tfsdk:"file_ids"` // Legacy
+	Metadata    types.Map                `tfsdk:"metadata"`
+}
+
+type MessageAttachmentModel struct {
+	FileID types.String       `tfsdk:"file_id"`
+	Tools  []MessageToolModel `tfsdk:"tools"`
+}
+
+type MessageToolModel struct {
+	Type types.String `tfsdk:"type"`
+}
+
+type ToolResourcesModel struct {
+	FileSearch      []FileSearchResourcesModel      `tfsdk:"file_search"`
+	CodeInterpreter []CodeInterpreterResourcesModel `tfsdk:"code_interpreter"`
+}
+
+type FileSearchResourcesModel struct {
+	VectorStoreIDs []types.String `tfsdk:"vector_store_ids"`
+}
+
+type CodeInterpreterResourcesModel struct {
+	FileIDs []types.String `tfsdk:"file_ids"`
+}
+
+func (r *ThreadResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Creates a thread that the assistant can interact with.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the thread.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"created_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp for when the thread was created.",
+			},
+			"metadata": schema.MapAttribute{
+				Optional:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Set of key-value pairs that can be attached to the thread.",
+			},
+			// Messages used to be optional list. In V2 it's same.
+			"messages": schema.ListNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "A list of messages to start the thread with.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"role": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "The role of the entity that is creating the message. Currently only 'user' is supported.",
 						},
-						"content": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "The content of the message",
+						"content": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "The content of the message.",
 						},
-						"file_ids": {
-							Type:     schema.TypeList,
-							Optional: true,
-							Elem: &schema.Schema{
-								Type: schema.TypeString,
+						"file_ids": schema.ListAttribute{
+							Optional:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "A list of file IDs that the message should use (Legacy).",
+						},
+						"attachments": schema.ListNestedAttribute{
+							Optional:            true,
+							MarkdownDescription: "A list of files attached to the message, and the tools they should be added to.",
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"file_id": schema.StringAttribute{
+										Required:            true,
+										MarkdownDescription: "The ID of the file to attach.",
+									},
+									"tools": schema.ListNestedAttribute{
+										Required: true,
+										NestedObject: schema.NestedAttributeObject{
+											Attributes: map[string]schema.Attribute{
+												"type": schema.StringAttribute{
+													Required:            true,
+													MarkdownDescription: "The type of tool.",
+												},
+											},
+										},
+									},
+								},
 							},
-							Description: "A list of file IDs that the message should use",
 						},
-						"metadata": {
-							Type:        schema.TypeMap,
-							Optional:    true,
-							Elem:        &schema.Schema{Type: schema.TypeString},
-							Description: "Set of key-value pairs that can be attached to the message",
+						"metadata": schema.MapAttribute{
+							Optional:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "Set of key-value pairs that can be attached to the message.",
 						},
 					},
 				},
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Set of key-value pairs that can be attached to the thread",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the thread was created",
+			"tool_resources": schema.ListNestedAttribute{
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"file_search": schema.ListNestedAttribute{
+							Optional: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"vector_store_ids": schema.ListAttribute{
+										Optional:    true,
+										ElementType: types.StringType,
+									},
+								},
+							},
+						},
+						"code_interpreter": schema.ListNestedAttribute{
+							Optional: true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"file_ids": schema.ListAttribute{
+										Optional:    true,
+										ElementType: types.StringType,
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
 }
 
-// resourceOpenAIThreadCreate handles the creation of a new OpenAI thread.
-// It creates a thread with optional initial messages and metadata.
-func resourceOpenAIThreadCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *ThreadResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Prepare the request
-	createRequest := &ThreadCreateRequest{}
+func (r *ThreadResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ThreadResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Add messages if present
-	if messagesRaw, ok := d.GetOk("messages"); ok {
-		messagesList := messagesRaw.([]interface{})
-		messages := make([]ThreadMessage, 0, len(messagesList))
+	createRequest := ThreadCreateRequest{}
 
-		for _, msgRaw := range messagesList {
-			msgMap := msgRaw.(map[string]interface{})
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		createRequest.Metadata = metadata
+	}
 
+	if data.Messages != nil {
+		messages := make([]ThreadMessage, 0, len(data.Messages))
+		for _, msgModel := range data.Messages {
 			msg := ThreadMessage{
-				Role:    msgMap["role"].(string),
-				Content: msgMap["content"].(string),
+				Role:    msgModel.Role.ValueString(),
+				Content: msgModel.Content.ValueString(),
 			}
 
-			// Add file_ids if present
-			if fileIDsRaw, ok := msgMap["file_ids"]; ok {
-				fileIDsList := fileIDsRaw.([]interface{})
-				fileIDs := make([]string, 0, len(fileIDsList))
-
-				for _, id := range fileIDsList {
-					fileIDs = append(fileIDs, id.(string))
-				}
-
-				msg.FileIDs = fileIDs
-			}
-
-			// Add metadata if present
-			if metadataRaw, ok := msgMap["metadata"]; ok {
+			if !msgModel.Metadata.IsNull() {
 				metadata := make(map[string]interface{})
-				for k, v := range metadataRaw.(map[string]interface{}) {
+				var metaMap map[string]string
+				msgModel.Metadata.ElementsAs(ctx, &metaMap, false)
+				for k, v := range metaMap {
 					metadata[k] = v
 				}
 				msg.Metadata = metadata
 			}
 
+			// Handle Attachments (V2)
+			if msgModel.Attachments != nil {
+				attachments := make([]AttachmentRequest, 0, len(msgModel.Attachments))
+				for _, attModel := range msgModel.Attachments {
+					tools := make([]ToolRequest, 0, len(attModel.Tools))
+					for _, t := range attModel.Tools {
+						tools = append(tools, ToolRequest{Type: t.Type.ValueString()})
+					}
+					attachments = append(attachments, AttachmentRequest{
+						FileID: attModel.FileID.ValueString(),
+						Tools:  tools,
+					})
+				}
+				msg.Attachments = attachments
+			}
+
+			// Handle Legacy FileIDs if provided (and no attachments?)
+			// OpenAI V2 API prefers Attachments.
+			if msgModel.FileIDs != nil {
+				fileIDs := make([]string, 0, len(msgModel.FileIDs))
+				for _, id := range msgModel.FileIDs {
+					fileIDs = append(fileIDs, id.ValueString())
+				}
+				msg.FileIDs = fileIDs
+			}
+
 			messages = append(messages, msg)
 		}
-
 		createRequest.Messages = messages
 	}
 
-	// Add metadata if present
-	if metadataRaw, ok := d.GetOk("metadata"); ok {
-		metadata := make(map[string]interface{})
-		for k, v := range metadataRaw.(map[string]interface{}) {
-			metadata[k] = v.(string)
+	// Tool Resources
+	if data.ToolResources != nil && len(data.ToolResources) > 0 {
+		trModel := data.ToolResources[0]
+		tr := &ToolResources{}
+		if trModel.FileSearch != nil && len(trModel.FileSearch) > 0 {
+			fsModel := trModel.FileSearch[0]
+			ids := make([]string, 0, len(fsModel.VectorStoreIDs))
+			for _, id := range fsModel.VectorStoreIDs {
+				ids = append(ids, id.ValueString())
+			}
+			tr.FileSearch = &FileSearchResources{VectorStoreIDs: ids}
 		}
-		createRequest.Metadata = metadata
+		if trModel.CodeInterpreter != nil && len(trModel.CodeInterpreter) > 0 {
+			ciModel := trModel.CodeInterpreter[0]
+			ids := make([]string, 0, len(ciModel.FileIDs))
+			for _, id := range ciModel.FileIDs {
+				ids = append(ids, id.ValueString())
+			}
+			tr.CodeInterpreter = &CodeInterpreterResources{FileIDs: ids}
+		}
+		createRequest.ToolResources = tr
 	}
 
-	// Convert request to JSON
 	reqBody, err := json.Marshal(createRequest)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error serializing thread request: %s", err))
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
 	}
 
-	// Prepare HTTP request
-	url := fmt.Sprintf("%s/threads", client.APIURL)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	url := fmt.Sprintf("%s/threads", r.client.OpenAIClient.APIURL)
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error creating thread: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Parse response
 	var threadResponse ThreadResponse
-	if err := json.Unmarshal(respBody, &threadResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &threadResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Save ID and other data to state
-	d.SetId(threadResponse.ID)
-	if err := d.Set("created_at", threadResponse.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
-	}
+	data.ID = types.StringValue(threadResponse.ID)
+	data.CreatedAt = types.Int64Value(int64(threadResponse.CreatedAt))
+	// We don't read back messages or tool resources into state from Create response usually,
+	// because they are often not fully echoed or slightly different.
+	// For Thread, messages are initial only.
+	// We should rely on configuration for the state of optional parameters unless computed.
 
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIThreadRead handles reading an existing OpenAI thread.
-// It retrieves the thread information from OpenAI and updates the Terraform state.
-func resourceOpenAIThreadRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
-
-	// Get the thread ID
-	threadID := d.Id()
-	if threadID == "" {
-		d.SetId("")
-		return diag.Diagnostics{}
+func (r *ThreadResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ThreadResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Prepare HTTP request
-	url := fmt.Sprintf("%s/threads/%s", client.APIURL, threadID)
-	req, err := http.NewRequest("GET", url, nil)
+	url := fmt.Sprintf("%s/threads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// If thread doesn't exist, remove from state
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
 	}
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
 	}
 
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error reading thread: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Parse the response
 	var threadResponse ThreadResponse
-	if err := json.Unmarshal(respBody, &threadResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &threadResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Update thread attributes
-	if err := d.Set("created_at", threadResponse.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
-	}
+	data.CreatedAt = types.Int64Value(int64(threadResponse.CreatedAt))
 
-	// Update metadata if present in the response
+	// Map metadata
 	if len(threadResponse.Metadata) > 0 {
 		metadata := make(map[string]string)
 		for k, v := range threadResponse.Metadata {
 			metadata[k] = fmt.Sprintf("%v", v)
 		}
-		if err := d.Set("metadata", metadata); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set metadata: %v", err))
-		}
+		data.Metadata, _ = types.MapValueFrom(ctx, types.StringType, metadata)
 	}
 
-	return diag.Diagnostics{}
+	// Note: OpenAI Thread GET response does NOT contain the messages.
+	// Messages are fetched via /messages endpoint.
+	// Since `messages` input in Create is "initial messages", we might not need to read them back and force sync.
+	// The previous SDKv2 implementation did NOT read messages back in `Read`. It only read created_at and metadata.
+	// So we follow suit.
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIThreadUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
-
-	// Get the thread ID
-	threadID := d.Id()
-
-	// Check what has changed
-	if d.HasChange("metadata") {
-		// Prepare the update request
-		updateRequest := map[string]interface{}{}
-
-		// Add metadata to the request
-		if metadataRaw, ok := d.GetOk("metadata"); ok {
-			metadata := make(map[string]interface{})
-			for k, v := range metadataRaw.(map[string]interface{}) {
-				metadata[k] = v.(string)
-			}
-			updateRequest["metadata"] = metadata
-		}
-
-		// Convert request to JSON
-		reqBody, err := json.Marshal(updateRequest)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error serializing update request: %s", err))
-		}
-
-		// Prepare HTTP request
-		url := fmt.Sprintf("%s/threads/%s", client.APIURL, threadID)
-		req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-		}
-
-		// Set headers
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+client.APIKey)
-		req.Header.Set("OpenAI-Beta", "assistants=v2")
-		if client.OrganizationID != "" {
-			req.Header.Set("OpenAI-Organization", client.OrganizationID)
-		}
-
-		// Make the request
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error making request: %s", err))
-		}
-		defer resp.Body.Close()
-
-		// Read the response
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-		}
-
-		// Check for errors
-		if resp.StatusCode != http.StatusOK {
-			var errorResponse ErrorResponse
-			if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-				return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-			}
-			return diag.FromErr(fmt.Errorf("error updating thread: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-		}
-
-		// Parse the response
-		var threadResponse ThreadResponse
-		if err := json.Unmarshal(respBody, &threadResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
-		}
-
-		// Update the state
-		if err := d.Set("created_at", threadResponse.CreatedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
-		}
-
-		// Update metadata if present in the response
-		if len(threadResponse.Metadata) > 0 {
-			metadata := make(map[string]string)
-			for k, v := range threadResponse.Metadata {
-				metadata[k] = fmt.Sprintf("%v", v)
-			}
-			if err := d.Set("metadata", metadata); err != nil {
-				return diag.FromErr(fmt.Errorf("failed to set metadata: %v", err))
-			}
-		}
+func (r *ThreadResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Implement Update (Metadata and maybe tool resources?)
+	var data ThreadResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	return diag.Diagnostics{}
+	updateRequest := map[string]interface{}{}
+
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		updateRequest["metadata"] = metadata
+	}
+	// ToolResources update supported? Docs say yes for modify thread.
+	// Implementation needed if we want full support.
+
+	reqBody, _ := json.Marshal(updateRequest)
+	url := fmt.Sprintf("%s/threads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", apiResp.Status)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIThreadDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *ThreadResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ThreadResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Get the thread ID
-	threadID := d.Id()
-
-	// Prepare HTTP request
-	url := fmt.Sprintf("%s/threads/%s", client.APIURL, threadID)
-	req, err := http.NewRequest("DELETE", url, nil)
+	url := fmt.Sprintf("%s/threads/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
+	http.DefaultClient.Do(apiReq)
+}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// If the thread doesn't exist, it's not an error
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error deleting thread: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Remove the ID from state
-	d.SetId("")
-
-	return diag.Diagnostics{}
+func (r *ThreadResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

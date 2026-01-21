@@ -4,211 +4,216 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// ProjectsListResponse represents the API response for a list of OpenAI projects
-type ProjectsListResponse struct {
-	Object  string            `json:"object"`   // Object type, always "list"
-	Data    []ProjectResponse `json:"data"`     // Array of project objects
-	FirstID string            `json:"first_id"` // ID of the first project in the list
-	LastID  string            `json:"last_id"`  // ID of the last project in the list
-	HasMore bool              `json:"has_more"` // Whether there are more projects to fetch
+var _ datasource.DataSource = &ProjectsDataSource{}
+
+func NewProjectsDataSource() datasource.DataSource {
+	return &ProjectsDataSource{}
 }
 
-// dataSourceOpenAIProjects returns a schema.Resource that represents a data source for OpenAI projects.
-func dataSourceOpenAIProjects() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIProjectsRead,
-		Schema: map[string]*schema.Schema{
-			"admin_key": {
-				Type:        schema.TypeString,
+type ProjectsDataSource struct {
+	client *OpenAIClient
+}
+
+type ProjectsDataSourceModel struct {
+	AdminKey types.String         `tfsdk:"admin_key"`
+	Projects []ProjectResultModel `tfsdk:"projects"`
+	ID       types.String         `tfsdk:"id"` // Dummy ID
+}
+
+type ProjectResultModel struct {
+	ID        types.String `tfsdk:"id"`
+	Name      types.String `tfsdk:"name"`
+	Status    types.String `tfsdk:"status"`
+	CreatedAt types.Int64  `tfsdk:"created_at"`
+}
+
+type ProjectsListResponseFramework struct {
+	Object  string                     `json:"object"`
+	Data    []ProjectResponseFramework `json:"data"`
+	FirstID string                     `json:"first_id"`
+	LastID  string                     `json:"last_id"`
+	HasMore bool                       `json:"has_more"`
+}
+
+func (d *ProjectsDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_projects"
+}
+
+func (d *ProjectsDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve a list of available OpenAI projects.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of this resource.",
+				Computed:    true,
+			},
+			"admin_key": schema.StringAttribute{
+				Description: "Admin API key for authentication. If not provided, the provider's default Admin API key will be used.",
 				Optional:    true,
 				Sensitive:   true,
-				Description: "Admin API key for authentication. If not provided, the provider's default API key will be used.",
 			},
-			"projects": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:        schema.TypeString,
+			"projects": schema.ListNestedAttribute{
+				Description: "List of available projects.",
+				Computed:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Description: "The ID of the project.",
 							Computed:    true,
-							Description: "The ID of the project",
 						},
-						"name": {
-							Type:        schema.TypeString,
+						"name": schema.StringAttribute{
+							Description: "The name of the project.",
 							Computed:    true,
-							Description: "The name of the project",
 						},
-						"status": {
-							Type:        schema.TypeString,
+						"status": schema.StringAttribute{
+							Description: "The status of the project.",
 							Computed:    true,
-							Description: "The status of the project",
 						},
-						"created_at": {
-							Type:        schema.TypeInt,
+						"created_at": schema.Int64Attribute{
+							Description: "The Unix timestamp (in seconds) for when the project was created.",
 							Computed:    true,
-							Description: "Timestamp when the project was created",
 						},
 					},
 				},
-				Description: "List of available projects",
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIProjectsRead handles the read operation for the OpenAI projects data source.
-// It retrieves the list of available projects from the OpenAI API and updates the Terraform state.
-func dataSourceOpenAIProjectsRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (d *ProjectsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
 
-	// Get custom API key if provided
-	apiKey := client.APIKey
-	if v, ok := d.GetOk("admin_key"); ok {
-		apiKey = v.(string)
-		if len(apiKey) >= 4 {
-			fmt.Printf("Using custom Admin API key provided in data source (first 4 chars: %s)\n", apiKey[:4])
-		} else {
-			fmt.Printf("Using custom Admin API key provided in data source (length: %d)\n", len(apiKey))
-		}
-	} else {
-		if len(apiKey) >= 4 {
-			fmt.Printf("Using default client API key (first 4 chars: %s)\n", apiKey[:4])
-		} else {
-			fmt.Printf("Using default client API key (length: %d)\n", len(apiKey))
-		}
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
 	}
 
-	// Verify API key is not empty
+	d.client = client
+}
+
+func (d *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ProjectsDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	apiKey := d.client.AdminAPIKey
+	if !data.AdminKey.IsNull() {
+		apiKey = data.AdminKey.ValueString()
+	}
+
 	if apiKey == "" {
-		return diag.Errorf("API key cannot be empty")
+		resp.Diagnostics.AddError(
+			"Missing Admin API Key",
+			"Admin API key is required to list projects. Please provide it in the configuration or ensure the provider is configured with one.",
+		)
+		return
 	}
 
-	// Collect all projects with pagination
-	var allProjects []ProjectResponse
-	var after string
-	hasMore := true
-	limit := 100 // Use maximum limit per page for efficiency
+	var allProjects []ProjectResultModel
+	cursor := ""
+	limit := 100
 
-	for hasMore {
-		// Construct the API URL with query parameters
-		baseURL := fmt.Sprintf("%s/v1/organization/projects", client.APIURL)
-		// If the APIURL already contains /v1, adjust the URL construction
-		if strings.Contains(client.APIURL, "/v1") {
-			baseURL = fmt.Sprintf("%s/organization/projects", client.APIURL)
+	for {
+		// Construct the API URL
+		apiURL := d.client.OpenAIClient.APIURL
+
+		// Ensure leading slash for construction if needed, but strings.TrimPrefix helps
+		// Actually best to form: base + path
+		var fullURL string
+		if strings.Contains(apiURL, "/v1") {
+			fullURL = fmt.Sprintf("%s/organization/projects", strings.TrimSuffix(apiURL, "/v1"))
+			// Wait, if apiURL ends in /v1, and we want /v1/organization/projects
+			// reusing apiURL (e.g. https://api.openai.com/v1) -> https://api.openai.com/v1/organization/projects
+			fullURL = fmt.Sprintf("%s/organization/projects", strings.TrimSuffix(apiURL, "/"))
+		} else {
+			fullURL = fmt.Sprintf("%s/v1/organization/projects", strings.TrimSuffix(apiURL, "/"))
 		}
 
-		// Parse URL and add query parameters
-		parsedURL, err := url.Parse(baseURL)
+		// Add query params
+		parsedURL, err := url.Parse(fullURL)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing URL: %s", err))
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
 		}
-
-		// Add query parameters
 		q := parsedURL.Query()
 		q.Set("limit", strconv.Itoa(limit))
-		if after != "" {
-			q.Set("after", after)
+		if cursor != "" {
+			q.Set("after", cursor)
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		// Debug output to help troubleshoot API URL
-		fmt.Printf("Making API request to URL: %s\n", parsedURL.String())
-		fmt.Printf("OpenAI client config: API URL=%s, Organization ID=%s\n", client.APIURL, client.OrganizationID)
-
-		// Create HTTP request
-		req, err := http.NewRequest("GET", parsedURL.String(), nil)
+		httpRequest, err := http.NewRequest("GET", parsedURL.String(), nil)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+			resp.Diagnostics.AddError("Error creating request", err.Error())
+			return
 		}
 
-		// Add required headers
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-		if client.OrganizationID != "" {
-			req.Header.Set("OpenAI-Organization", client.OrganizationID)
-		}
+		httpRequest.Header.Set("Authorization", "Bearer "+apiKey)
+		httpRequest.Header.Set("Content-Type", "application/json")
 
-		fmt.Printf("Request headers: %v\n", req.Header)
-
-		// Make the request
-		resp, err := http.DefaultClient.Do(req)
+		httpClient := &http.Client{}
+		httpResp, err := httpClient.Do(httpRequest)
 		if err != nil {
-			return diag.FromErr(fmt.Errorf("error making request: %s", err))
+			resp.Diagnostics.AddError("Error executing request", err.Error())
+			return
 		}
-		defer resp.Body.Close()
+		defer httpResp.Body.Close()
 
-		// Read the response
-		responseBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error reading response: %s", err))
+		if httpResp.StatusCode != 200 {
+			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
+			return
 		}
 
-		// Check for errors
-		if resp.StatusCode != http.StatusOK {
-			var errorResponse ErrorResponse
-			err = json.Unmarshal(responseBody, &errorResponse)
-			if err != nil {
-				return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody)))
+		var listResp ProjectsListResponseFramework
+		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			resp.Diagnostics.AddError("Error decoding response", err.Error())
+			return
+		}
+
+		for _, p := range listResp.Data {
+			projectModel := ProjectResultModel{
+				ID:        types.StringValue(p.ID),
+				Name:      types.StringValue(p.Name),
+				Status:    types.StringValue(p.Status),
+				CreatedAt: types.Int64Value(p.CreatedAt),
 			}
-			return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, errorResponse.Error.Message))
+			allProjects = append(allProjects, projectModel)
 		}
 
-		// Parse the response
-		var projectsList ProjectsListResponse
-		err = json.Unmarshal(responseBody, &projectsList)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+		if !listResp.HasMore {
+			break
 		}
-
-		// Append projects from this page
-		allProjects = append(allProjects, projectsList.Data...)
-
-		// Check if there are more pages
-		hasMore = projectsList.HasMore
-		if hasMore && projectsList.LastID != "" {
-			after = projectsList.LastID
-		} else {
-			hasMore = false
+		if listResp.LastID == "" {
+			break
 		}
-
-		fmt.Printf("Fetched %d projects (total so far: %d), has_more: %v\n", len(projectsList.Data), len(allProjects), hasMore)
+		cursor = listResp.LastID
 	}
 
-	// Generate a unique ID for this data source invocation
-	d.SetId("openai-projects-" + time.Now().Format(time.RFC3339))
+	data.ID = types.StringValue("projects")
+	data.Projects = allProjects
 
-	// Convert response to format expected by schema
-	projects := make([]map[string]interface{}, 0, len(allProjects))
-	for _, project := range allProjects {
-		projectMap := map[string]interface{}{
-			"id":         project.ID,
-			"name":       project.Name,
-			"status":     project.Status,
-			"created_at": project.CreatedAt,
-		}
-		projects = append(projects, projectMap)
-	}
-
-	// Set the projects in the schema
-	if err := d.Set("projects", projects); err != nil {
-		return diag.Errorf("Error setting projects: %s", err)
-	}
-
-	fmt.Printf("Successfully fetched all %d projects\n", len(allProjects))
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

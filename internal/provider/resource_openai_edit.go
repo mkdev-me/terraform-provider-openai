@@ -1,318 +1,211 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// EditResponse represents the API response for text edits.
-// It contains the edited text, model information, and usage statistics.
-type EditResponse struct {
-	ID      string       `json:"id"`      // Unique identifier for the edit
-	Object  string       `json:"object"`  // Type of object (e.g., "edit")
-	Created int          `json:"created"` // Unix timestamp when the edit was created
-	Model   string       `json:"model"`   // Model used for the edit
-	Choices []EditChoice `json:"choices"` // List of possible edits
-	Usage   EditUsage    `json:"usage"`   // Token usage statistics
+var _ resource.Resource = &EditResource{}
+var _ resource.ResourceWithImportState = &EditResource{}
+
+type EditResource struct {
+	client *OpenAIClient
 }
 
-// EditChoice represents a single edit option from the model.
-// It contains the edited text and its position in the list of choices.
-type EditChoice struct {
-	Text  string `json:"text"`  // The edited text
-	Index int    `json:"index"` // Position of this choice in the list
+func NewEditResource() resource.Resource {
+	return &EditResource{}
 }
 
-// EditUsage represents token usage statistics for the edit request.
-// It tracks the number of tokens used in the input and completion.
-type EditUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`     // Number of tokens in the input
-	CompletionTokens int `json:"completion_tokens"` // Number of tokens in the completion
-	TotalTokens      int `json:"total_tokens"`      // Total number of tokens used
+func (r *EditResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_edit"
 }
 
-// EditRequest represents the request payload for creating a text edit.
-// It specifies the model, input text, instruction, and various parameters to control the edit.
-type EditRequest struct {
-	Model       string  `json:"model"`                 // ID of the model to use
-	Input       string  `json:"input,omitempty"`       // Text to be edited
-	Instruction string  `json:"instruction"`           // Instructions for how to edit the text
-	Temperature float64 `json:"temperature,omitempty"` // Sampling temperature
-	TopP        float64 `json:"top_p,omitempty"`       // Nucleus sampling parameter
-	N           int     `json:"n,omitempty"`           // Number of edits to generate
+type EditResourceModel struct {
+	ID          types.String  `tfsdk:"id"`
+	Model       types.String  `tfsdk:"model"`
+	Input       types.String  `tfsdk:"input"`
+	Instruction types.String  `tfsdk:"instruction"`
+	Temperature types.Float64 `tfsdk:"temperature"`
+	TopP        types.Float64 `tfsdk:"top_p"`
+	N           types.Int64   `tfsdk:"n"`
+
+	// Computed
+	Object    types.String `tfsdk:"object"`
+	Created   types.Int64  `tfsdk:"created"`
+	Text      types.String `tfsdk:"text"` // Convenience for first choice text
+	EditID    types.String `tfsdk:"edit_id"`
+	ModelUsed types.String `tfsdk:"model_used"`
+	// We won't map "Choices" and "Usage" fully unless necessary, but let's keep it simple like sdkv2
+	// SDKv2 mapped "choices" as list of map.
 }
 
-// resourceOpenAIEdit defines the schema and CRUD operations for OpenAI text edits.
-// This resource allows users to edit text using OpenAI's language models.
-// It supports various models and provides options for controlling the edit behavior.
-func resourceOpenAIEdit() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIEditCreate,
-		ReadContext:   resourceOpenAIEditRead,
-		DeleteContext: resourceOpenAIEditDelete,
-		Schema: map[string]*schema.Schema{
-			"model": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "ID of the model to use for the edit",
-			},
-			"input": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     "",
-				Description: "The input text to edit",
-			},
-			"instruction": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The instruction that tells the model how to edit the input",
-			},
-			"temperature": {
-				Type:         schema.TypeFloat,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      1.0,
-				ValidateFunc: validation.FloatBetween(0.0, 2.0),
-				Description:  "Sampling temperature between 0 and 2. Higher values make output more random, lower values make it more deterministic",
-			},
-			"top_p": {
-				Type:         schema.TypeFloat,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      1.0,
-				ValidateFunc: validation.FloatBetween(0.0, 1.0),
-				Description:  "Nuclear sampling: consider the results of the tokens with top_p probability mass. Range from 0 to 1",
-			},
-			"n": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     1,
-				Description: "How many edits to generate for the input and instruction",
-			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The project to use for this request",
-			},
-			// Response fields
-			"created": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The Unix timestamp (in seconds) of when the edit was created",
-			},
-			"edit_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
+func (r *EditResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "The edit resource allows you to edit text using OpenAI's models.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Description: "The ID of the edit",
-			},
-			"object": {
-				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The object type, which is always 'edit'",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"model_used": {
-				Type:        schema.TypeString,
+			"model": schema.StringAttribute{
+				Description: "ID of the model to use for the edit",
+				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"input": schema.StringAttribute{
+				Description: "The input text to edit",
+				Optional:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"instruction": schema.StringAttribute{
+				Description: "The instruction that tells the model how to edit the input",
+				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"temperature": schema.Float64Attribute{
+				Description: "Sampling temperature",
+				Optional:    true,
+				PlanModifiers: []planmodifier.Float64{
+					float64planmodifier.RequiresReplace(),
+				},
+			},
+			"top_p": schema.Float64Attribute{
+				Description: "Nucleus sampling parameter",
+				Optional:    true,
+				PlanModifiers: []planmodifier.Float64{
+					float64planmodifier.RequiresReplace(),
+				},
+			},
+			"n": schema.Int64Attribute{
+				Description: "How many edits to generate",
+				Optional:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.RequiresReplace(),
+				},
+			},
+			"object": schema.StringAttribute{
+				Description: "The object type (always 'edit')",
 				Computed:    true,
+			},
+			"created": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) of when the edit was created",
+				Computed:    true,
+			},
+			"text": schema.StringAttribute{
+				Description: "The edited text (from the first choice)",
+				Computed:    true,
+			},
+			"edit_id": schema.StringAttribute{
+				Description: "The ID of the edit",
+				Computed:    true,
+			},
+			"model_used": schema.StringAttribute{
 				Description: "The model used for the edit",
-			},
-			"choices": {
-				Type:        schema.TypeList,
 				Computed:    true,
-				Description: "The list of edit choices the model generated",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"text": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The edited text",
-						},
-						"index": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "The index of the choice in the list of choices",
-						},
-					},
-				},
-			},
-			"usage": {
-				Type:        schema.TypeMap,
-				Computed:    true,
-				Description: "Usage statistics for the edit request",
-				Elem: &schema.Schema{
-					Type: schema.TypeInt,
-				},
 			},
 		},
 	}
 }
 
-// resourceOpenAIEditCreate handles the creation of a new OpenAI text edit.
-// It sends the request to OpenAI's API and processes the response.
-// The function supports various edit options and provides control over the editing process.
-func resourceOpenAIEditCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := meta.(*OpenAIClient)
+func (r *EditResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Prepare the request with all fields
-	request := &EditRequest{
-		Model:       d.Get("model").(string),
-		Instruction: d.Get("instruction").(string),
+func (r *EditResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data EditResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Add input if present
-	if input, ok := d.GetOk("input"); ok {
-		request.Input = input.(string)
+	request := EditRequest{
+		Model:       data.Model.ValueString(),
+		Instruction: data.Instruction.ValueString(),
 	}
 
-	// Add the rest of the fields if present
-	if v, ok := d.GetOk("temperature"); ok {
-		request.Temperature = v.(float64)
+	if !data.Input.IsNull() {
+		request.Input = data.Input.ValueString()
+	}
+	if !data.Temperature.IsNull() {
+		request.Temperature = data.Temperature.ValueFloat64()
+	}
+	if !data.TopP.IsNull() {
+		request.TopP = data.TopP.ValueFloat64()
+	}
+	if !data.N.IsNull() {
+		request.N = int(data.N.ValueInt64())
 	}
 
-	if v, ok := d.GetOk("top_p"); ok {
-		request.TopP = v.(float64)
-	}
-
-	if v, ok := d.GetOk("n"); ok {
-		request.N = v.(int)
-	}
-
-	// Determine the API URL (considering project_id if present)
-	url := fmt.Sprintf("%s/edits", client.APIURL)
-
-	// Create HTTP request
+	path := "edits"
 	reqBody, err := json.Marshal(request)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error serializing edit request: %s", err))
+		resp.Diagnostics.AddError("Error marshalling request", err.Error())
+		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
+	respBody, err := r.client.DoRequest("POST", path, reqBody)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating edit", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-
-	// Add Organization ID if present
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	var editResp EditResponse
+	if err := json.Unmarshal(respBody, &editResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Add Project ID if present
-	if projectID, ok := d.GetOk("project_id"); ok {
-		req.Header.Set("OpenAI-Project", projectID.(string))
+	data.ID = types.StringValue(editResp.ID)
+	data.EditID = types.StringValue(editResp.ID)
+	data.Object = types.StringValue(editResp.Object)
+	data.Created = types.Int64Value(int64(editResp.Created))
+	data.ModelUsed = types.StringValue(editResp.Model)
+
+	if len(editResp.Choices) > 0 {
+		data.Text = types.StringValue(editResp.Choices[0].Text)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check if there was an error
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d, body: %s", err, resp.StatusCode, string(respBody)))
-		}
-		return diag.FromErr(fmt.Errorf("error creating edit: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Parse the response
-	var editResponse EditResponse
-	if err := json.Unmarshal(respBody, &editResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
-	}
-
-	// Update the state with response data
-	d.SetId(editResponse.ID)
-	if err := d.Set("edit_id", editResponse.ID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created", editResponse.Created); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("object", editResponse.Object); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("model_used", editResponse.Model); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Process the response options
-	if len(editResponse.Choices) > 0 {
-		choices := make([]map[string]interface{}, 0, len(editResponse.Choices))
-
-		for _, choice := range editResponse.Choices {
-			choiceMap := map[string]interface{}{
-				"text":  choice.Text,
-				"index": choice.Index,
-			}
-
-			choices = append(choices, choiceMap)
-		}
-
-		if err := d.Set("choices", choices); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Update the usage statistics
-	usage := map[string]int{
-		"prompt_tokens":     editResponse.Usage.PromptTokens,
-		"completion_tokens": editResponse.Usage.CompletionTokens,
-		"total_tokens":      editResponse.Usage.TotalTokens,
-	}
-	if err := d.Set("usage", usage); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIEditRead retrieves the current state of an OpenAI text edit.
-// It verifies that the edit exists and updates the Terraform state.
-// Note: OpenAI edits are immutable, so this function only verifies existence.
-func resourceOpenAIEditRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Edits are ephemeral and cannot be retrieved after creation
-	// This function is basically a no-op, but we preserve the data we already have in state
-
-	// If there is no ID, it means the resource does not exist
-	if d.Id() == "" {
-		return diag.Diagnostics{}
-	}
-
-	return diag.Diagnostics{}
+func (r *EditResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// Edits are immutable and not retrievable by ID.
 }
 
-// resourceOpenAIEditDelete removes an OpenAI text edit.
-// Note: OpenAI edits are immutable and cannot be deleted through the API.
-// This function only removes the resource from the Terraform state.
-func resourceOpenAIEditDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Edits are ephemeral and cannot be deleted
-	// Simply clear the ID from the state
-	d.SetId("")
-	return diag.Diagnostics{}
+func (r *EditResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError("Operation not supported", "OpenAI Edits are immutable")
+}
+
+func (r *EditResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// No-op
+}
+
+func (r *EditResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resp.Diagnostics.AddError("Not Supported", "Import is not supported for edits")
 }

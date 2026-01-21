@@ -4,311 +4,300 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// MessagesListResponse represents the API response for a list of messages
-type MessagesListResponse struct {
-	Object  string            `json:"object"`
-	Data    []MessageResponse `json:"data"`
-	FirstID string            `json:"first_id"`
-	LastID  string            `json:"last_id"`
-	HasMore bool              `json:"has_more"`
+var _ datasource.DataSource = &MessagesDataSource{}
+
+func NewMessagesDataSource() datasource.DataSource {
+	return &MessagesDataSource{}
 }
 
-// dataSourceOpenAIMessages returns a schema.Resource that represents a data source for listing OpenAI messages within a thread.
-func dataSourceOpenAIMessages() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIMessagesRead,
-		Schema: map[string]*schema.Schema{
-			"thread_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The ID of the thread containing the messages",
-			},
-			"limit": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				Default:     20,
-				Description: "A limit on the number of messages to be returned. Maximum of 100.",
-			},
-			"order": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     "desc",
-				Description: "Sort order by creation timestamp. One of: asc, desc (default)",
-				ValidateFunc: validation.StringInSlice([]string{
-					"asc",
-					"desc",
-				}, false),
-			},
-			"after": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "A cursor for pagination. Return objects after this message ID.",
-			},
-			"before": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "A cursor for pagination. Return objects before this message ID.",
-			},
-			"messages": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The identifier of this message",
-						},
-						"object": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The object type, always 'thread.message'",
-						},
-						"created_at": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "The timestamp for when the message was created",
-						},
-						"thread_id": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The ID of the thread that contains the message",
-						},
-						"role": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The role of the entity that created the message",
-						},
-						"content": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The content of the message",
-						},
-						"assistant_id": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "If applicable, the ID of the assistant that authored this message",
-						},
-						"run_id": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "If applicable, the ID of the run that generated this message",
-						},
-						"metadata": {
-							Type:        schema.TypeMap,
-							Computed:    true,
-							Elem:        &schema.Schema{Type: schema.TypeString},
-							Description: "Set of key-value pairs attached to the message",
-						},
-						"attachments": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"id": {
-										Type:        schema.TypeString,
-										Computed:    true,
-										Description: "The ID of the attachment",
-									},
-									"type": {
-										Type:        schema.TypeString,
-										Computed:    true,
-										Description: "The type of the attachment",
-									},
-									"assistant_id": {
-										Type:        schema.TypeString,
-										Computed:    true,
-										Description: "If applicable, the ID of the assistant this attachment is associated with",
-									},
-									"created_at": {
-										Type:        schema.TypeInt,
-										Computed:    true,
-										Description: "The timestamp for when the attachment was created",
-									},
-								},
+type MessagesDataSource struct {
+	client *OpenAIClient
+}
+
+type MessagesDataSourceModel struct {
+	ThreadID types.String         `tfsdk:"thread_id"`
+	Messages []MessageResultModel `tfsdk:"messages"`
+	ID       types.String         `tfsdk:"id"` // Dummy ID for Terraform
+}
+
+// MessageResultModel mirrors MessageDataSourceModel but for use in a list
+type MessageResultModel struct {
+	ID          types.String             `tfsdk:"id"`
+	Object      types.String             `tfsdk:"object"`
+	CreatedAt   types.Int64              `tfsdk:"created_at"`
+	ThreadID    types.String             `tfsdk:"thread_id"`
+	Role        types.String             `tfsdk:"role"`
+	Content     []MessageContentModel    `tfsdk:"content"`
+	AssistantID types.String             `tfsdk:"assistant_id"`
+	RunID       types.String             `tfsdk:"run_id"`
+	Metadata    types.Map                `tfsdk:"metadata"`
+	Attachments []MessageAttachmentModel `tfsdk:"attachments"`
+}
+
+func (d *MessagesDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_messages"
+}
+
+func (d *MessagesDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	// Reusing attributes from MessageDataSource for the nested list
+	// Need to manually recreate schema as we can't easily reuse struct schema definition code without refactoring to shared function.
+
+	messageNestedAttributes := map[string]schema.Attribute{
+		"id": schema.StringAttribute{
+			Computed: true,
+		},
+		"thread_id": schema.StringAttribute{
+			Computed: true,
+		},
+		"object": schema.StringAttribute{
+			Computed: true,
+		},
+		"created_at": schema.Int64Attribute{
+			Computed: true,
+		},
+		"role": schema.StringAttribute{
+			Computed: true,
+		},
+		"content": schema.ListNestedAttribute{
+			Computed: true,
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: map[string]schema.Attribute{
+					"type": schema.StringAttribute{
+						Computed: true,
+					},
+					"text": schema.SingleNestedAttribute{
+						Computed: true,
+						Attributes: map[string]schema.Attribute{
+							"value": schema.StringAttribute{
+								Computed: true,
 							},
-							Description: "A list of attachments in the message",
+							"annotations": schema.ListAttribute{
+								ElementType: types.StringType,
+								Computed:    true,
+							},
 						},
 					},
 				},
-				Description: "List of messages in the thread",
 			},
-			"has_more": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Whether there are more items available in the list",
+		},
+		"assistant_id": schema.StringAttribute{
+			Computed: true,
+		},
+		"run_id": schema.StringAttribute{
+			Computed: true,
+		},
+		"metadata": schema.MapAttribute{
+			ElementType: types.StringType,
+			Computed:    true,
+		},
+		"attachments": schema.ListNestedAttribute{
+			Computed: true,
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: map[string]schema.Attribute{
+					"file_id": schema.StringAttribute{
+						Computed: true,
+					},
+					"tools": schema.ListNestedAttribute{
+						Computed: true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"type": schema.StringAttribute{
+									Computed: true,
+								},
+							},
+						},
+					},
+				},
 			},
-			"first_id": {
-				Type:        schema.TypeString,
+		},
+	}
+
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve a list of messages for a specific OpenAI thread.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of this resource.",
 				Computed:    true,
-				Description: "The ID of the first message in the list",
 			},
-			"last_id": {
-				Type:        schema.TypeString,
+			"thread_id": schema.StringAttribute{
+				Description: "The ID of the thread to list messages for.",
+				Required:    true,
+			},
+			"messages": schema.ListNestedAttribute{
+				Description: "List of messages.",
 				Computed:    true,
-				Description: "The ID of the last message in the list",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: messageNestedAttributes,
+				},
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIMessagesRead handles the read operation for the OpenAI messages data source.
-// It retrieves a list of messages in a thread from the OpenAI API based on the specified filters.
-func dataSourceOpenAIMessagesRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %s", err))
+func (d *MessagesDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
 
-	// Get parameters
-	threadID := d.Get("thread_id").(string)
-	limit := d.Get("limit").(int)
-	order := d.Get("order").(string)
+	client, ok := req.ProviderData.(*OpenAIClient)
 
-	// Build the query parameters
-	params := url.Values{}
-	params.Add("limit", strconv.Itoa(limit))
-	params.Add("order", order)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
 
-	if after, ok := d.GetOk("after"); ok {
-		params.Add("after", after.(string))
+		return
 	}
 
-	if before, ok := d.GetOk("before"); ok {
-		params.Add("before", before.(string))
-	}
-
-	// Build URL for the request
-	url := fmt.Sprintf("%s/threads/%s/messages?%s", client.APIURL, threadID, params.Encode())
-
-	// Prepare HTTP request
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-	}
-
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %s", err))
-	}
-
-	// Check for errors in the response
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d", err, resp.StatusCode))
-		}
-		return diag.FromErr(fmt.Errorf("error retrieving messages: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Parse the response
-	var messagesResponse MessagesListResponse
-	if err := json.Unmarshal(respBody, &messagesResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing messages response: %s", err))
-	}
-
-	// Generate a unique ID for this resource
-	d.SetId(fmt.Sprintf("%s-%d-%s", threadID, limit, order))
-
-	// Set the basic properties
-	if err := d.Set("has_more", messagesResponse.HasMore); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting has_more: %s", err))
-	}
-	if err := d.Set("first_id", messagesResponse.FirstID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting first_id: %s", err))
-	}
-	if err := d.Set("last_id", messagesResponse.LastID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting last_id: %s", err))
-	}
-
-	// Process messages
-	messages := make([]map[string]interface{}, 0, len(messagesResponse.Data))
-	for _, message := range messagesResponse.Data {
-		messages = append(messages, convertMessageToMap(message))
-	}
-
-	if err := d.Set("messages", messages); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting messages: %s", err))
-	}
-
-	return nil
+	d.client = client
 }
 
-// Convert file_ids to schema-compatible format
-func convertMessageToMap(message MessageResponse) map[string]interface{} {
-	m := map[string]interface{}{
-		"id":         message.ID,
-		"object":     message.Object,
-		"created_at": message.CreatedAt,
-		"thread_id":  message.ThreadID,
-		"role":       message.Role,
+func (d *MessagesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data MessagesDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Extract content text if available
-	if len(message.Content) > 0 {
-		for _, content := range message.Content {
-			if content.Type == "text" && content.Text != nil {
-				m["content"] = content.Text.Value
-				break
-			}
+	threadID := data.ThreadID.ValueString()
+	apiClient := d.client.OpenAIClient
+	var allMessages []MessageResultModel
+	cursor := ""
+
+	for {
+		queryParams := url.Values{}
+		queryParams.Set("limit", "100")
+		if cursor != "" {
+			queryParams.Set("after", cursor)
 		}
-	}
 
-	// Add assistant-specific fields if present
-	if message.AssistantID != "" {
-		m["assistant_id"] = message.AssistantID
-	}
-	if message.RunID != "" {
-		m["run_id"] = message.RunID
-	}
+		path := fmt.Sprintf("threads/%s/messages?%s", threadID, queryParams.Encode())
 
-	// Add metadata if present
-	if len(message.Metadata) > 0 {
-		m["metadata"] = message.Metadata
-	}
-
-	// Add attachments if present
-	if len(message.Attachments) > 0 {
-		attachments := make([]map[string]interface{}, 0, len(message.Attachments))
-		for _, attachment := range message.Attachments {
-			attachmentMap := map[string]interface{}{
-				"id":         attachment.ID,
-				"type":       attachment.Type,
-				"created_at": attachment.CreatedAt,
-			}
-			if attachment.AssistantID != "" {
-				attachmentMap["assistant_id"] = attachment.AssistantID
-			}
-			attachments = append(attachments, attachmentMap)
+		respBody, err := apiClient.DoRequest(http.MethodGet, path, nil)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error Listing Messages",
+				fmt.Sprintf("Could not list messages for thread %s: %s", threadID, err.Error()),
+			)
+			return
 		}
-		m["attachments"] = attachments
+
+		// Map simple response struct for list since types_thread_message.go might not have list response?
+		// Checking types_thread_message.go... it has MessageResponse but not explicitly ListMessagesResponse.
+		// I will define inline or use generic structure.
+
+		var listResp struct {
+			Object  string            `json:"object"`
+			Data    []MessageResponse `json:"data"`
+			FirstID string            `json:"first_id"`
+			LastID  string            `json:"last_id"`
+			HasMore bool              `json:"has_more"`
+		}
+
+		if err := json.Unmarshal(respBody, &listResp); err != nil {
+			resp.Diagnostics.AddError(
+				"Error Parsing Messages Response",
+				fmt.Sprintf("Could not parse response: %s", err.Error()),
+			)
+			return
+		}
+
+		for _, msgResp := range listResp.Data {
+			msgModel := MessageResultModel{
+				ID:          types.StringValue(msgResp.ID),
+				Object:      types.StringValue(msgResp.Object),
+				CreatedAt:   types.Int64Value(int64(msgResp.CreatedAt)),
+				ThreadID:    types.StringValue(msgResp.ThreadID),
+				Role:        types.StringValue(msgResp.Role),
+				AssistantID: types.StringValue(msgResp.AssistantID),
+				RunID:       types.StringValue(msgResp.RunID),
+			}
+
+			// Map Content
+			if len(msgResp.Content) > 0 {
+				var content []MessageContentModel
+				for _, c := range msgResp.Content {
+					contentModel := MessageContentModel{
+						Type: types.StringValue(c.Type),
+					}
+					if c.Text != nil {
+						textModel := &MessageContentTextModel{
+							Value: types.StringValue(c.Text.Value),
+						}
+						// Map Annotations
+						if len(c.Text.Annotations) > 0 {
+							var annotations []types.String
+							for _, ann := range c.Text.Annotations {
+								annBytes, _ := json.Marshal(ann)
+								annotations = append(annotations, types.StringValue(string(annBytes)))
+							}
+							textModel.Annotations = annotations
+						}
+						contentModel.Text = textModel
+					}
+					content = append(content, contentModel)
+				}
+				msgModel.Content = content
+			} else {
+				msgModel.Content = nil
+			}
+
+			// Map Metadata
+			if len(msgResp.Metadata) > 0 {
+				metadataVals := make(map[string]attr.Value)
+				for k, v := range msgResp.Metadata {
+					metadataVals[k] = types.StringValue(fmt.Sprintf("%v", v))
+				}
+				msgModel.Metadata, _ = types.MapValue(types.StringType, metadataVals)
+			} else {
+				msgModel.Metadata = types.MapNull(types.StringType)
+			}
+
+			// Map Attachments
+			if len(msgResp.Attachments) > 0 {
+				var attachments []MessageAttachmentModel
+				for _, att := range msgResp.Attachments {
+					attModel := MessageAttachmentModel{
+						FileID: types.StringValue(att.FileID),
+					}
+					if len(att.Tools) > 0 {
+						var tools []MessageToolModel
+						for _, t := range att.Tools {
+							tools = append(tools, MessageToolModel{Type: types.StringValue(t.Type)})
+						}
+						attModel.Tools = tools
+					}
+					attachments = append(attachments, attModel)
+				}
+				msgModel.Attachments = attachments
+			} else {
+				msgModel.Attachments = nil
+			}
+
+			allMessages = append(allMessages, msgModel)
+		}
+
+		if !listResp.HasMore {
+			break
+		}
+		cursor = listResp.LastID
 	}
 
-	return m
+	data.ID = types.StringValue(threadID) // Use thread ID as ID for the data source
+	data.Messages = allMessages
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

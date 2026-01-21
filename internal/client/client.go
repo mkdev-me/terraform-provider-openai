@@ -1313,9 +1313,23 @@ func (c *OpenAIClient) CreateRateLimit(projectID, resourceType, limitType string
 //   - A RateLimit object with details about the requested rate limit
 //   - An error if the operation failed or the rate limit doesn't exist
 func (c *OpenAIClient) GetRateLimit(projectID, modelOrRateLimitID string) (*RateLimit, error) {
-	rateLimits, err := c.ListRateLimits(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list rate limits: %w", err)
+	// Pagination loop to find the rate limit
+	var allRateLimits []RateLimit
+	limit := 100
+	after := ""
+
+	for {
+		rateLimits, err := c.ListRateLimits(projectID, limit, after)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list rate limits: %w", err)
+		}
+
+		allRateLimits = append(allRateLimits, rateLimits.Data...)
+
+		if !rateLimits.HasMore {
+			break
+		}
+		after = rateLimits.LastID
 	}
 
 	// Normalize the search - if it's a rate limit ID, extract the model name
@@ -1325,16 +1339,16 @@ func (c *OpenAIClient) GetRateLimit(projectID, modelOrRateLimitID string) (*Rate
 	}
 
 	// Search for exact model match first
-	for i := range rateLimits.Data {
-		if rateLimits.Data[i].Model == searchModel {
-			return &rateLimits.Data[i], nil
+	for i := range allRateLimits {
+		if allRateLimits[i].Model == searchModel {
+			return &allRateLimits[i], nil
 		}
 	}
 
 	// Try exact ID match
-	for i := range rateLimits.Data {
-		if rateLimits.Data[i].ID == modelOrRateLimitID {
-			return &rateLimits.Data[i], nil
+	for i := range allRateLimits {
+		if allRateLimits[i].ID == modelOrRateLimitID {
+			return &allRateLimits[i], nil
 		}
 	}
 
@@ -2336,8 +2350,21 @@ func (c *OpenAIClient) DeleteInvite(inviteID string) error {
 }
 
 // ListRateLimits retrieves all rate limits for a specific project.
-func (c *OpenAIClient) ListRateLimits(projectID string) (*RateLimitListResponse, error) {
+func (c *OpenAIClient) ListRateLimits(projectID string, limit int, after string) (*RateLimitListResponse, error) {
 	url := fmt.Sprintf("/v1/organization/projects/%s/rate_limits", projectID)
+
+	// Add query parameters
+	queryParams := make([]string, 0)
+	if limit > 0 {
+		queryParams = append(queryParams, fmt.Sprintf("limit=%d", limit))
+	}
+	if after != "" {
+		queryParams = append(queryParams, fmt.Sprintf("after=%s", after))
+	}
+
+	if len(queryParams) > 0 {
+		url += "?" + strings.Join(queryParams, "&")
+	}
 
 	respBody, err := c.doRequest("GET", url, nil)
 	if err != nil {

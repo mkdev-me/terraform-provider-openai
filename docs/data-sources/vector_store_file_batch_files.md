@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file_batch_files Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Data source for listing files in a vector store file batch.
 ---
 
 # openai_vector_store_file_batch_files (Data Source)
 
-
+Data source for listing files in a vector store file batch.
 
 
 
@@ -17,21 +17,21 @@ description: |-
 
 ### Required
 
-- `batch_id` (String) The ID of the file batch that the files belong to.
-- `vector_store_id` (String) The ID of the vector store that the files belong to.
+- `batch_id` (String)
+- `vector_store_id` (String)
 
 ### Optional
 
-- `after` (String) A cursor for use in pagination. after is an object ID that defines your place in the list.
-- `before` (String) A cursor for use in pagination. before is an object ID that defines your place in the list.
-- `filter` (String) Filter by file status. One of in_progress, completed, failed, cancelled.
-- `limit` (Number) A limit on the number of objects to be returned. Limit can range between 1 and 100, and the default is 20.
-- `order` (String) Sort order by the created_at timestamp of the objects. asc for ascending order and desc for descending order.
+- `after` (String)
+- `before` (String)
+- `filter` (String)
+- `limit` (Number)
+- `order` (String)
 
 ### Read-Only
 
-- `files` (List of Object) (see [below for nested schema](#nestedatt--files))
-- `has_more` (Boolean) Boolean indicating whether there are more files available beyond the current response.
+- `files` (Attributes List) (see [below for nested schema](#nestedatt--files))
+- `has_more` (Boolean)
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--files"></a>

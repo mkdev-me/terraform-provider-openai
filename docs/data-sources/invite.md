@@ -3,12 +3,12 @@
 page_title: "openai_invite Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific invitation in an OpenAI organization.
 ---
 
 # openai_invite (Data Source)
 
-
+Use this data source to retrieve information about a specific invitation in an OpenAI organization.
 
 ## Example Usage
 
@@ -29,22 +29,22 @@ output "invite_status" {
 
 ### Required
 
-- `invite_id` (String) The ID of the invitation to retrieve
+- `invite_id` (String) The ID of the invitation to retrieve.
 
 ### Read-Only
 
-- `created_at` (Number) When the invitation was created
-- `email` (String) The email address of the invited user
-- `expires_at` (Number) When the invitation expires
-- `id` (String) The ID of this resource.
-- `projects` (List of Object) Projects assigned to the invited user (see [below for nested schema](#nestedatt--projects))
-- `role` (String) The role assigned to the invited user (owner or reader)
-- `status` (String) The status of the invitation
+- `created_at` (Number) When the invitation was created (Unix timestamp).
+- `email` (String) The email address of the invited user.
+- `expires_at` (Number) When the invitation expires (Unix timestamp).
+- `id` (String) The ID of the invitation.
+- `projects` (Attributes List) Projects assigned to the invited user. (see [below for nested schema](#nestedatt--projects))
+- `role` (String) The role assigned to the invited user (owner or reader).
+- `status` (String) The status of the invitation.
 
 <a id="nestedatt--projects"></a>
 ### Nested Schema for `projects`
 
 Read-Only:
 
-- `id` (String)
-- `role` (String)
+- `id` (String) The ID of the project.
+- `role` (String) The role assigned to the user within the project (owner or member).

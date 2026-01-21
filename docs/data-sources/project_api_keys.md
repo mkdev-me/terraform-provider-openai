@@ -3,12 +3,12 @@
 page_title: "openai_project_api_keys Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of API keys for a specific OpenAI project.
 ---
 
 # openai_project_api_keys (Data Source)
 
-
+Use this data source to retrieve a list of API keys for a specific OpenAI project.
 
 ## Example Usage
 
@@ -29,15 +29,15 @@ output "api_key_count" {
 
 ### Required
 
-- `project_id` (String) The ID of the project to retrieve API keys for
+- `project_id` (String) The ID of the project to retrieve API keys for.
 
 ### Optional
 
-- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default API key will be used.
+- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default Admin API key will be used.
 
 ### Read-Only
 
-- `api_keys` (List of Object) List of API keys for the project (see [below for nested schema](#nestedatt--api_keys))
+- `api_keys` (Attributes List) List of API keys for the project. (see [below for nested schema](#nestedatt--api_keys))
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--api_keys"></a>
@@ -45,7 +45,7 @@ output "api_key_count" {
 
 Read-Only:
 
-- `created_at` (String)
-- `id` (String)
-- `last_used_at` (String)
-- `name` (String)
+- `created_at` (String) Timestamp when the API key was created.
+- `id` (String) The ID of the API key.
+- `last_used_at` (String) Timestamp when the API key was last used.
+- `name` (String) The name of the API key.

@@ -3,12 +3,12 @@
 page_title: "openai_image_edit Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Edits an image.
 ---
 
 # openai_image_edit (Resource)
 
-
+Edits an image.
 
 ## Example Usage
 
@@ -79,21 +79,21 @@ output "edited_image_url" {
 
 ### Required
 
-- `image` (String) The image to edit. Must be a valid PNG file, less than 4MB, and square.
-- `prompt` (String) A text description of the desired image(s).
+- `image` (String)
+- `prompt` (String)
 
 ### Optional
 
-- `mask` (String) An additional image whose fully transparent areas indicate where 'image' should be edited.
-- `model` (String) The model to use for image editing.
-- `n` (Number) The number of images to generate. Must be between 1 and 10.
-- `response_format` (String) The format in which the generated images are returned.
-- `size` (String) The size of the generated images.
-- `user` (String) A unique identifier representing your end-user.
+- `mask` (String)
+- `model` (String)
+- `n` (Number)
+- `response_format` (String)
+- `size` (String)
+- `user` (String)
 
 ### Read-Only
 
-- `created` (Number) The timestamp for when the edited image was created.
+- `created` (Number)
 - `data` (List of Object) (see [below for nested schema](#nestedatt--data))
 - `id` (String) The ID of this resource.
 

@@ -1,7 +1,7 @@
 # Create a project first
 resource "openai_project" "microservices" {
-  name        = "Microservices Platform"
-  description = "Project for microservices API access"
+  name = "Microservices Platform"
+
 }
 
 # Create a service account for API automation
@@ -30,8 +30,8 @@ resource "openai_project_service_account" "testing" {
 
 # Create service accounts in different projects
 resource "openai_project" "development" {
-  name        = "Development Environment"
-  description = "Project for development services"
+  name = "Development Environment"
+
 }
 
 resource "openai_project_service_account" "dev_service" {

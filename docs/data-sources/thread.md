@@ -3,12 +3,12 @@
 page_title: "openai_thread Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI thread.
 ---
 
 # openai_thread (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI thread.
 
 ## Example Usage
 
@@ -36,11 +36,34 @@ resource "openai_thread_message" "follow_up" {
 
 ### Required
 
-- `thread_id` (String) The ID of the thread to retrieve
+- `id` (String) The ID of the thread.
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the thread was created
-- `id` (String) The ID of this resource.
-- `metadata` (Map of String) Metadata attached to the thread
-- `object` (String) The object type, which is always 'thread'
+- `created_at` (Number) The Unix timestamp (in seconds) for when the thread was created.
+- `metadata` (Map of String) Set of 16 key-value pairs that can be attached to an object.
+- `object` (String) The object type, which is always 'thread'.
+- `tool_resources` (Attributes) A set of resources that are used by the thread's tools. (see [below for nested schema](#nestedatt--tool_resources))
+
+<a id="nestedatt--tool_resources"></a>
+### Nested Schema for `tool_resources`
+
+Read-Only:
+
+- `code_interpreter` (Attributes) Resources for the code_interpreter tool. (see [below for nested schema](#nestedatt--tool_resources--code_interpreter))
+- `file_search` (Attributes) Resources for the file_search tool. (see [below for nested schema](#nestedatt--tool_resources--file_search))
+
+<a id="nestedatt--tool_resources--code_interpreter"></a>
+### Nested Schema for `tool_resources.code_interpreter`
+
+Read-Only:
+
+- `file_ids` (List of String) A list of file IDs attached to this thread.
+
+
+<a id="nestedatt--tool_resources--file_search"></a>
+### Nested Schema for `tool_resources.file_search`
+
+Read-Only:
+
+- `vector_store_ids` (List of String) A list of vector store IDs attached to this thread.

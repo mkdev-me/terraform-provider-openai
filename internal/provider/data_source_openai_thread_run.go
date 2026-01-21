@@ -4,228 +4,294 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// dataSourceOpenAIThreadRun provides a data source to retrieve details about a specific OpenAI thread run.
-func dataSourceOpenAIThreadRun() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIThreadRunRead,
-		Schema: map[string]*schema.Schema{
-			"run_id": {
-				Type:        schema.TypeString,
+var _ datasource.DataSource = &ThreadRunDataSource{}
+
+func NewThreadRunDataSource() datasource.DataSource {
+	return &ThreadRunDataSource{}
+}
+
+type ThreadRunDataSource struct {
+	client *OpenAIClient
+}
+
+// ThreadRunDataSourceModel mirrors RunDataSourceModel, effectively an alias for Run but specific to Thread
+type ThreadRunDataSourceModel struct {
+	ID                  types.String             `tfsdk:"id"`
+	RunID               types.String             `tfsdk:"run_id"`
+	ThreadID            types.String             `tfsdk:"thread_id"`
+	Object              types.String             `tfsdk:"object"`
+	CreatedAt           types.Int64              `tfsdk:"created_at"`
+	AssistantID         types.String             `tfsdk:"assistant_id"`
+	Status              types.String             `tfsdk:"status"`
+	StartedAt           types.Int64              `tfsdk:"started_at"`
+	CompletedAt         types.Int64              `tfsdk:"completed_at"`
+	Model               types.String             `tfsdk:"model"`
+	Instructions        types.String             `tfsdk:"instructions"`
+	Metadata            types.Map                `tfsdk:"metadata"`
+	Usage               *RunDataSourceUsageModel `tfsdk:"usage"`
+	Temperature         types.Float64            `tfsdk:"temperature"`
+	TopP                types.Float64            `tfsdk:"top_p"`
+	MaxPromptTokens     types.Int64              `tfsdk:"max_prompt_tokens"`
+	MaxCompletionTokens types.Int64              `tfsdk:"max_completion_tokens"`
+	ExpiresAt           types.Int64              `tfsdk:"expires_at"`
+	FailedAt            types.Int64              `tfsdk:"failed_at"`
+	CancelledAt         types.Int64              `tfsdk:"cancelled_at"`
+	ResponseFormat      types.String             `tfsdk:"response_format"`
+}
+
+func (d *ThreadRunDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_thread_run"
+}
+
+func (d *ThreadRunDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific OpenAI run within a thread.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of this resource.",
+				Computed:    true,
+			},
+			"run_id": schema.StringAttribute{
+				Description: "The ID of the run.",
 				Required:    true,
-				Description: "The ID of the run to retrieve",
 			},
-			"thread_id": {
-				Type:        schema.TypeString,
+			"thread_id": schema.StringAttribute{
+				Description: "The ID of the thread the run belongs to.",
 				Required:    true,
-				Description: "The ID of the thread the run belongs to",
 			},
-			"assistant_id": {
-				Type:        schema.TypeString,
+			"object": schema.StringAttribute{
+				Description: "The object type, which is always 'thread.run'.",
 				Computed:    true,
-				Description: "The ID of the assistant used for the run",
 			},
-			"model": {
-				Type:        schema.TypeString,
+			"created_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the run was created.",
 				Computed:    true,
-				Description: "The ID of the model used for the run",
 			},
-			"instructions": {
-				Type:        schema.TypeString,
+			"assistant_id": schema.StringAttribute{
+				Description: "The ID of the assistant used for execution of this run.",
 				Computed:    true,
-				Description: "The instructions used for the run",
 			},
-			"tools": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeMap,
-					Elem: &schema.Schema{
-						Type: schema.TypeString,
+			"status": schema.StringAttribute{
+				Description: "The status of the run.",
+				Computed:    true,
+			},
+			"started_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the run was started.",
+				Computed:    true,
+			},
+			"completed_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the run was completed.",
+				Computed:    true,
+			},
+			"model": schema.StringAttribute{
+				Description: "The model that the assistant used for this run.",
+				Computed:    true,
+			},
+			"instructions": schema.StringAttribute{
+				Description: "The instructions that the assistant used for this run.",
+				Computed:    true,
+			},
+			"metadata": schema.MapAttribute{
+				Description: "Set of key-value pairs that can be attached to an object.",
+				ElementType: types.StringType,
+				Computed:    true,
+			},
+			"usage": schema.SingleNestedAttribute{
+				Description: "Usage statistics related to the run.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"prompt_tokens": schema.Int64Attribute{
+						Computed: true,
+					},
+					"completion_tokens": schema.Int64Attribute{
+						Computed: true,
+					},
+					"total_tokens": schema.Int64Attribute{
+						Computed: true,
 					},
 				},
-				Description: "The tools available to the assistant for the run",
 			},
-			"metadata": {
-				Type:     schema.TypeMap,
+			"temperature": schema.Float64Attribute{
 				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Description: "Metadata associated with the run",
 			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The status of the run (queued, in_progress, completed, failed, etc.)",
-			},
-			"object": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The object type, which is always 'thread.run'",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the run was created",
-			},
-			"started_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the run was started",
-			},
-			"completed_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the run was completed",
-			},
-			"file_ids": {
-				Type:     schema.TypeList,
+			"top_p": schema.Float64Attribute{
 				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Description: "The IDs of the files used in the run",
 			},
-			"usage": {
-				Type:     schema.TypeMap,
+			"max_prompt_tokens": schema.Int64Attribute{
 				Computed: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeInt,
-				},
-				Description: "Usage statistics for the run",
+			},
+			"max_completion_tokens": schema.Int64Attribute{
+				Computed: true,
+			},
+			"expires_at": schema.Int64Attribute{
+				Computed: true,
+			},
+			"failed_at": schema.Int64Attribute{
+				Computed: true,
+			},
+			"cancelled_at": schema.Int64Attribute{
+				Computed: true,
+			},
+			"response_format": schema.StringAttribute{
+				Computed: true,
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIThreadRunRead fetches information about an existing OpenAI thread run.
-func dataSourceOpenAIThreadRunRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*OpenAIClient)
+func (d *ThreadRunDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 
-	// Get the run ID and thread ID from the data source configuration
-	runID := d.Get("run_id").(string)
-	threadID := d.Get("thread_id").(string)
+	client, ok := req.ProviderData.(*OpenAIClient)
 
-	// Construct the API URL
-	url := fmt.Sprintf("%s/threads/%s/runs/%s", client.APIURL, threadID, runID)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
 
-	// Create the request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		return
+	}
+
+	d.client = client
+}
+
+func (d *ThreadRunDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ThreadRunDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	threadID := data.ThreadID.ValueString()
+	runID := data.RunID.ValueString()
+	path := fmt.Sprintf("threads/%s/runs/%s", threadID, runID)
+
+	apiClient := d.client.OpenAIClient
+
+	respBody, err := apiClient.DoRequest(http.MethodGet, path, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %w", err))
+		resp.Diagnostics.AddError(
+			"Error Reading Run",
+			fmt.Sprintf("Could not read run with ID %s in thread %s: %s", runID, threadID, err.Error()),
+		)
+		return
 	}
 
-	// Add headers
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("OpenAI-Beta", "assistants=v2")
-
-	// Send the request
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %w", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %w", err))
+	var runResponse RunResponse
+	if err := json.Unmarshal(respBody, &runResponse); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Parsing Run Response",
+			fmt.Sprintf("Could not parse response for run %s: %s", runID, err.Error()),
+		)
+		return
 	}
 
-	// Check for error responses
-	if resp.StatusCode != http.StatusOK {
-		return diag.FromErr(fmt.Errorf("API returned error - status code: %d, body: %s", resp.StatusCode, string(respBody)))
+	data.ID = types.StringValue(runResponse.ID)
+	data.RunID = types.StringValue(runResponse.ID)
+	data.ThreadID = types.StringValue(runResponse.ThreadID)
+	data.Object = types.StringValue(runResponse.Object)
+	data.CreatedAt = types.Int64Value(runResponse.CreatedAt)
+	data.AssistantID = types.StringValue(runResponse.AssistantID)
+	data.Status = types.StringValue(runResponse.Status)
+	data.Model = types.StringValue(runResponse.Model)
+	data.Instructions = types.StringValue(runResponse.Instructions)
+
+	if runResponse.StartedAt != nil {
+		data.StartedAt = types.Int64Value(*runResponse.StartedAt)
+	} else {
+		data.StartedAt = types.Int64Null()
 	}
 
-	// Parse the response
-	var threadRunResponse ThreadRunResponse
-	if err := json.Unmarshal(respBody, &threadRunResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response body: %w", err))
+	if runResponse.CompletedAt != nil {
+		data.CompletedAt = types.Int64Value(*runResponse.CompletedAt)
+	} else {
+		data.CompletedAt = types.Int64Null()
 	}
 
-	// Set the resource ID
-	d.SetId(threadRunResponse.ID)
-
-	// Set the run data in the state
-	if err := d.Set("assistant_id", threadRunResponse.AssistantID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting assistant_id: %w", err))
-	}
-	if err := d.Set("model", threadRunResponse.Model); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting model: %w", err))
-	}
-	if err := d.Set("instructions", threadRunResponse.Instructions); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting instructions: %w", err))
-	}
-	if err := d.Set("status", threadRunResponse.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting status: %w", err))
-	}
-	if err := d.Set("object", threadRunResponse.Object); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting object: %w", err))
-	}
-	if err := d.Set("created_at", threadRunResponse.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %w", err))
-	}
-	if err := d.Set("file_ids", threadRunResponse.FileIDs); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting file_ids: %w", err))
+	if runResponse.ExpiresAt != nil {
+		data.ExpiresAt = types.Int64Value(*runResponse.ExpiresAt)
+	} else {
+		data.ExpiresAt = types.Int64Null()
 	}
 
-	// Set optional fields
-	if threadRunResponse.StartedAt != nil {
-		if err := d.Set("started_at", *threadRunResponse.StartedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting started_at: %w", err))
+	if runResponse.FailedAt != nil {
+		data.FailedAt = types.Int64Value(*runResponse.FailedAt)
+	} else {
+		data.FailedAt = types.Int64Null()
+	}
+
+	if runResponse.CancelledAt != nil {
+		data.CancelledAt = types.Int64Value(*runResponse.CancelledAt)
+	} else {
+		data.CancelledAt = types.Int64Null()
+	}
+
+	// Map Metadata
+	if len(runResponse.Metadata) > 0 {
+		metadataVals := make(map[string]attr.Value)
+		for k, v := range runResponse.Metadata {
+			metadataVals[k] = types.StringValue(fmt.Sprintf("%v", v))
 		}
-	}
-	if threadRunResponse.CompletedAt != nil {
-		if err := d.Set("completed_at", *threadRunResponse.CompletedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting completed_at: %w", err))
-		}
+		data.Metadata, _ = types.MapValue(types.StringType, metadataVals)
+	} else {
+		data.Metadata = types.MapNull(types.StringType)
 	}
 
-	// Set usage data if available
-	if threadRunResponse.Usage != nil {
-		usageData := map[string]interface{}{
-			"prompt_tokens":     threadRunResponse.Usage.PromptTokens,
-			"completion_tokens": threadRunResponse.Usage.CompletionTokens,
-			"total_tokens":      threadRunResponse.Usage.TotalTokens,
+	// Map Usage
+	if runResponse.Usage != nil {
+		data.Usage = &RunDataSourceUsageModel{
+			PromptTokens:     types.Int64Value(int64(runResponse.Usage.PromptTokens)),
+			CompletionTokens: types.Int64Value(int64(runResponse.Usage.CompletionTokens)),
+			TotalTokens:      types.Int64Value(int64(runResponse.Usage.TotalTokens)),
 		}
-		if err := d.Set("usage", usageData); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting usage: %w", err))
-		}
+	} else {
+		data.Usage = nil
 	}
 
-	// Set tools data
-	if len(threadRunResponse.Tools) > 0 {
-		if err := d.Set("tools", threadRunResponse.Tools); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting tools: %w", err))
-		}
+	if runResponse.Temperature != nil {
+		data.Temperature = types.Float64Value(*runResponse.Temperature)
+	} else {
+		data.Temperature = types.Float64Null()
 	}
 
-	// Set metadata if present
-	if threadRunResponse.Metadata != nil {
-		metadata := make(map[string]string)
-		for k, v := range threadRunResponse.Metadata {
-			if strVal, ok := v.(string); ok {
-				metadata[k] = strVal
-			} else {
-				// Convert non-string values to JSON strings
-				jsonData, err := json.Marshal(v)
-				if err == nil {
-					metadata[k] = string(jsonData)
-				}
-			}
-		}
-		if err := d.Set("metadata", metadata); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting metadata: %w", err))
-		}
+	if runResponse.TopP != nil {
+		data.TopP = types.Float64Value(*runResponse.TopP)
+	} else {
+		data.TopP = types.Float64Null()
 	}
 
-	return nil
+	if runResponse.MaxPromptTokens != nil {
+		data.MaxPromptTokens = types.Int64Value(int64(*runResponse.MaxPromptTokens))
+	} else {
+		data.MaxPromptTokens = types.Int64Null()
+	}
+
+	if runResponse.MaxCompletionTokens != nil {
+		data.MaxCompletionTokens = types.Int64Value(int64(*runResponse.MaxCompletionTokens))
+	} else {
+		data.MaxCompletionTokens = types.Int64Null()
+	}
+
+	if runResponse.ResponseFormat != nil {
+		rfStr := fmt.Sprintf("%v", runResponse.ResponseFormat)
+		data.ResponseFormat = types.StringValue(rfStr)
+	} else {
+		data.ResponseFormat = types.StringNull()
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

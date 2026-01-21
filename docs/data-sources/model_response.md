@@ -17,23 +17,23 @@ Data source for retrieving OpenAI model response information
 
 ### Required
 
-- `response_id` (String) The ID of the model response to retrieve
+- `response_id` (String)
 
 ### Optional
 
-- `include` (List of String) Additional fields to include in the response. Valid values include: usage.input_tokens_details, usage.output_tokens_details, file_search_results, web_search_results, message_files.url, computation_files.url
+- `include` (List of String)
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp when the response was created
+- `created_at` (Number)
 - `id` (String) The ID of this resource.
-- `input_items` (List of Object) The input items for the model response (see [below for nested schema](#nestedatt--input_items))
-- `model` (String) The ID of the model used for the response
-- `output` (Map of String) The output of the model response
-- `status` (String) The status of the response (e.g., 'completed')
-- `temperature` (Number) The temperature used for generation
-- `top_p` (Number) The top_p value used for generation
-- `usage` (Map of String) Token usage statistics for the request
+- `input_items` (Attributes List) (see [below for nested schema](#nestedatt--input_items))
+- `model` (String)
+- `output` (Map of String)
+- `status` (String)
+- `temperature` (Number)
+- `top_p` (Number)
+- `usage` (Map of String)
 
 <a id="nestedatt--input_items"></a>
 ### Nested Schema for `input_items`

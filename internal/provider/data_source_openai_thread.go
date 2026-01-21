@@ -4,137 +4,200 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// dataSourceOpenAIThread returns a schema.Resource that represents a data source for a single OpenAI thread.
-func dataSourceOpenAIThread() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIThreadRead,
-		Schema: map[string]*schema.Schema{
-			"thread_id": {
-				Type:        schema.TypeString,
+var _ datasource.DataSource = &ThreadDataSource{}
+
+func NewThreadDataSource() datasource.DataSource {
+	return &ThreadDataSource{}
+}
+
+type ThreadDataSource struct {
+	client *OpenAIClient
+}
+
+type ThreadDataSourceModel struct {
+	ID            types.String                   `tfsdk:"id"`
+	Object        types.String                   `tfsdk:"object"`
+	CreatedAt     types.Int64                    `tfsdk:"created_at"`
+	Metadata      types.Map                      `tfsdk:"metadata"`
+	ToolResources *ThreadDataSourceToolResources `tfsdk:"tool_resources"`
+}
+
+type ThreadDataSourceToolResources struct {
+	CodeInterpreter *ThreadDataSourceCodeInterpreterResources `tfsdk:"code_interpreter"`
+	FileSearch      *ThreadDataSourceFileSearchResources      `tfsdk:"file_search"`
+}
+
+type ThreadDataSourceCodeInterpreterResources struct {
+	FileIDs []types.String `tfsdk:"file_ids"`
+}
+
+type ThreadDataSourceFileSearchResources struct {
+	VectorStoreIDs []types.String `tfsdk:"vector_store_ids"`
+}
+
+func (d *ThreadDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_thread"
+}
+
+func (d *ThreadDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific OpenAI thread.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of the thread.",
 				Required:    true,
-				Description: "The ID of the thread to retrieve",
 			},
-			"object": {
-				Type:        schema.TypeString,
+			"object": schema.StringAttribute{
+				Description: "The object type, which is always 'thread'.",
 				Computed:    true,
-				Description: "The object type, which is always 'thread'",
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
+			"created_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the thread was created.",
 				Computed:    true,
-				Description: "The timestamp for when the thread was created",
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
+			"metadata": schema.MapAttribute{
+				Description: "Set of 16 key-value pairs that can be attached to an object.",
+				ElementType: types.StringType,
 				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Metadata attached to the thread",
+			},
+			"tool_resources": schema.SingleNestedAttribute{
+				Description: "A set of resources that are used by the thread's tools.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"code_interpreter": schema.SingleNestedAttribute{
+						Description: "Resources for the code_interpreter tool.",
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"file_ids": schema.ListAttribute{
+								Description: "A list of file IDs attached to this thread.",
+								ElementType: types.StringType,
+								Computed:    true,
+							},
+						},
+					},
+					"file_search": schema.SingleNestedAttribute{
+						Description: "Resources for the file_search tool.",
+						Computed:    true,
+						Attributes: map[string]schema.Attribute{
+							"vector_store_ids": schema.ListAttribute{
+								Description: "A list of vector store IDs attached to this thread.",
+								ElementType: types.StringType,
+								Computed:    true,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIThreadRead handles the read operation for the OpenAI thread data source.
-// It retrieves details about a specific thread from the OpenAI API.
-func dataSourceOpenAIThreadRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	c, err := GetOpenAIClient(m)
+func (d *ThreadDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+}
+
+func (d *ThreadDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ThreadDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	threadID := data.ID.ValueString()
+	path := fmt.Sprintf("threads/%s", threadID)
+
+	apiClient := d.client.OpenAIClient
+
+	respBody, err := apiClient.DoRequest(http.MethodGet, path, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %s", err))
+		resp.Diagnostics.AddError(
+			"Error Reading Thread",
+			fmt.Sprintf("Could not read thread with ID %s: %s", threadID, err.Error()),
+		)
+		return
 	}
 
-	// Get thread ID from the schema
-	threadID := d.Get("thread_id").(string)
-
-	// Build URL for the request
-	url := fmt.Sprintf("%s/threads/%s", c.APIURL, threadID)
-
-	// Prepare HTTP request
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+	var threadResponse ThreadResponse
+	if err := json.Unmarshal(respBody, &threadResponse); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Parsing Thread Response",
+			fmt.Sprintf("Could not parse response for thread %s: %s", threadID, err.Error()),
+		)
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if c.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", c.OrganizationID)
-	}
+	data.ID = types.StringValue(threadResponse.ID)
+	data.Object = types.StringValue(threadResponse.Object)
+	data.CreatedAt = types.Int64Value(int64(threadResponse.CreatedAt))
 
-	// Make the request
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %s", err))
-	}
-
-	// Check for errors in the response
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		if err := json.Unmarshal(respBody, &errResp); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d, body: %s",
-				err, resp.StatusCode, string(respBody)))
+	// Map Metadata
+	if len(threadResponse.Metadata) > 0 {
+		metadataVals := make(map[string]attr.Value)
+		for k, v := range threadResponse.Metadata {
+			metadataVals[k] = types.StringValue(fmt.Sprintf("%v", v))
 		}
-		return diag.FromErr(fmt.Errorf("error retrieving thread: %s - %s",
-			errResp.Error.Type, errResp.Error.Message))
+		data.Metadata, _ = types.MapValue(types.StringType, metadataVals)
+	} else {
+		data.Metadata = types.MapNull(types.StringType)
 	}
 
-	// Parse the response to a map first to handle all possible fields
-	var threadMap map[string]interface{}
-	if err := json.Unmarshal(respBody, &threadMap); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing thread response to map: %s", err))
-	}
+	// Map Tool Resources
+	if threadResponse.ToolResources != nil {
+		trModel := &ThreadDataSourceToolResources{}
+		hasResources := false
 
-	// Parse the response to the standard struct
-	var thread ThreadResponse
-	if err := json.Unmarshal(respBody, &thread); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing thread response: %s", err))
-	}
-
-	// Set the ID in the resource data
-	d.SetId(thread.ID)
-
-	// Set the basic thread properties
-	if err := d.Set("object", thread.Object); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting object: %s", err))
-	}
-	if err := d.Set("created_at", thread.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %s", err))
-	}
-
-	// Set metadata if present
-	if len(thread.Metadata) > 0 {
-		metadataMap := make(map[string]string)
-		for k, v := range thread.Metadata {
-			if strVal, ok := v.(string); ok {
-				metadataMap[k] = strVal
-			} else {
-				// Convert non-string values to JSON string
-				jsonBytes, err := json.Marshal(v)
-				if err != nil {
-					return diag.FromErr(fmt.Errorf("error marshaling metadata value for key %s: %s", k, err))
-				}
-				metadataMap[k] = string(jsonBytes)
+		if threadResponse.ToolResources.CodeInterpreter != nil {
+			fileIDs := []types.String{}
+			for _, id := range threadResponse.ToolResources.CodeInterpreter.FileIDs {
+				fileIDs = append(fileIDs, types.StringValue(id))
 			}
+			trModel.CodeInterpreter = &ThreadDataSourceCodeInterpreterResources{
+				FileIDs: fileIDs,
+			}
+			hasResources = true
 		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting metadata: %s", err))
+
+		if threadResponse.ToolResources.FileSearch != nil {
+			vsIDs := []types.String{}
+			for _, id := range threadResponse.ToolResources.FileSearch.VectorStoreIDs {
+				vsIDs = append(vsIDs, types.StringValue(id))
+			}
+			trModel.FileSearch = &ThreadDataSourceFileSearchResources{
+				VectorStoreIDs: vsIDs,
+			}
+			hasResources = true
+		}
+
+		if hasResources {
+			data.ToolResources = trModel
 		}
 	}
 
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

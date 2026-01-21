@@ -3,12 +3,12 @@
 page_title: "openai_image_variation Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Creates variations of an image.
 ---
 
 # openai_image_variation (Resource)
 
-
+Creates variations of an image.
 
 ## Example Usage
 
@@ -78,19 +78,19 @@ output "first_variation_url" {
 
 ### Required
 
-- `image` (String) The image to use as the basis for the variation(s). Must be a valid PNG file, less than 4MB, and square.
+- `image` (String)
 
 ### Optional
 
-- `model` (String) The model to use for image variation.
-- `n` (Number) The number of images to generate. Must be between 1 and 10.
-- `response_format` (String) The format in which the generated images are returned.
-- `size` (String) The size of the generated images.
-- `user` (String) A unique identifier representing your end-user.
+- `model` (String)
+- `n` (Number)
+- `response_format` (String)
+- `size` (String)
+- `user` (String)
 
 ### Read-Only
 
-- `created` (Number) The timestamp for when the varied image was created.
+- `created` (Number)
 - `data` (List of Object) (see [below for nested schema](#nestedatt--data))
 - `id` (String) The ID of this resource.
 

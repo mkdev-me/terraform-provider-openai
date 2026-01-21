@@ -3,12 +3,12 @@
 page_title: "openai_organization_user Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages a user in an OpenAI Organization.
 ---
 
 # openai_organization_user (Resource)
 
-
+Manages a user in an OpenAI Organization.
 
 ## Example Usage
 
@@ -36,15 +36,15 @@ resource "openai_organization_user" "organization_users" {
 
 ### Required
 
-- `role` (String) The role to assign to the user (owner or reader)
-- `user_id` (String) The ID of the user to manage in the organization
+- `role` (String) The role of the user in the organization (owner or reader).
+- `user_id` (String) The ID of the user.
 
 ### Read-Only
 
-- `added_at` (Number) The Unix timestamp when the user was added to the organization
-- `email` (String) The email address of the user
-- `id` (String) The ID of this resource.
-- `name` (String) The name of the user
+- `added_at` (Number) The timestamp when the user was added to the organization.
+- `email` (String) The email of the user.
+- `id` (String) The identifier of the user (same as user_id).
+- `name` (String) The name of the user.
 
 ## Import
 

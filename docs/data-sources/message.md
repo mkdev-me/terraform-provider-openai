@@ -3,12 +3,12 @@
 page_title: "openai_message Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI message.
 ---
 
 # openai_message (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI message.
 
 
 
@@ -17,27 +17,49 @@ description: |-
 
 ### Required
 
-- `message_id` (String) The ID of the message to retrieve
-- `thread_id` (String) The ID of the thread that contains the message
+- `id` (String) The ID of the message.
+- `thread_id` (String) The ID of the thread this message belongs to.
 
 ### Read-Only
 
-- `assistant_id` (String) If applicable, the ID of the assistant that authored this message
-- `attachments` (List of Object) A list of attachments in the message (see [below for nested schema](#nestedatt--attachments))
-- `content` (String) The content of the message
-- `created_at` (Number) The timestamp for when the message was created
-- `id` (String) The ID of this resource.
-- `metadata` (Map of String) Set of key-value pairs attached to the message
-- `object` (String) The object type, always 'thread.message'
-- `role` (String) The role of the entity that created the message
-- `run_id` (String) If applicable, the ID of the run that generated this message
+- `assistant_id` (String) If applicable, the ID of the assistant that authored this message.
+- `attachments` (Attributes List) A list of files attached to the message, and the tools they were added to. (see [below for nested schema](#nestedatt--attachments))
+- `content` (Attributes List) The content of the message. (see [below for nested schema](#nestedatt--content))
+- `created_at` (Number) The Unix timestamp (in seconds) for when the message was created.
+- `metadata` (Map of String) Set of 16 key-value pairs that can be attached to an object.
+- `object` (String) The object type, which is always 'thread.message'.
+- `role` (String) The role of the entity that produced the message. One of 'user' or 'assistant'.
+- `run_id` (String) If applicable, the ID of the run associated with the authoring of this message.
 
 <a id="nestedatt--attachments"></a>
 ### Nested Schema for `attachments`
 
 Read-Only:
 
-- `assistant_id` (String)
-- `created_at` (Number)
-- `id` (String)
-- `type` (String)
+- `file_id` (String) The ID of the file to attach to the message.
+- `tools` (Attributes List) The tools to add this file to. (see [below for nested schema](#nestedatt--attachments--tools))
+
+<a id="nestedatt--attachments--tools"></a>
+### Nested Schema for `attachments.tools`
+
+Read-Only:
+
+- `type` (String) The type of tool being defined: code_interpreter or file_search.
+
+
+
+<a id="nestedatt--content"></a>
+### Nested Schema for `content`
+
+Read-Only:
+
+- `text` (Attributes) The text content. (see [below for nested schema](#nestedatt--content--text))
+- `type` (String) The type of content. Can be 'text'.
+
+<a id="nestedatt--content--text"></a>
+### Nested Schema for `content.text`
+
+Read-Only:
+
+- `annotations` (List of String) Annotations for the text.
+- `value` (String) The data that makes up the text.

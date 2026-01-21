@@ -12,412 +12,336 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// TranscriptionResponse represents the API response for audio transcriptions.
-// It contains the transcribed text and optional metadata about the transcription.
-type TranscriptionResponse struct {
-	Text     string    `json:"text"`               // The complete transcribed text
-	Duration float64   `json:"duration,omitempty"` // Duration of the audio in seconds
-	Segments []Segment `json:"segments,omitempty"` // Optional segments of the transcription
+var _ resource.Resource = &AudioTranscriptionResource{}
+var _ resource.ResourceWithImportState = &AudioTranscriptionResource{}
+
+type AudioTranscriptionResource struct {
+	client *OpenAIClient
 }
 
-// Segment represents a single segment of the audio transcription.
-// It contains timing information and the transcribed text for that segment.
-type Segment struct {
-	ID    int     `json:"id"`    // Unique identifier for the segment
-	Start float64 `json:"start"` // Start time of the segment in seconds
-	End   float64 `json:"end"`   // End time of the segment in seconds
-	Text  string  `json:"text"`  // Transcribed text for this segment
+func NewAudioTranscriptionResource() resource.Resource {
+	return &AudioTranscriptionResource{}
 }
 
-// resourceOpenAIAudioTranscription defines the schema and CRUD operations for OpenAI audio transcriptions.
-// This resource allows users to transcribe audio files using OpenAI's models.
-// It supports various audio formats and provides options for transcription quality and output format.
-func resourceOpenAIAudioTranscription() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIAudioTranscriptionCreate,
-		ReadContext:   resourceOpenAIAudioTranscriptionRead,
-		DeleteContext: resourceOpenAIAudioTranscriptionDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
-		Description: "Creates an audio transcription. Note: This resource does not support updates - any configuration change will create a new resource.",
-		Schema: map[string]*schema.Schema{
-			"file": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Path to the audio file to transcribe (format: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm)",
-			},
-			"model": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"}, false),
-				Description:  "ID of the model to use (e.g., 'whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe')",
-			},
-			"language": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The language of the input audio (ISO-639-1 format)",
-			},
-			"prompt": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "An optional text to guide the model's style or continue a previous audio segment",
-			},
-			"response_format": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      "json",
-				ValidateFunc: validation.StringInSlice([]string{"json", "text", "srt", "verbose_json", "vtt"}, false),
-				Description:  "The format of the transcript output. Note: For gpt-4o-transcribe and gpt-4o-mini-transcribe, only 'json' is supported.",
-			},
-			"temperature": {
-				Type:         schema.TypeFloat,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      0,
-				ValidateFunc: validation.FloatBetween(0, 1),
-				Description:  "The sampling temperature, between 0 and 1",
-			},
-			"include": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem: &schema.Schema{
-					Type:         schema.TypeString,
-					ValidateFunc: validation.StringInSlice([]string{"logprobs"}, false),
+func (r *AudioTranscriptionResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_audio_transcription"
+}
+
+type AudioTranscriptionResourceModel struct {
+	ID             types.String  `tfsdk:"id"`
+	File           types.String  `tfsdk:"file"`
+	Model          types.String  `tfsdk:"model"`
+	Language       types.String  `tfsdk:"language"`
+	Prompt         types.String  `tfsdk:"prompt"`
+	ResponseFormat types.String  `tfsdk:"response_format"`
+	Temperature    types.Float64 `tfsdk:"temperature"`
+	Include        types.List    `tfsdk:"include"` // List of strings
+
+	// Computed outputs
+	Text     types.String  `tfsdk:"text"`
+	Duration types.Float64 `tfsdk:"duration"`
+	Segments types.List    `tfsdk:"segments"` // List of Objects
+}
+
+func (r *AudioTranscriptionResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Creates an audio transcription. Note: This resource does not support updates - any configuration change will create a new resource.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the transcription (randomly generated).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
-				Description: "Additional information to include in the transcription response. 'logprobs' will return the log probabilities of the tokens in the response. Only works with response_format set to 'json' and only with gpt-4o models.",
 			},
-			"stream": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
-				Description: "If set to true, the model response data will be streamed to the client as it is generated. Not supported for whisper-1 model.",
-			},
-			"timestamp_granularities": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem: &schema.Schema{
-					Type:         schema.TypeString,
-					ValidateFunc: validation.StringInSlice([]string{"word", "segment"}, false),
+			"file": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "Path to the audio file to transcribe.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
-				Description: "The timestamp granularities to populate for this transcription. response_format must be set to verbose_json to use timestamp granularities. Either or both of these options are supported: 'word', or 'segment'.",
 			},
-			"text": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The transcribed text",
+			"model": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "ID of the model to use (e.g., 'whisper-1', 'gpt-4o-transcribe').",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"duration": {
-				Type:        schema.TypeFloat,
-				Computed:    true,
-				Description: "The duration of the audio in seconds",
+			"language": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "The language of the input audio (ISO-639-1 format).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"segments": {
-				Type:     schema.TypeList,
+			"prompt": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "An optional text to guide the model's style or continue a previous audio segment.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"response_format": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				Default:             nil, // We will handle default in logic or let it be optional/computed check
+				MarkdownDescription: "The format of the transcript output (e.g. json, text, srt).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"temperature": schema.Float64Attribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The sampling temperature, between 0 and 1.",
+				PlanModifiers: []planmodifier.Float64{
+					float64planmodifier.RequiresReplace(),
+				},
+			},
+			"include": schema.ListAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
+				Description: "Additional information to include (e.g. 'logprobs').",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplace(),
+				},
+			},
+			"text": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The transcribed text.",
+			},
+			"duration": schema.Float64Attribute{
+				Computed:            true,
+				MarkdownDescription: "Duration of the audio in seconds.",
+			},
+			"segments": schema.ListAttribute{
 				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:     schema.TypeInt,
-							Computed: true,
-						},
-						"seek": {
-							Type:     schema.TypeInt,
-							Computed: true,
-						},
-						"start": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"end": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"text": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"tokens": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem: &schema.Schema{
-								Type: schema.TypeInt,
-							},
-						},
-						"temperature": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"avg_logprob": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"compression_ratio": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"no_speech_prob": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"id":    types.Int64Type,
+						"start": types.Float64Type,
+						"end":   types.Float64Type,
+						"text":  types.StringType,
 					},
 				},
+				MarkdownDescription: "Segments of the transcription.",
 			},
 		},
 	}
 }
 
-// resourceOpenAIAudioTranscriptionCreate handles the creation of a new OpenAI audio transcription.
-// It uploads the audio file to OpenAI's API and processes it using the specified model.
-// The function supports various audio formats and provides options for transcription quality.
-func resourceOpenAIAudioTranscriptionCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *AudioTranscriptionResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Get parameters
-	filePath := d.Get("file").(string)
-	model := d.Get("model").(string)
-	responseFormat := d.Get("response_format").(string)
-
-	// Check if the file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return diag.FromErr(fmt.Errorf("audio file does not exist: %s", filePath))
+func (r *AudioTranscriptionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data AudioTranscriptionResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Model-specific validations
-	if (model == "gpt-4o-transcribe" || model == "gpt-4o-mini-transcribe") && responseFormat != "json" {
-		return diag.FromErr(fmt.Errorf("gpt-4o models only support 'json' response format"))
-	}
-
-	// Prepare the body for the multipart request
+	// Prepare multipart request
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Add the model to the form
-	if err := writer.WriteField("model", model); err != nil {
-		return diag.FromErr(fmt.Errorf("error adding model to form: %s", err))
+	// Add fields
+	writer.WriteField("model", data.Model.ValueString())
+	if !data.Language.IsNull() {
+		writer.WriteField("language", data.Language.ValueString())
+	}
+	if !data.Prompt.IsNull() {
+		writer.WriteField("prompt", data.Prompt.ValueString())
 	}
 
-	// Add other optional fields
-	if language, ok := d.GetOk("language"); ok {
-		if err := writer.WriteField("language", language.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("error adding language to form: %s", err))
+	// Default response_format to json if not set, or use user value
+	responseFormat := "json"
+	if !data.ResponseFormat.IsNull() {
+		responseFormat = data.ResponseFormat.ValueString()
+		writer.WriteField("response_format", responseFormat)
+	}
+
+	if !data.Temperature.IsNull() {
+		writer.WriteField("temperature", fmt.Sprintf("%f", data.Temperature.ValueFloat64()))
+	}
+
+	if !data.Include.IsNull() {
+		// Handle list
+		// Include is usually repeated keys or a specific format?
+		// API docs say: include[] parameter.
+		var includes []string
+		data.Include.ElementsAs(ctx, &includes, false)
+		for _, inc := range includes {
+			writer.WriteField("include[]", inc)
 		}
 	}
 
-	if prompt, ok := d.GetOk("prompt"); ok {
-		if err := writer.WriteField("prompt", prompt.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("error adding prompt to form: %s", err))
-		}
-	}
-
-	if responseFormat, ok := d.GetOk("response_format"); ok {
-		if err := writer.WriteField("response_format", responseFormat.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("error adding response_format to form: %s", err))
-		}
-	}
-
-	if temperature, ok := d.GetOk("temperature"); ok {
-		if err := writer.WriteField("temperature", fmt.Sprintf("%f", temperature.(float64))); err != nil {
-			return diag.FromErr(fmt.Errorf("error adding temperature to form: %s", err))
-		}
-	}
-
-	// Add stream parameter if provided and model supports it
-	if stream, ok := d.GetOk("stream"); ok {
-		// Skip if model is whisper-1 since it doesn't support streaming
-		if model != "whisper-1" {
-			if err := writer.WriteField("stream", fmt.Sprintf("%t", stream.(bool))); err != nil {
-				return diag.FromErr(fmt.Errorf("error adding stream to form: %s", err))
-			}
-		}
-	}
-
-	// Add include parameter if provided
-	if include, ok := d.GetOk("include"); ok {
-		includeList := include.([]interface{})
-		for _, item := range includeList {
-			if err := writer.WriteField("include[]", item.(string)); err != nil {
-				return diag.FromErr(fmt.Errorf("error adding include to form: %s", err))
-			}
-		}
-	}
-
-	// Add timestamp_granularities parameter if provided
-	if granularities, ok := d.GetOk("timestamp_granularities"); ok {
-		granularitiesList := granularities.([]interface{})
-		for _, item := range granularitiesList {
-			if err := writer.WriteField("timestamp_granularities[]", item.(string)); err != nil {
-				return diag.FromErr(fmt.Errorf("error adding timestamp_granularities to form: %s", err))
-			}
-		}
-	}
-
-	// Open the audio file
-	file, err := os.Open(filePath)
+	// File
+	filePathProp := data.File.ValueString()
+	file, err := os.Open(filePathProp)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error opening audio file: %s", err))
+		resp.Diagnostics.AddError("Error opening file", err.Error())
+		return
 	}
 	defer file.Close()
 
-	// Create a part for the file
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	part, err := writer.CreateFormFile("file", filepath.Base(filePathProp))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating form file: %s", err))
+		resp.Diagnostics.AddError("Error adding file to form", err.Error())
+		return
 	}
+	io.Copy(part, file)
+	writer.Close()
 
-	// Copy the file content to the part
-	if _, err := io.Copy(part, file); err != nil {
-		return diag.FromErr(fmt.Errorf("error copying file to form: %s", err))
-	}
-
-	// Close the writer to finalize the body
-	if err := writer.Close(); err != nil {
-		return diag.FromErr(fmt.Errorf("error closing multipart writer: %s", err))
-	}
-
-	// Create the HTTP request
-	url := fmt.Sprintf("%s/audio/transcriptions", client.APIURL)
-	fmt.Printf("[DEBUG] Audio Transcription URL: %s\n", url)
-	req, err := http.NewRequest("POST", url, &requestBody)
+	url := fmt.Sprintf("%s/audio/transcriptions", r.client.OpenAIClient.APIURL)
+	apiReq, err := http.NewRequest("POST", url, &requestBody)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	apiReq.Header.Set("Content-Type", writer.FormDataContentType())
+	apiKey := r.client.OpenAIClient.APIKey
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check if there was an error
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s, status code: %d, body: %s", err, resp.StatusCode, string(respBody)))
-		}
-		return diag.FromErr(fmt.Errorf("error creating transcription: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
+	if apiResp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Parse the response according to the requested format
-	responseFormat = d.Get("response_format").(string)
+	// Handle different response formats?
+	// If response_format is NOT json/verbose_json, it returns raw text.
+	// Legacy implementation handles parsing.
+
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
 
 	if responseFormat == "json" || responseFormat == "verbose_json" {
-		var transcriptionResponse TranscriptionResponse
-		if err := json.Unmarshal(respBody, &transcriptionResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+		var transResp TranscriptionResponseFramework
+		if err := json.Unmarshal(respBodyBytes, &transResp); err != nil {
+			resp.Diagnostics.AddError("Error parsing response", err.Error())
+			return
 		}
+		data.Text = types.StringValue(transResp.Text)
+		data.Duration = types.Float64Value(transResp.Duration)
 
-		// Update the state with the transcription
-		if err := d.Set("text", transcriptionResponse.Text); err != nil {
-			return diag.FromErr(err)
-		}
+		// Segments
+		if len(transResp.Segments) > 0 {
+			// For simplicity in creating List of Objects:
+			segmentObjects := []attr.Value{}
+			for _, s := range transResp.Segments {
+				obj, _ := types.ObjectValue(
+					map[string]attr.Type{
+						"id":    types.Int64Type,
+						"start": types.Float64Type,
+						"end":   types.Float64Type,
+						"text":  types.StringType,
+					},
+					map[string]attr.Value{
+						"id":    types.Int64Value(int64(s.ID)),
+						"start": types.Float64Value(s.Start),
+						"end":   types.Float64Value(s.End),
+						"text":  types.StringValue(s.Text),
+					},
+				)
+				segmentObjects = append(segmentObjects, obj)
+			}
 
-		if transcriptionResponse.Duration > 0 {
-			if err := d.Set("duration", transcriptionResponse.Duration); err != nil {
-				return diag.FromErr(err)
-			}
-		}
-
-		if len(transcriptionResponse.Segments) > 0 {
-			segments := make([]map[string]interface{}, 0, len(transcriptionResponse.Segments))
-			for _, segment := range transcriptionResponse.Segments {
-				segmentMap := map[string]interface{}{
-					"id":    segment.ID,
-					"start": segment.Start,
-					"end":   segment.End,
-					"text":  segment.Text,
-				}
-				segments = append(segments, segmentMap)
-			}
-			if err := d.Set("segments", segments); err != nil {
-				return diag.FromErr(err)
-			}
+			listVal, _ := types.ListValue(types.ObjectType{AttrTypes: map[string]attr.Type{
+				"id":    types.Int64Type,
+				"start": types.Float64Type,
+				"end":   types.Float64Type,
+				"text":  types.StringType,
+			}}, segmentObjects)
+			data.Segments = listVal
+		} else {
+			data.Segments = types.ListNull(types.ObjectType{AttrTypes: map[string]attr.Type{
+				"id":    types.Int64Type,
+				"start": types.Float64Type,
+				"end":   types.Float64Type,
+				"text":  types.StringType,
+			}})
 		}
 	} else {
-		// For plain text formats (text, srt, vtt)
-		if err := d.Set("text", string(respBody)); err != nil {
-			return diag.FromErr(err)
-		}
+		// Text/SRT/VTT
+		data.Text = types.StringValue(string(respBodyBytes))
+		data.Duration = types.Float64Null()
+		data.Segments = types.ListNull(types.ObjectType{AttrTypes: map[string]attr.Type{
+			"id":    types.Int64Type,
+			"start": types.Float64Type,
+			"end":   types.Float64Type,
+			"text":  types.StringType,
+		}})
 	}
 
-	// Generate a unique ID for this resource
-	transcriptionID := fmt.Sprintf("transcription-%d", time.Now().UnixNano())
-	d.SetId(transcriptionID)
+	data.ID = types.StringValue(fmt.Sprintf("transcription-%d", time.Now().UnixNano()))
+	// Set validation defaults?
+	if data.ResponseFormat.IsNull() {
+		data.ResponseFormat = types.StringValue(responseFormat)
+	}
 
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIAudioTranscriptionRead retrieves the current state of an audio transcription.
-// Since OpenAI does not provide a way to retrieve a previous transcription,
-// this function only returns the current state stored in Terraform.
-func resourceOpenAIAudioTranscriptionRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Audio transcription IDs in our format look like "transcription-{timestamp}"
-	// During import, we need to make sure to set reasonable values for required fields
-	if d.Get("file") == "" {
-		_ = d.Set("file", "./samples/speech.mp3")
+func (r *AudioTranscriptionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data AudioTranscriptionResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	if d.Get("model") == "" {
-		_ = d.Set("model", "whisper-1")
+	// Check if file exists
+	if _, err := os.Stat(data.File.ValueString()); os.IsNotExist(err) {
+		// If file is gone, maybe resource is gone?
+		// But transcription happened. It's an immutable record in state.
+		// Legacy behavior: check file. If not exist -> gone?
+		// "If the file doesn't exist and we're not importing, mark the resource as gone"
+		resp.State.RemoveResource(ctx)
+		return
 	}
 
-	if d.Get("response_format") == "" {
-		_ = d.Set("response_format", "json")
-	}
-
-	if d.Get("temperature") == 0.0 {
-		_ = d.Set("temperature", 0.2)
-	}
-
-	// These are common default values
-	if d.Get("language") == "" {
-		_ = d.Set("language", "en")
-	}
-
-	if d.Get("prompt") == "" {
-		_ = d.Set("prompt", "This is a sample audio file for transcription")
-	}
-
-	if d.Get("text") == "" {
-		_ = d.Set("text", "The quick brown fox jumped over the lazy dog.")
-	}
-
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIAudioTranscriptionDelete removes a transcription from the Terraform state.
-// Note: Transcriptions cannot be deleted through the API.
-// This function only removes the resource from the Terraform state.
-func resourceOpenAIAudioTranscriptionDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// There is no actual deletion operation for audio transcriptions
-	d.SetId("")
-	return nil
+func (r *AudioTranscriptionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// ForceNew everywhere, so no update logic needed usually.
+}
+
+func (r *AudioTranscriptionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// No-op
+}
+
+func (r *AudioTranscriptionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

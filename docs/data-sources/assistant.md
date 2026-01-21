@@ -3,19 +3,19 @@
 page_title: "openai_assistant Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI assistant.
 ---
 
 # openai_assistant (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI assistant.
 
 ## Example Usage
 
 ```terraform
 # Fetch a specific assistant by ID
 data "openai_assistant" "code_reviewer" {
-  assistant_id = "asst_8sPATZ7dVbBL1m1Yve97j2BM"
+  id = "asst_8sPATZ7dVbBL1m1Yve97j2BM"
 }
 
 # Output the assistant ID
@@ -29,38 +29,61 @@ output "assistant_id" {
 
 ### Required
 
-- `assistant_id` (String) The ID of the assistant to retrieve
+- `id` (String) The ID of the assistant.
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the assistant was created
-- `description` (String) The description of the assistant
-- `file_ids` (List of String) List of file IDs attached to the assistant
-- `id` (String) The ID of this resource.
-- `instructions` (String) The system instructions of the assistant
-- `metadata` (Map of String) Metadata attached to the assistant
-- `model` (String) The model used by the assistant
-- `name` (String) The name of the assistant
-- `object` (String) The object type, which is always 'assistant'
-- `reasoning_effort` (String) Constrains the effort spent on reasoning for reasoning models (low, medium, or high)
-- `response_format` (String) The format of responses from the assistant
-- `temperature` (Number) What sampling temperature to use for this assistant
-- `tools` (List of Object) The tools enabled on the assistant (see [below for nested schema](#nestedatt--tools))
-- `top_p` (Number) An alternative to sampling with temperature, called nucleus sampling
+- `created_at` (Number) The Unix timestamp (in seconds) for when the assistant was created.
+- `description` (String) The description of the assistant.
+- `instructions` (String) The system instructions that the assistant uses.
+- `metadata` (Map of String) Set of 16 key-value pairs that can be attached to an object.
+- `model` (String) The ID of the model used by the assistant.
+- `name` (String) The name of the assistant.
+- `object` (String) The object type, which is always 'assistant'.
+- `response_format` (String) The format of the response.
+- `temperature` (Number) What sampling temperature to use, between 0 and 2.
+- `tool_resources` (Attributes) A set of resources that are used by the assistant's tools. (see [below for nested schema](#nestedatt--tool_resources))
+- `tools` (Attributes List) A list of tools enabled on the assistant. (see [below for nested schema](#nestedatt--tools))
+- `top_p` (Number) An alternative to sampling with temperature, called nucleus sampling.
+
+<a id="nestedatt--tool_resources"></a>
+### Nested Schema for `tool_resources`
+
+Read-Only:
+
+- `code_interpreter` (Attributes) Resources for the code_interpreter tool. (see [below for nested schema](#nestedatt--tool_resources--code_interpreter))
+- `file_search` (Attributes) Resources for the file_search tool. (see [below for nested schema](#nestedatt--tool_resources--file_search))
+
+<a id="nestedatt--tool_resources--code_interpreter"></a>
+### Nested Schema for `tool_resources.code_interpreter`
+
+Read-Only:
+
+- `file_ids` (List of String) A list of file IDs attached to this assistant.
+
+
+<a id="nestedatt--tool_resources--file_search"></a>
+### Nested Schema for `tool_resources.file_search`
+
+Read-Only:
+
+- `vector_store_ids` (List of String) A list of vector store IDs attached to this assistant.
+
+
 
 <a id="nestedatt--tools"></a>
 ### Nested Schema for `tools`
 
 Read-Only:
 
-- `function` (List of Object) (see [below for nested schema](#nestedobjatt--tools--function))
-- `type` (String)
+- `function` (Attributes List) The function definition, if the tool type is 'function'. (see [below for nested schema](#nestedatt--tools--function))
+- `type` (String) The type of tool. Can be 'code_interpreter', 'retrieval', or 'function'.
 
-<a id="nestedobjatt--tools--function"></a>
+<a id="nestedatt--tools--function"></a>
 ### Nested Schema for `tools.function`
 
 Read-Only:
 
-- `description` (String)
-- `name` (String)
-- `parameters` (String)
+- `description` (String) The description of the function.
+- `name` (String) The name of the function.
+- `parameters` (String) The parameters of the function in JSON format.

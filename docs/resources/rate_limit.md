@@ -3,12 +3,12 @@
 page_title: "openai_rate_limit Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  Manages rate limits for an OpenAI model in a project. Note that rate limits cannot be truly deleted via the API, so this resource will reset rate limits to defaults when removed. This resource requires an admin API key with the api.management.read scope for full functionality, but will gracefully handle permission errors to allow operations to continue.
+  Manages rate limits for an OpenAI model in a project. Note that rate limits cannot be truly deleted via the API, so this resource will reset rate limits to defaults when removed. This resource requires an admin API key with the api.management.read scope.
 ---
 
 # openai_rate_limit (Resource)
 
-Manages rate limits for an OpenAI model in a project. Note that rate limits cannot be truly deleted via the API, so this resource will reset rate limits to defaults when removed. This resource requires an admin API key with the api.management.read scope for full functionality, but will gracefully handle permission errors to allow operations to continue.
+Manages rate limits for an OpenAI model in a project. Note that rate limits cannot be truly deleted via the API, so this resource will reset rate limits to defaults when removed. This resource requires an admin API key with the api.management.read scope.
 
 ## Example Usage
 

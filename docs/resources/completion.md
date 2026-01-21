@@ -3,12 +3,12 @@
 page_title: "openai_completion Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The completion resource allows you to generate text completions using OpenAI's models.
 ---
 
 # openai_completion (Resource)
 
-
+The completion resource allows you to generate text completions using OpenAI's models.
 
 
 
@@ -17,53 +17,29 @@ description: |-
 
 ### Required
 
-- `model` (String) ID of the model to use for completion
+- `model` (String) The model to use for the completion
 - `prompt` (String) The prompt to generate completions for
 
 ### Optional
 
-- `best_of` (Number) Generates best_of completions server-side and returns the 'best'
+- `best_of` (Number) Generates best_of completions server-side and returns the 'best' (the one with the highest log probability per token)
 - `echo` (Boolean) Echo back the prompt in addition to the completion
-- `frequency_penalty` (Number) Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far
+- `frequency_penalty` (Number) Positive values penalize new tokens based on their existing frequency in the text so far
 - `logit_bias` (Map of Number) Modify the likelihood of specified tokens appearing in the completion
-- `logprobs` (Number) Include the log probabilities on the logprobs most likely tokens, between 0 and 5
-- `max_tokens` (Number) The maximum number of tokens to generate in the completion
-- `n` (Number) How many completions to generate for each prompt
-- `presence_penalty` (Number) Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far
-- `project_id` (String) The project to use for this request
+- `logprobs` (Number) Include the log probabilities on the logprobs most likely tokens
+- `max_tokens` (Number) The maximum number of tokens to generate
+- `n` (Number) How many completions to generate
+- `presence_penalty` (Number) Positive values penalize new tokens based on whether they appear in the text so far
 - `stop` (List of String) Up to 4 sequences where the API will stop generating further tokens
 - `stream` (Boolean) Whether to stream back partial progress
 - `suffix` (String) The suffix that comes after a completion of inserted text
-- `temperature` (Number) Sampling temperature between 0 and 2. Higher values make output more random, lower values make it more deterministic
-- `top_p` (Number) Nuclear sampling: consider the results of the tokens with top_p probability mass. Range from 0 to 1
+- `temperature` (Number) Sampling temperature
+- `top_p` (Number) Nucleus sampling parameter
 - `user` (String) A unique identifier representing your end-user
 
 ### Read-Only
 
-- `choices` (List of Object) The list of completion choices the model generated for the input prompt (see [below for nested schema](#nestedatt--choices))
-- `completion_id` (String) The ID of the completion
 - `created` (Number) The Unix timestamp (in seconds) of when the completion was created
-- `id` (String) The ID of this resource.
-- `model_used` (String) The model used for the completion
-- `object` (String) The object type, which is always 'text_completion'
-- `usage` (Map of Number) Usage statistics for the completion request
-
-<a id="nestedatt--choices"></a>
-### Nested Schema for `choices`
-
-Read-Only:
-
-- `finish_reason` (String)
-- `index` (Number)
-- `logprobs` (List of Object) (see [below for nested schema](#nestedobjatt--choices--logprobs))
-- `text` (String)
-
-<a id="nestedobjatt--choices--logprobs"></a>
-### Nested Schema for `choices.logprobs`
-
-Read-Only:
-
-- `text_offset` (List of Number)
-- `token_logprobs` (List of Number)
-- `tokens` (List of String)
-- `top_logprobs` (List of Map of Number)
+- `id` (String) The ID of the completion
+- `object` (String) The object type (always 'text_completion')
+- `text` (String) The generated text (from the first choice)

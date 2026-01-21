@@ -5,3 +5,9 @@ variable "openai_admin_key" {
   default     = null
 }
 
+variable "openai_api_key" {
+  description = "OpenAI API key"
+  type        = string
+  sensitive   = true
+}
+

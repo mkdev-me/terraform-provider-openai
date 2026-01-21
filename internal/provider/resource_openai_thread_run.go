@@ -7,992 +7,624 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// ThreadRunRequest represents the request payload for creating a run and thread together in the OpenAI API.
-// It contains all the configuration parameters needed to execute an assistant run,
-// including thread configuration, model settings, tools, and execution parameters.
-type ThreadRunRequest struct {
-	AssistantID         string                   `json:"assistant_id"`                    // ID of the assistant to use for this run
-	Thread              *ThreadCreateRequest     `json:"thread,omitempty"`                // Thread configuration
-	Model               string                   `json:"model,omitempty"`                 // Optional model override for this run
-	Instructions        string                   `json:"instructions,omitempty"`          // Optional instructions override for this run
-	Tools               []map[string]interface{} `json:"tools,omitempty"`                 // Tools the assistant can use for this run
-	Metadata            map[string]interface{}   `json:"metadata,omitempty"`              // Optional metadata for the run
-	Temperature         *float64                 `json:"temperature,omitempty"`           // Sampling temperature (0-2)
-	MaxCompletionTokens *int                     `json:"max_completion_tokens,omitempty"` // Maximum number of completion tokens to generate
-	MaxPromptTokens     *int                     `json:"max_prompt_tokens,omitempty"`     // Maximum number of prompt tokens to use
-	TopP                *float64                 `json:"top_p,omitempty"`                 // Nucleus sampling parameter (0-1)
-	ResponseFormat      *ResponseFormat          `json:"response_format,omitempty"`       // Response format configuration
-	Stream              *bool                    `json:"stream,omitempty"`                // Whether to stream the response
-	ToolChoice          interface{}              `json:"tool_choice,omitempty"`           // Controls which tool is called
-	TruncationStrategy  *TruncationStrategy      `json:"truncation_strategy,omitempty"`   // Controls how thread will be truncated
+var _ resource.Resource = &ThreadRunResource{}
+var _ resource.ResourceWithImportState = &ThreadRunResource{}
+
+type ThreadRunResource struct {
+	client *OpenAIClient
 }
 
-// ResponseFormat represents the format configuration for the assistant's response.
-type ResponseFormat struct {
-	Type       string      `json:"type,omitempty"`        // Format type (auto, json_object, etc.)
-	JSONSchema interface{} `json:"json_schema,omitempty"` // JSON schema for structured output
+func NewThreadRunResource() resource.Resource {
+	return &ThreadRunResource{}
 }
 
-// TruncationStrategy represents configuration for how a thread will be truncated.
-type TruncationStrategy struct {
-	Type          string `json:"type,omitempty"`            // Type of truncation strategy
-	LastNMessages int    `json:"last_n_messages,omitempty"` // Number of messages to keep
+func (r *ThreadRunResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_thread_run"
 }
 
-// ThreadRunResponse represents the API response for a thread run creation.
-// It contains all the details of the created run, including thread ID, status, and configuration.
-type ThreadRunResponse struct {
-	ID           string                   `json:"id"`                     // Unique identifier for the run
-	Object       string                   `json:"object"`                 // Object type, always "thread.run"
-	CreatedAt    int64                    `json:"created_at"`             // Unix timestamp when the run was created
-	ThreadID     string                   `json:"thread_id"`              // ID of the thread this run belongs to
-	AssistantID  string                   `json:"assistant_id"`           // ID of the assistant used for this run
-	Status       string                   `json:"status"`                 // Current status of the run
-	StartedAt    *int64                   `json:"started_at,omitempty"`   // Unix timestamp when the run started
-	CompletedAt  *int64                   `json:"completed_at,omitempty"` // Unix timestamp when the run completed
-	Model        string                   `json:"model"`                  // Model used for the run
-	Instructions string                   `json:"instructions"`           // Instructions used for the run
-	Tools        []map[string]interface{} `json:"tools"`                  // Tools available to the assistant
-	FileIDs      []string                 `json:"file_ids"`               // Files available to the assistant
-	Metadata     map[string]interface{}   `json:"metadata"`               // User-provided metadata
-	Usage        *RunUsage                `json:"usage,omitempty"`        // Token usage statistics
+type ThreadRunResourceModel struct {
+	ID           types.String   `tfsdk:"id"`
+	ThreadID     types.String   `tfsdk:"thread_id"`
+	AssistantID  types.String   `tfsdk:"assistant_id"`
+	Model        types.String   `tfsdk:"model"`
+	Instructions types.String   `tfsdk:"instructions"`
+	Tools        []RunToolModel `tfsdk:"tools"`
+	Metadata     types.Map      `tfsdk:"metadata"`
+	// Thread configuration
+	Thread *ThreadConfigModel `tfsdk:"thread"`
+	// Create params
+	Temperature         types.Float64            `tfsdk:"temperature"`
+	TopP                types.Float64            `tfsdk:"top_p"`
+	MaxCompletionTokens types.Int64              `tfsdk:"max_completion_tokens"`
+	MaxPromptTokens     types.Int64              `tfsdk:"max_prompt_tokens"`
+	TruncationStrategy  *TruncationStrategyModel `tfsdk:"truncation_strategy"`
+	ResponseFormat      *ResponseFormatModel     `tfsdk:"response_format"`
+	Stream              types.Bool               `tfsdk:"stream"`
+	// Computed props
+	Object      types.String   `tfsdk:"object"`
+	Status      types.String   `tfsdk:"status"`
+	CreatedAt   types.Int64    `tfsdk:"created_at"`
+	StartedAt   types.Int64    `tfsdk:"started_at"`
+	CompletedAt types.Int64    `tfsdk:"completed_at"`
+	FileIDs     []types.String `tfsdk:"file_ids"`
+	Usage       *RunUsageModel `tfsdk:"usage"`
+	Steps       []RunStepModel `tfsdk:"steps"`
 }
 
-// ThreadRun represents a run in the OpenAI API.
-type ThreadRun struct {
-	ID                  string                   `json:"id"`
-	Object              string                   `json:"object"`
-	CreatedAt           int                      `json:"created_at"`
-	AssistantID         string                   `json:"assistant_id"`
-	ThreadID            string                   `json:"thread_id"`
-	Status              string                   `json:"status"`
-	StartedAt           int                      `json:"started_at"`
-	CompletedAt         int                      `json:"completed_at,omitempty"`
-	LastError           *RunError                `json:"last_error,omitempty"`
-	Model               string                   `json:"model"`
-	Instructions        string                   `json:"instructions,omitempty"`
-	Tools               []map[string]interface{} `json:"tools,omitempty"`
-	FileIDs             []string                 `json:"file_ids,omitempty"`
-	Metadata            map[string]interface{}   `json:"metadata,omitempty"`
-	Usage               *RunUsage                `json:"usage,omitempty"`
-	ExpiresAt           int                      `json:"expires_at,omitempty"`
-	FailedAt            int                      `json:"failed_at,omitempty"`
-	CancelledAt         int                      `json:"cancelled_at,omitempty"`
-	RequiredAction      *RunRequiredAction       `json:"required_action,omitempty"`
-	Temperature         *float64                 `json:"temperature,omitempty"`
-	TopP                *float64                 `json:"top_p,omitempty"`
-	ResponseFormat      *ResponseFormat          `json:"response_format,omitempty"`
-	Stream              *bool                    `json:"stream,omitempty"`
-	MaxCompletionTokens *int                     `json:"max_completion_tokens,omitempty"`
-	MaxPromptTokens     *int                     `json:"max_prompt_tokens,omitempty"`
-	TruncationStrategy  *TruncationStrategy      `json:"truncation_strategy,omitempty"`
+type ThreadConfigModel struct {
+	Messages []ThreadMessageModel `tfsdk:"messages"`
+	Metadata types.Map            `tfsdk:"metadata"`
 }
 
-// ThreadRunCreateRequest represents a request to create a new thread and run.
-type ThreadRunCreateRequest struct {
-	AssistantID         string                   `json:"assistant_id"`
-	Thread              *ThreadCreateRequest     `json:"thread,omitempty"`
-	Model               string                   `json:"model,omitempty"`
-	Instructions        string                   `json:"instructions,omitempty"`
-	Tools               []map[string]interface{} `json:"tools,omitempty"`
-	Metadata            map[string]interface{}   `json:"metadata,omitempty"`
-	Stream              *bool                    `json:"stream,omitempty"`
-	Temperature         *float64                 `json:"temperature,omitempty"`
-	TopP                *float64                 `json:"top_p,omitempty"`
-	ResponseFormat      *ResponseFormat          `json:"response_format,omitempty"`
-	MaxCompletionTokens *int                     `json:"max_completion_tokens,omitempty"`
-	MaxPromptTokens     *int                     `json:"max_prompt_tokens,omitempty"`
-	TruncationStrategy  *TruncationStrategy      `json:"truncation_strategy,omitempty"`
-}
+func (r *ThreadRunResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Creates a thread and runs it in one go.",
 
-// ThreadRunMessageRequest represents a message in a thread run request.
-type ThreadRunMessageRequest struct {
-	Role        string                 `json:"role"`
-	Content     string                 `json:"content"`
-	FileIDs     []string               `json:"file_ids,omitempty"`
-	Attachments []AttachmentRequest    `json:"attachments,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// RunError represents an error that occurred during a run.
-type RunError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-// RunRequiredAction represents an action that is required to continue a run.
-type RunRequiredAction struct {
-	Type       string                 `json:"type"`
-	SubmitTool *RunSubmitToolsRequest `json:"submit_tool_outputs,omitempty"`
-}
-
-// RunSubmitToolsRequest represents a request to submit tool outputs for a run.
-type RunSubmitToolsRequest struct {
-	ToolCalls []RunToolCall `json:"tool_calls"`
-}
-
-// RunToolCall represents a tool call that was made during a run.
-type RunToolCall struct {
-	ID       string        `json:"id"`
-	Type     string        `json:"type"`
-	Function *FunctionCall `json:"function,omitempty"`
-}
-
-// FunctionCall represents a function call made by a tool.
-type FunctionCall struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-// resourceOpenAIThreadRun defines the schema and CRUD operations for OpenAI thread runs.
-// This resource allows users to create a thread and start a run in a single operation,
-// providing a streamlined way to interact with OpenAI's Assistants API.
-func resourceOpenAIThreadRun() *schema.Resource {
-	return &schema.Resource{
-		Description:   "Manages an OpenAI thread run, which allows for the execution of an Assistant on a given thread.",
-		CreateContext: resourceOpenAIThreadRunCreate,
-		ReadContext:   resourceOpenAIThreadRunRead,
-		DeleteContext: resourceOpenAIThreadRunDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIThreadRunImport,
-		},
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The identifier of the run, which can be referenced in API endpoints.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the run.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"thread_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the thread that was created and associated with this run.",
+			"thread_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The ID of the thread created.",
 			},
-			"existing_thread_id": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "The ID of an existing thread to use for this run.",
-				ConflictsWith: []string{"thread"},
+			"assistant_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the assistant to run.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"thread": {
-				Type:          schema.TypeList,
-				Optional:      true,
-				MaxItems:      1,
-				ForceNew:      true,
-				Description:   "Configuration for creating a new thread for this run.",
-				ConflictsWith: []string{"existing_thread_id"},
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"messages": {
-							Type:        schema.TypeList,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Messages to create on the new thread.",
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"role": {
-										Type:         schema.TypeString,
-										Required:     true,
-										ValidateFunc: validation.StringInSlice([]string{"user"}, false),
-										Description:  "The role of the entity that is creating the message. Currently only 'user' is supported.",
-									},
-									"content": {
-										Type:        schema.TypeString,
-										Required:    true,
-										Description: "The content of the message.",
-									},
-									"attachments": {
-										Type:        schema.TypeList,
-										Optional:    true,
-										Description: "A list of attachments to include in the message.",
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"file_id": {
-													Type:        schema.TypeString,
-													Required:    true,
-													Description: "The ID of the file to attach to the message.",
+			"thread": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Configuration for the thread to create.",
+				PlanModifiers:       []planmodifier.Object{
+					// If thread config changes, we can't really update the thread structure easily in a 'run' resource?
+					// Actually, if you change messages in config, you probably want a NEW run on a NEW thread or same?
+					// This resource creates a thread AND run.
+					// Terraform resource lifecycle: Create -> thread+run.
+					// If config changes -> Replacement?
+					// SDKv2 ForceNew on thread.
+					// Framework requires replacement if sensitive/id changing.
+					// Since this is "ThreadRun", a new run usually implies new action.
+					// But if just polling...
+					// Generally, this resource is for "one-off" or "stateful flow starts".
+					// ForceNew seems appropriate for thread config changes.
+				},
+				Attributes: map[string]schema.Attribute{
+					"metadata": schema.MapAttribute{
+						Optional:    true,
+						ElementType: types.StringType,
+					},
+					"messages": schema.ListNestedAttribute{
+						Optional: true,
+						NestedObject: schema.NestedAttributeObject{
+							Attributes: map[string]schema.Attribute{
+								"role":    schema.StringAttribute{Required: true},
+								"content": schema.StringAttribute{Required: true},
+								// file_ids legacy
+								"file_ids": schema.ListAttribute{
+									Optional:    true,
+									ElementType: types.StringType,
+								},
+								"attachments": schema.ListNestedAttribute{
+									Optional: true,
+									NestedObject: schema.NestedAttributeObject{
+										Attributes: map[string]schema.Attribute{
+											"file_id": schema.StringAttribute{Required: true},
+											"tools": schema.ListNestedAttribute{
+												Required: true,
+												NestedObject: schema.NestedAttributeObject{
+													Attributes: map[string]schema.Attribute{
+														"type": schema.StringAttribute{Required: true},
+													},
 												},
 											},
 										},
 									},
-									"metadata": {
-										Type:        schema.TypeMap,
-										Optional:    true,
-										Elem:        &schema.Schema{Type: schema.TypeString},
-										Description: "Set of key-value pairs that can be attached to the message.",
-									},
 								},
-							},
-						},
-						"metadata": {
-							Type:        schema.TypeMap,
-							Optional:    true,
-							Elem:        &schema.Schema{Type: schema.TypeString},
-							Description: "Set of key-value pairs that can be attached to the thread.",
-						},
-					},
-				},
-			},
-			"assistant_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the assistant to use for the run.",
-			},
-			"model": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
-				Description: "The ID of the model to use for the run. If not provided, the assistant's default model will be used.",
-			},
-			"instructions": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
-				Description: "Instructions that override the assistant's instructions for this run only.",
-			},
-			"tools": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
-				Description: "Override the tools the assistant can use for this run.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"type": {
-							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.StringInSlice([]string{"code_interpreter", "retrieval", "function"}, false),
-							Description:  "The type of tool: code_interpreter, retrieval, or function.",
-						},
-						"function": {
-							Type:        schema.TypeList,
-							Optional:    true,
-							MaxItems:    1,
-							Description: "Required when type is function. Defines a function that can be called by the assistant.",
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"name": {
-										Type:        schema.TypeString,
-										Required:    true,
-										Description: "The name of the function.",
-									},
-									"description": {
-										Type:        schema.TypeString,
-										Optional:    true,
-										Description: "A description of what the function does.",
-									},
-									"parameters": {
-										Type:         schema.TypeString,
-										Optional:     true,
-										ValidateFunc: validation.StringIsJSON,
-										Description:  "The parameters the function accepts, described as a JSON Schema object.",
-									},
+								"metadata": schema.MapAttribute{
+									Optional:    true,
+									ElementType: types.StringType,
 								},
 							},
 						},
 					},
 				},
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				ForceNew:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Set of key-value pairs that can be attached to the run.",
+			"model": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"stream": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				ForceNew:    true,
-				Description: "Whether to stream the run results. Not currently supported through the Terraform provider.",
+			"instructions": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"max_completion_tokens": {
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.IntAtLeast(0),
-				Description:  "The maximum number of tokens that can be generated in the run completion.",
-			},
-			"temperature": {
-				Type:         schema.TypeFloat,
-				Optional:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.FloatBetween(0, 2),
-				Description:  "What sampling temperature to use, between 0 and 2. Higher values make output more random, lower values more deterministic.",
-			},
-			"top_p": {
-				Type:         schema.TypeFloat,
-				Optional:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.FloatBetween(0, 1),
-				Description:  "An alternative to sampling with temperature, where the model considers the results of the tokens with top_p probability mass.",
-			},
-			"response_format": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				ForceNew:    true,
-				MaxItems:    1,
-				Description: "Specifies the format of the response.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"type": {
-							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.StringInSlice([]string{"text", "json_object"}, false),
-							Description:  "Must be one of 'text' or 'json_object'.",
+			"tools": schema.ListNestedAttribute{
+				Optional: true,
+				Computed: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{Required: true},
+						"function": schema.SingleNestedAttribute{
+							Optional: true,
+							Attributes: map[string]schema.Attribute{
+								"name":        schema.StringAttribute{Required: true},
+								"description": schema.StringAttribute{Optional: true},
+								"parameters":  schema.StringAttribute{Optional: true},
+							},
 						},
 					},
 				},
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The Unix timestamp (in seconds) of when the run was created.",
+			"metadata": schema.MapAttribute{
+				Optional:    true,
+				ElementType: types.StringType,
 			},
-			"completed_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The Unix timestamp (in seconds) of when the run was completed.",
+			"temperature": schema.Float64Attribute{
+				Optional: true,
 			},
-			"started_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The Unix timestamp (in seconds) of when the run was started.",
+			"top_p": schema.Float64Attribute{
+				Optional: true,
 			},
-			"object": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The object type, which is always 'thread.run'.",
+			"max_completion_tokens": schema.Int64Attribute{
+				Optional: true,
 			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The status of the run, which can be: queued, in_progress, requires_action, cancelling, cancelled, failed, completed, or expired.",
+			"max_prompt_tokens": schema.Int64Attribute{
+				Optional: true,
 			},
-			"file_ids": {
-				Type:        schema.TypeList,
-				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "A list of file IDs that the run has access to.",
+			"stream": schema.BoolAttribute{
+				Optional: true,
 			},
-			"usage": {
-				Type:        schema.TypeMap,
+			"truncation_strategy": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"type":            schema.StringAttribute{Required: true},
+					"last_n_messages": schema.Int64Attribute{Optional: true},
+				},
+			},
+			"response_format": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"type": schema.StringAttribute{Required: true},
+				},
+			},
+			// Computed
+			"object":       schema.StringAttribute{Computed: true},
+			"status":       schema.StringAttribute{Computed: true},
+			"created_at":   schema.Int64Attribute{Computed: true},
+			"started_at":   schema.Int64Attribute{Computed: true},
+			"completed_at": schema.Int64Attribute{Computed: true},
+			"file_ids": schema.ListAttribute{
 				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeInt},
-				Description: "Usage statistics for the run, including prompt_tokens, completion_tokens, and total_tokens.",
+				ElementType: types.StringType,
+			},
+			"usage": schema.SingleNestedAttribute{
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"prompt_tokens":     schema.Int64Attribute{Computed: true},
+					"completion_tokens": schema.Int64Attribute{Computed: true},
+					"total_tokens":      schema.Int64Attribute{Computed: true},
+				},
+			},
+			"steps": schema.ListNestedAttribute{
+				Computed: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id":         schema.StringAttribute{Computed: true},
+						"object":     schema.StringAttribute{Computed: true},
+						"created_at": schema.Int64Attribute{Computed: true},
+						"type":       schema.StringAttribute{Computed: true},
+						"status":     schema.StringAttribute{Computed: true},
+						"details":    schema.StringAttribute{Computed: true},
+					},
+				},
 			},
 		},
-		CustomizeDiff: customizeOpenAIThreadRunDiff,
 	}
 }
 
-// customizeOpenAIThreadRunDiff customizes the diff for OpenAI thread run resources
-// to handle API default values and prevent unnecessary recreation of resources.
-func customizeOpenAIThreadRunDiff(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
-	// Only apply the customization for updates, not for new resources
-	if d.Id() == "" {
-		return nil
+func (r *ThreadRunResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
+
+func (r *ThreadRunResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ThreadRunResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// List of fields that could be provided by the API with default values
-	apiProvidedFields := []string{"model", "instructions", "tools"}
+	createRequest := ThreadRunCreateRequest{
+		AssistantID:  data.AssistantID.ValueString(),
+		Model:        data.Model.ValueString(),
+		Instructions: data.Instructions.ValueString(),
+	}
 
-	for _, field := range apiProvidedFields {
-		// Skip if the field is explicitly set in the config
-		if d.Get(field) != nil && !d.NewValueKnown(field) {
-			continue
-		}
-
-		// Check if field exists in state but not in config
-		oldVal, newVal := d.GetChange(field)
-		if oldVal != nil && oldVal != "" && !reflect.ValueOf(oldVal).IsZero() &&
-			(newVal == nil || newVal == "" || reflect.ValueOf(newVal).IsZero()) {
-			// Suppress diff for this field
-			if err := d.SetNew(field, oldVal); err != nil {
-				return fmt.Errorf("error setting new value for %s: %w", field, err)
+	// Convert Thread Config
+	if data.Thread != nil {
+		threadReq := &ThreadCreateRequest{}
+		if !data.Thread.Metadata.IsNull() {
+			metadata := make(map[string]interface{})
+			var metaMap map[string]string
+			data.Thread.Metadata.ElementsAs(ctx, &metaMap, false)
+			for k, v := range metaMap {
+				metadata[k] = v
 			}
+			threadReq.Metadata = metadata
 		}
-	}
 
-	return nil
-}
+		if len(data.Thread.Messages) > 0 {
+			msgs := make([]ThreadMessage, 0, len(data.Thread.Messages))
+			for _, m := range data.Thread.Messages {
+				tm := ThreadMessage{
+					Role:    m.Role.ValueString(),
+					Content: m.Content.ValueString(),
+				}
 
-// resourceOpenAIThreadRunCreate creates a new OpenAI thread and starts a run.
-// It processes the configuration from Terraform, constructs the API request,
-// and handles the response to create a thread run.
-func resourceOpenAIThreadRunCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*OpenAIClient)
-
-	// Prepare the thread run request
-	createRequest := &ThreadRunCreateRequest{
-		AssistantID: d.Get("assistant_id").(string),
-	}
-
-	// Check if we're using an existing thread or creating a new one
-	if existingThreadID, ok := d.GetOk("existing_thread_id"); ok {
-		// Use existing thread - make API call directly to /threads/{thread_id}/runs
-		threadID := existingThreadID.(string)
-		return createRunOnExistingThread(ctx, d, m, threadID, createRequest)
-	}
-
-	// Add thread configuration if present
-	if threadConfig, ok := d.GetOk("thread"); ok {
-		threadList := threadConfig.([]interface{})
-		if len(threadList) > 0 {
-			threadMap := threadList[0].(map[string]interface{})
-			threadRequest := &ThreadCreateRequest{}
-
-			// Add messages if present
-			if messagesConfig, ok := threadMap["messages"]; ok {
-				messagesList := messagesConfig.([]interface{})
-				if len(messagesList) > 0 {
-					messages := make([]ThreadMessage, 0, len(messagesList))
-					for _, msgConfig := range messagesList {
-						msgMap := msgConfig.(map[string]interface{})
-						message := ThreadMessage{
-							Role:    msgMap["role"].(string),
-							Content: msgMap["content"].(string),
-						}
-
-						// Add attachments if present
-						if attachmentsConfig, ok := msgMap["attachments"]; ok {
-							attachmentsList := attachmentsConfig.([]interface{})
-							if len(attachmentsList) > 0 {
-								// Extract the file_ids and add them to the message
-								fileIDs := make([]string, 0, len(attachmentsList))
-								for _, attachmentConfig := range attachmentsList {
-									attachmentMap := attachmentConfig.(map[string]interface{})
-									fileIDs = append(fileIDs, attachmentMap["file_id"].(string))
-								}
-								message.FileIDs = fileIDs
-							}
-						}
-
-						// Add metadata if present
-						if msgMetadata, ok := msgMap["metadata"]; ok {
-							metadataMap := msgMetadata.(map[string]interface{})
-							if len(metadataMap) > 0 {
-								message.Metadata = metadataMap
-							}
-						}
-
-						messages = append(messages, message)
+				if !m.Metadata.IsNull() {
+					metadata := make(map[string]interface{})
+					var metaMap map[string]string
+					m.Metadata.ElementsAs(ctx, &metaMap, false)
+					for k, v := range metaMap {
+						metadata[k] = v
 					}
-					threadRequest.Messages = messages
+					tm.Metadata = metadata
 				}
-			}
 
-			// Add thread metadata if present
-			if threadMetadata, ok := threadMap["metadata"]; ok {
-				metadataMap := threadMetadata.(map[string]interface{})
-				if len(metadataMap) > 0 {
-					threadRequest.Metadata = metadataMap
+				if m.Attachments != nil {
+					atts := make([]AttachmentRequest, 0, len(m.Attachments))
+					for _, a := range m.Attachments {
+						tools := make([]ToolRequest, 0, len(a.Tools))
+						for _, t := range a.Tools {
+							tools = append(tools, ToolRequest{Type: t.Type.ValueString()})
+						}
+						atts = append(atts, AttachmentRequest{
+							FileID: a.FileID.ValueString(),
+							Tools:  tools,
+						})
+					}
+					tm.Attachments = atts
 				}
-			}
 
-			createRequest.Thread = threadRequest
-		}
-	}
-
-	// Add model if present
-	if model, ok := d.GetOk("model"); ok {
-		createRequest.Model = model.(string)
-	}
-
-	// Add instructions if present
-	if instructions, ok := d.GetOk("instructions"); ok {
-		createRequest.Instructions = instructions.(string)
-	}
-
-	// Add tools if present
-	if toolsConfig, ok := d.GetOk("tools"); ok {
-		toolsList := toolsConfig.([]interface{})
-		toolsRequests := make([]map[string]interface{}, 0, len(toolsList))
-
-		for _, toolConfig := range toolsList {
-			tool := make(map[string]interface{})
-			for k, v := range toolConfig.(map[string]interface{}) {
-				tool[k] = v
-			}
-			toolsRequests = append(toolsRequests, tool)
-		}
-
-		createRequest.Tools = toolsRequests
-	}
-
-	// Add metadata if present
-	if metadataConfig, ok := d.GetOk("metadata"); ok {
-		metadataMap := metadataConfig.(map[string]interface{})
-		if len(metadataMap) > 0 {
-			createRequest.Metadata = metadataMap
-		}
-	}
-
-	// Add temperature if present
-	if temperature, ok := d.GetOk("temperature"); ok {
-		temp := temperature.(float64)
-		createRequest.Temperature = &temp
-	}
-
-	// Add max_completion_tokens if present
-	if maxCompletionTokens, ok := d.GetOk("max_completion_tokens"); ok {
-		tokens := maxCompletionTokens.(int)
-		createRequest.MaxCompletionTokens = &tokens
-	}
-
-	// Add max_prompt_tokens if present
-	if maxPromptTokens, ok := d.GetOk("max_prompt_tokens"); ok {
-		tokens := maxPromptTokens.(int)
-		createRequest.MaxPromptTokens = &tokens
-	}
-
-	// Add top_p if present
-	if topP, ok := d.GetOk("top_p"); ok {
-		tp := topP.(float64)
-		createRequest.TopP = &tp
-	}
-
-	// Add response_format if present
-	if formatConfig, ok := d.GetOk("response_format"); ok {
-		formatList := formatConfig.([]interface{})
-		if len(formatList) > 0 {
-			formatMap := formatList[0].(map[string]interface{})
-			format := &ResponseFormat{
-				Type: formatMap["type"].(string),
-			}
-
-			// Add json_schema if present
-			if jsonSchema, ok := formatMap["json_schema"]; ok && jsonSchema.(string) != "" {
-				var schemaObj interface{}
-				if err := json.Unmarshal([]byte(jsonSchema.(string)), &schemaObj); err == nil {
-					format.JSONSchema = schemaObj
+				if m.FileIDs != nil {
+					ids := make([]string, 0, len(m.FileIDs))
+					for _, id := range m.FileIDs {
+						ids = append(ids, id.ValueString())
+					}
+					tm.FileIDs = ids
 				}
-			}
 
-			createRequest.ResponseFormat = format
+				msgs = append(msgs, tm)
+			}
+			threadReq.Messages = msgs
 		}
+		createRequest.Thread = threadReq
 	}
 
-	// Add stream if present
-	if stream, ok := d.GetOk("stream"); ok {
-		s := stream.(bool)
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		createRequest.Metadata = metadata
+	}
+
+	if len(data.Tools) > 0 {
+		tools := make([]map[string]interface{}, 0, len(data.Tools))
+		for _, t := range data.Tools {
+			tool := map[string]interface{}{
+				"type": t.Type.ValueString(),
+			}
+			if t.Function != nil {
+				fn := map[string]interface{}{
+					"name": t.Function.Name.ValueString(),
+				}
+				if !t.Function.Description.IsNull() {
+					fn["description"] = t.Function.Description.ValueString()
+				}
+				if !t.Function.Parameters.IsNull() {
+					fn["parameters"] = json.RawMessage(t.Function.Parameters.ValueString())
+				}
+				tool["function"] = fn
+			}
+			tools = append(tools, tool)
+		}
+		createRequest.Tools = tools
+	}
+
+	if !data.Temperature.IsNull() {
+		t := data.Temperature.ValueFloat64()
+		createRequest.Temperature = &t
+	}
+	if !data.TopP.IsNull() {
+		t := data.TopP.ValueFloat64()
+		createRequest.TopP = &t
+	}
+	if !data.MaxCompletionTokens.IsNull() {
+		t := int(data.MaxCompletionTokens.ValueInt64())
+		createRequest.MaxCompletionTokens = &t
+	}
+	if !data.MaxPromptTokens.IsNull() {
+		t := int(data.MaxPromptTokens.ValueInt64())
+		createRequest.MaxPromptTokens = &t
+	}
+	if !data.Stream.IsNull() {
+		s := data.Stream.ValueBool()
 		createRequest.Stream = &s
 	}
 
-	// Add truncation_strategy if present
-	if strategyConfig, ok := d.GetOk("truncation_strategy"); ok {
-		strategyList := strategyConfig.([]interface{})
-		if len(strategyList) > 0 {
-			strategyMap := strategyList[0].(map[string]interface{})
-			strategy := &TruncationStrategy{
-				Type: strategyMap["type"].(string),
-			}
-
-			// Add last_n_messages if present
-			if lastN, ok := strategyMap["last_n_messages"]; ok {
-				strategy.LastNMessages = lastN.(int)
-			}
-
-			createRequest.TruncationStrategy = strategy
-		}
-	}
-
-	// Convert the request to JSON
-	requestBody, err := json.Marshal(createRequest)
+	reqBody, err := json.Marshal(createRequest)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error marshalling request: %w", err))
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
 	}
 
-	// Construct the API URL
-	url := fmt.Sprintf("%s/threads/runs", client.APIURL)
-
-	// Create the request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(requestBody))
+	url := fmt.Sprintf("%s/threads/runs", r.client.OpenAIClient.APIURL)
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %w", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Add headers
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("OpenAI-Beta", "assistants=v2")
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
 
-	// Send the request
-	resp, err := client.HTTPClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %w", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %w", err))
-	}
-
-	// Check for error responses
-	if resp.StatusCode != http.StatusOK {
-		return diag.FromErr(fmt.Errorf("API returned error - status code: %d, body: %s", resp.StatusCode, string(respBody)))
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Parse the response
-	var runResponse ThreadRunResponse
-	if err := json.Unmarshal(respBody, &runResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response body: %w", err))
+	var runResponse RunResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &runResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Set the resource ID
-	d.SetId(runResponse.ID)
+	// Populate state
+	data.ID = types.StringValue(runResponse.ID)
+	data.ThreadID = types.StringValue(runResponse.ThreadID) // Thread created
+	data.Object = types.StringValue(runResponse.Object)
+	data.CreatedAt = types.Int64Value(runResponse.CreatedAt)
+	data.Status = types.StringValue(runResponse.Status)
 
-	// Store the thread ID
-	if err := d.Set("thread_id", runResponse.ThreadID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting thread_id: %w", err))
-	}
-
-	// Read the current state to populate computed attributes
-	return resourceOpenAIThreadRunRead(ctx, d, m)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Helper function to create a run on an existing thread
-func createRunOnExistingThread(ctx context.Context, d *schema.ResourceData, m interface{}, threadID string, createRequest *ThreadRunCreateRequest) diag.Diagnostics {
-	client := m.(*OpenAIClient)
-
-	// Create request body without the thread configuration
-	createRequest.Thread = nil
-
-	// Add all the standard fields (model, instructions, tools, etc.)
-	if model, ok := d.GetOk("model"); ok {
-		createRequest.Model = model.(string)
+func (r *ThreadRunResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ThreadRunResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	if instructions, ok := d.GetOk("instructions"); ok {
-		createRequest.Instructions = instructions.(string)
-	}
-
-	// Process tools if present
-	if toolsConfig, ok := d.GetOk("tools"); ok {
-		toolsList := toolsConfig.([]interface{})
-		toolsRequests := make([]map[string]interface{}, 0, len(toolsList))
-
-		for _, toolConfig := range toolsList {
-			tool := make(map[string]interface{})
-			for k, v := range toolConfig.(map[string]interface{}) {
-				tool[k] = v
-			}
-			toolsRequests = append(toolsRequests, tool)
-		}
-
-		createRequest.Tools = toolsRequests
-	}
-
-	// Add metadata if present
-	if metadataConfig, ok := d.GetOk("metadata"); ok {
-		metadataMap := metadataConfig.(map[string]interface{})
-		if len(metadataMap) > 0 {
-			createRequest.Metadata = metadataMap
-		}
-	}
-
-	// Add temperature if present
-	if temperature, ok := d.GetOk("temperature"); ok {
-		temp := temperature.(float64)
-		createRequest.Temperature = &temp
-	}
-
-	// Add max_completion_tokens if present
-	if maxCompletionTokens, ok := d.GetOk("max_completion_tokens"); ok {
-		tokens := maxCompletionTokens.(int)
-		createRequest.MaxCompletionTokens = &tokens
-	}
-
-	// Add max_prompt_tokens if present
-	if maxPromptTokens, ok := d.GetOk("max_prompt_tokens"); ok {
-		tokens := maxPromptTokens.(int)
-		createRequest.MaxPromptTokens = &tokens
-	}
-
-	// Add top_p if present
-	if topP, ok := d.GetOk("top_p"); ok {
-		tp := topP.(float64)
-		createRequest.TopP = &tp
-	}
-
-	// Add response_format if present
-	if formatConfig, ok := d.GetOk("response_format"); ok {
-		formatList := formatConfig.([]interface{})
-		if len(formatList) > 0 {
-			formatMap := formatList[0].(map[string]interface{})
-			format := &ResponseFormat{
-				Type: formatMap["type"].(string),
-			}
-
-			// Add json_schema if present
-			if jsonSchema, ok := formatMap["json_schema"]; ok && jsonSchema.(string) != "" {
-				var schemaObj interface{}
-				if err := json.Unmarshal([]byte(jsonSchema.(string)), &schemaObj); err == nil {
-					format.JSONSchema = schemaObj
-				}
-			}
-
-			createRequest.ResponseFormat = format
-		}
-	}
-
-	// Add stream if present
-	if stream, ok := d.GetOk("stream"); ok {
-		s := stream.(bool)
-		createRequest.Stream = &s
-	}
-
-	// Add truncation_strategy if present
-	if strategyConfig, ok := d.GetOk("truncation_strategy"); ok {
-		strategyList := strategyConfig.([]interface{})
-		if len(strategyList) > 0 {
-			strategyMap := strategyList[0].(map[string]interface{})
-			strategy := &TruncationStrategy{
-				Type: strategyMap["type"].(string),
-			}
-
-			// Add last_n_messages if present
-			if lastN, ok := strategyMap["last_n_messages"]; ok {
-				strategy.LastNMessages = lastN.(int)
-			}
-
-			createRequest.TruncationStrategy = strategy
-		}
-	}
-
-	// Convert the request to JSON
-	requestBody, err := json.Marshal(createRequest)
+	url := fmt.Sprintf("%s/threads/%s/runs/%s", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error marshalling request: %w", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Construct the API URL for existing thread
-	url := fmt.Sprintf("%s/threads/%s/runs", client.APIURL, threadID)
-
-	// Create the request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(requestBody))
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %w", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
 	}
 
-	// Add headers
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("OpenAI-Beta", "assistants=v2")
-
-	// Send the request
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %w", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %w", err))
+	var runResponse RunResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &runResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Check for error responses
-	if resp.StatusCode != http.StatusOK {
-		return diag.FromErr(fmt.Errorf("API returned error - status code: %d, body: %s", resp.StatusCode, string(respBody)))
-	}
-
-	// Parse the response
-	var runResponse ThreadRunResponse
-	if err := json.Unmarshal(respBody, &runResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response body: %w", err))
-	}
-
-	// Set the resource ID
-	d.SetId(runResponse.ID)
-
-	// Store the thread ID
-	if err := d.Set("thread_id", threadID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting thread_id: %w", err))
-	}
-
-	// Read the current state to populate computed attributes
-	return resourceOpenAIThreadRunRead(ctx, d, m)
-}
-
-// resourceOpenAIThreadRunRead fetches the current state of an OpenAI thread run.
-// It makes an API request to retrieve the run details and updates the Terraform state.
-func resourceOpenAIThreadRunRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*OpenAIClient)
-
-	// Get the run ID and thread ID
-	runID := d.Id()
-	threadID := d.Get("thread_id").(string)
-	if threadID == "" {
-		return diag.FromErr(fmt.Errorf("thread_id is required but was not set in the state"))
-	}
-
-	// Construct the API URL
-	url := fmt.Sprintf("%s/threads/%s/runs/%s", client.APIURL, threadID, runID)
-
-	// Create the request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %w", err))
-	}
-
-	// Add headers
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("OpenAI-Beta", "assistants=v2")
-
-	// Send the request
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %w", err))
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response body: %w", err))
-	}
-
-	// Check for error responses
-	if resp.StatusCode == http.StatusNotFound {
-		// The run no longer exists or was deleted
-		d.SetId("")
-		return nil
-	} else if resp.StatusCode != http.StatusOK {
-		return diag.FromErr(fmt.Errorf("API returned error - status code: %d, body: %s", resp.StatusCode, string(respBody)))
-	}
-
-	// Parse the response
-	var runResponse ThreadRunResponse
-	if err := json.Unmarshal(respBody, &runResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response body: %w", err))
-	}
-
-	// Set computed fields in the state
-	if err := d.Set("assistant_id", runResponse.AssistantID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting assistant_id: %w", err))
-	}
-	if err := d.Set("model", runResponse.Model); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting model: %w", err))
-	}
-	if err := d.Set("instructions", runResponse.Instructions); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting instructions: %w", err))
-	}
-	if err := d.Set("status", runResponse.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting status: %w", err))
-	}
-	if err := d.Set("object", runResponse.Object); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting object: %w", err))
-	}
-	if err := d.Set("created_at", runResponse.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %w", err))
-	}
-	if err := d.Set("file_ids", runResponse.FileIDs); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting file_ids: %w", err))
-	}
-
-	// Set optional fields
+	data.Status = types.StringValue(runResponse.Status)
+	data.CreatedAt = types.Int64Value(runResponse.CreatedAt)
 	if runResponse.StartedAt != nil {
-		if err := d.Set("started_at", *runResponse.StartedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting started_at: %w", err))
-		}
+		data.StartedAt = types.Int64Value(*runResponse.StartedAt)
 	}
 	if runResponse.CompletedAt != nil {
-		if err := d.Set("completed_at", *runResponse.CompletedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting completed_at: %w", err))
-		}
+		data.CompletedAt = types.Int64Value(*runResponse.CompletedAt)
 	}
 
-	// Set usage data if available
+	// FileIDs
+	fileIds := make([]types.String, len(runResponse.FileIDs))
+	for i, id := range runResponse.FileIDs {
+		fileIds[i] = types.StringValue(id)
+	}
+	data.FileIDs = fileIds
+
+	// Usage
 	if runResponse.Usage != nil {
-		usageData := map[string]interface{}{
-			"prompt_tokens":     runResponse.Usage.PromptTokens,
-			"completion_tokens": runResponse.Usage.CompletionTokens,
-			"total_tokens":      runResponse.Usage.TotalTokens,
-		}
-		if err := d.Set("usage", usageData); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting usage: %w", err))
+		data.Usage = &RunUsageModel{
+			PromptTokens:     types.Int64Value(int64(runResponse.Usage.PromptTokens)),
+			CompletionTokens: types.Int64Value(int64(runResponse.Usage.CompletionTokens)),
+			TotalTokens:      types.Int64Value(int64(runResponse.Usage.TotalTokens)),
 		}
 	}
 
-	// Set tools data
-	if len(runResponse.Tools) > 0 {
-		if err := d.Set("tools", runResponse.Tools); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting tools: %w", err))
+	if runResponse.Status == "completed" {
+		steps := r.fetchSteps(ctx, data.ThreadID.ValueString(), data.ID.ValueString())
+		if steps != nil {
+			data.Steps = steps
 		}
 	}
 
-	// Set metadata if present
-	if runResponse.Metadata != nil {
-		metadata := make(map[string]string)
-		for k, v := range runResponse.Metadata {
-			if strVal, ok := v.(string); ok {
-				metadata[k] = strVal
-			} else {
-				// Convert non-string values to JSON strings
-				jsonData, err := json.Marshal(v)
-				if err == nil {
-					metadata[k] = string(jsonData)
-				}
-			}
-		}
-		if err := d.Set("metadata", metadata); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting metadata: %w", err))
-		}
-	}
-
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIThreadRunDelete manages the deletion of an OpenAI run.
-// This function does not actually delete the run from OpenAI (as that's not supported),
-// but it removes the resource from Terraform state.
-func resourceOpenAIThreadRunDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Remove the resource from Terraform state without actually deleting it from OpenAI
-	// since OpenAI doesn't support run deletion.
-	return nil
+func (r *ThreadRunResource) fetchSteps(ctx context.Context, threadId, runId string) []RunStepModel {
+	url := fmt.Sprintf("%s/threads/%s/runs/%s/steps", r.client.OpenAIClient.APIURL, threadId, runId)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	req.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		req.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var listResp ListRunStepsResponse
+	body, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(body, &listResp)
+
+	steps := make([]RunStepModel, 0, len(listResp.Data))
+	for _, s := range listResp.Data {
+		details := ""
+		if len(s.Details) > 0 {
+			b, _ := json.Marshal(s.Details)
+			details = string(b)
+		}
+		steps = append(steps, RunStepModel{
+			ID:        types.StringValue(s.ID),
+			Object:    types.StringValue(s.Object),
+			CreatedAt: types.Int64Value(s.CreatedAt),
+			Type:      types.StringValue(s.Type),
+			Status:    types.StringValue(s.Status),
+			Details:   types.StringValue(details),
+		})
+	}
+	return steps
 }
 
-// resourceOpenAIThreadRunImport imports an existing OpenAI thread run into Terraform state.
-// It requires both the thread ID and run ID in the format "thread_id:run_id".
-func resourceOpenAIThreadRunImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	// The import ID should be in the format "thread_id:run_id"
-	parts := strings.Split(d.Id(), ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid import format, expected 'thread_id:run_id'")
+func (r *ThreadRunResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data ThreadRunResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	threadID := parts[0]
-	runID := parts[1]
-
-	// Set the thread ID in the resource
-	if err := d.Set("thread_id", threadID); err != nil {
-		return nil, fmt.Errorf("error setting thread_id: %w", err)
+	updateRequest := map[string]interface{}{}
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		updateRequest["metadata"] = metadata
 	}
 
-	// Set the ID to just the run ID
-	d.SetId(runID)
-
-	// Read the run to populate the rest of the state
-	if diags := resourceOpenAIThreadRunRead(ctx, d, m); diags.HasError() {
-		return nil, fmt.Errorf("error reading imported run: %v", diags[0].Summary)
+	reqBody, _ := json.Marshal(updateRequest)
+	url := fmt.Sprintf("%s/threads/%s/runs/%s", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	return []*schema.ResourceData{d}, nil
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", apiResp.Status)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ThreadRunResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ThreadRunResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/threads/%s/runs/%s/cancel", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return
+	} // Ignore error
+
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	http.DefaultClient.Do(apiReq)
+}
+
+func (r *ThreadRunResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import format: thread_id:run_id
+	idParts := strings.Split(req.ID, ":")
+	if len(idParts) != 2 {
+		resp.Diagnostics.AddError("Invalid Import ID", "Expected format: thread_id:run_id")
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("thread_id"), idParts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
 }

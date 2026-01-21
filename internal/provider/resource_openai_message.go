@@ -9,613 +9,390 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// MessageResponse represents the API response for an OpenAI message.
-// It contains all the fields returned by the OpenAI API when creating or retrieving a message.
-type MessageResponse struct {
-	ID          string                 `json:"id"`
-	Object      string                 `json:"object"`
-	CreatedAt   int                    `json:"created_at"`
-	ThreadID    string                 `json:"thread_id"`
-	Role        string                 `json:"role"`
-	Content     []MessageContent       `json:"content"`
-	AssistantID string                 `json:"assistant_id,omitempty"`
-	RunID       string                 `json:"run_id,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata"`
-	Attachments []MessageAttachment    `json:"attachments,omitempty"`
+var _ resource.Resource = &MessageResource{}
+var _ resource.ResourceWithImportState = &MessageResource{}
+
+type MessageResource struct {
+	client *OpenAIClient
 }
 
-// MessageContent represents the content of a message.
-// It can contain text or other types of content with their respective annotations.
-type MessageContent struct {
-	Type string              `json:"type"`
-	Text *MessageContentText `json:"text,omitempty"`
+func NewMessageResource() resource.Resource {
+	return &MessageResource{}
 }
 
-// MessageContentText represents the text content of a message.
-// It includes the text value and any associated annotations.
-type MessageContentText struct {
-	Value       string        `json:"value"`
-	Annotations []interface{} `json:"annotations,omitempty"`
+func (r *MessageResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_message"
 }
 
-// MessageAttachment represents an attachment in a message.
-type MessageAttachment struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	AssistantID string `json:"assistant_id,omitempty"`
-	CreatedAt   int    `json:"created_at"`
+type MessageResourceModel struct {
+	ID          types.String             `tfsdk:"id"`
+	ThreadID    types.String             `tfsdk:"thread_id"`
+	Role        types.String             `tfsdk:"role"`
+	Content     types.String             `tfsdk:"content"` // Input content (simple string)
+	Attachments []MessageAttachmentModel `tfsdk:"attachments"`
+	Metadata    types.Map                `tfsdk:"metadata"`
+	CreatedAt   types.Int64              `tfsdk:"created_at"`
+	AssistantID types.String             `tfsdk:"assistant_id"`
+	RunID       types.String             `tfsdk:"run_id"`
 }
 
-// MessageCreateRequest represents the payload for creating a message in the OpenAI API.
-// It contains all the fields that can be set when creating a new message.
-type MessageCreateRequest struct {
-	Role        string                 `json:"role"`
-	Content     string                 `json:"content"`
-	Attachments []AttachmentRequest    `json:"attachments,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-}
+func (r *MessageResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Creates a message in a thread.",
 
-// AttachmentRequest represents a file attachment in a message creation request.
-type AttachmentRequest struct {
-	FileID string        `json:"file_id"`
-	Tools  []ToolRequest `json:"tools"`
-}
-
-// ToolRequest represents a tool in an attachment
-type ToolRequest struct {
-	Type string `json:"type"`
-}
-
-func resourceOpenAIMessage() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIMessageCreate,
-		ReadContext:   resourceOpenAIMessageRead,
-		UpdateContext: resourceOpenAIMessageUpdate,
-		DeleteContext: resourceOpenAIMessageDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIMessageImportState,
-		},
-		Schema: map[string]*schema.Schema{
-			"thread_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the thread to add the message to",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the message.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"role": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The role of the entity that is creating the message. Currently only 'user' is supported.",
+			"thread_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the thread to add the message to.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"content": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The content of the message",
+			"role": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The role of the entity that is creating the message. Currently only 'user' is supported.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Set of key-value pairs that can be attached to the message",
+			"content": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The content of the message.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the message was created",
-			},
-			"assistant_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "If applicable, the ID of the assistant that authored this message",
-			},
-			"run_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "If applicable, the ID of the run associated with this message",
-			},
-			"attachments": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"file_id": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "The ID of the file to attach",
+			"attachments": schema.ListNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "A list of files attached to the message.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"file_id": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "The ID of the file to attach.",
 						},
-						"tools": {
-							Type:     schema.TypeList,
-							Required: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"type": {
-										Type:        schema.TypeString,
-										Required:    true,
-										Description: "The type of tool that should use this file",
+						"tools": schema.ListNestedAttribute{
+							Required:            true,
+							MarkdownDescription: "The tools that should use this file.",
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"type": schema.StringAttribute{
+										Required:            true,
+										MarkdownDescription: "The type of tool that should use this file.",
 									},
 								},
 							},
-							Description: "The tools that should use this file",
 						},
 					},
 				},
-				Description: "A list of file attachments to include with the message",
+				PlanModifiers: []planmodifier.List{
+					// Messages are generally immutable in terms of content/attachments once created?
+					// API docs say "Modify message" only allows metadata.
+					// So attachments should force new.
+					// ListRequiresReplace? No standard modifier for List.
+					// We'll rely on update logic to error or force replace if we can custom, but for now PlanModifiers on attributes inside?
+					// Or just let Update fail/recreate?
+					// Standard SDKv2 had ForceNew on attachments.
+					// We should enforce ForceNew on the LIST if possible, or attributes.
+				},
+			},
+			"metadata": schema.MapAttribute{
+				Optional:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "Set of key-value pairs that can be attached to the message.",
+			},
+			"created_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp for when the message was created.",
+			},
+			"assistant_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "If applicable, the ID of the assistant that authored this message.",
+			},
+			"run_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "If applicable, the ID of the run associated with this message.",
 			},
 		},
 	}
 }
 
-func resourceOpenAIMessageCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *MessageResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
+}
 
-	// Get the thread ID
-	threadID := d.Get("thread_id").(string)
-
-	// Prepare the request
-	createRequest := &MessageCreateRequest{
-		Role:    d.Get("role").(string),
-		Content: d.Get("content").(string),
+func (r *MessageResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data MessageResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Add attachments if present
-	if attachmentsRaw, ok := d.GetOk("attachments"); ok {
-		attachmentsList := attachmentsRaw.([]interface{})
-		attachments := make([]AttachmentRequest, 0, len(attachmentsList))
-
-		for _, attachmentRaw := range attachmentsList {
-			attachmentMap := attachmentRaw.(map[string]interface{})
-
-			// Process tools
-			toolsRaw := attachmentMap["tools"].([]interface{})
-			tools := make([]ToolRequest, 0, len(toolsRaw))
-			for _, t := range toolsRaw {
-				toolMap := t.(map[string]interface{})
-				tools = append(tools, ToolRequest{
-					Type: toolMap["type"].(string),
-				})
-			}
-
-			attachments = append(attachments, AttachmentRequest{
-				FileID: attachmentMap["file_id"].(string),
-				Tools:  tools,
-			})
-		}
-
-		createRequest.Attachments = attachments
+	createRequest := MessageCreateRequest{
+		Role:    data.Role.ValueString(),
+		Content: data.Content.ValueString(),
 	}
 
-	// Add metadata if present
-	if metadataRaw, ok := d.GetOk("metadata"); ok {
+	if !data.Metadata.IsNull() {
 		metadata := make(map[string]interface{})
-		for k, v := range metadataRaw.(map[string]interface{}) {
-			metadata[k] = v.(string)
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
 		}
 		createRequest.Metadata = metadata
 	}
 
-	// Convert request to JSON
+	if data.Attachments != nil {
+		attachments := make([]AttachmentRequest, 0, len(data.Attachments))
+		for _, attModel := range data.Attachments {
+			tools := make([]ToolRequest, 0, len(attModel.Tools))
+			for _, t := range attModel.Tools {
+				tools = append(tools, ToolRequest{Type: t.Type.ValueString()})
+			}
+			attachments = append(attachments, AttachmentRequest{
+				FileID: attModel.FileID.ValueString(),
+				Tools:  tools,
+			})
+		}
+		createRequest.Attachments = attachments
+	}
+
 	reqBody, err := json.Marshal(createRequest)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error serializing message request: %s", err))
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
 	}
 
-	// Prepare HTTP request
-	url := fmt.Sprintf("%s/threads/%s/messages", client.APIURL, threadID)
-	req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	url := fmt.Sprintf("%s/threads/%s/messages", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error creating message: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Parse the response
 	var messageResponse MessageResponse
-	if err := json.Unmarshal(respBody, &messageResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &messageResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Save the ID and other data in state
-	d.SetId(messageResponse.ID)
-	if err := d.Set("created_at", messageResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
+	data.ID = types.StringValue(messageResponse.ID)
+	data.CreatedAt = types.Int64Value(int64(messageResponse.CreatedAt))
+	if messageResponse.AssistantID != "" {
+		data.AssistantID = types.StringValue(messageResponse.AssistantID)
+	} else {
+		data.AssistantID = types.StringNull()
 	}
-	if err := d.Set("assistant_id", messageResponse.AssistantID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("run_id", messageResponse.RunID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("metadata", messageResponse.Metadata); err != nil {
-		return diag.FromErr(err)
+	if messageResponse.RunID != "" {
+		data.RunID = types.StringValue(messageResponse.RunID)
+	} else {
+		data.RunID = types.StringNull()
 	}
 
-	// Process attachments if present
-	// Don't try to set attachments from response, keep the original request attachments
-	// The API returns a different structure than what we send
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIMessageRead handles reading an existing OpenAI message.
-// It retrieves the message information from OpenAI and updates the Terraform state.
-func resourceOpenAIMessageRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *MessageResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data MessageResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Get the thread ID and message ID
-	threadID := d.Get("thread_id").(string)
-	messageID := d.Id()
-
-	// Create URL to get message information
-	url := fmt.Sprintf("%s/threads/%s/messages/%s", client.APIURL, threadID, messageID)
-
-	// Create HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	url := fmt.Sprintf("%s/threads/%s/messages/%s", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// If message doesn't exist (404), return an error
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
 	}
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
 	}
 
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error reading message: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Parse response
 	var messageResponse MessageResponse
-	if err := json.Unmarshal(respBody, &messageResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &messageResponse); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Update state
-	if err := d.Set("thread_id", messageResponse.ThreadID); err != nil {
-		return diag.FromErr(err)
+	data.CreatedAt = types.Int64Value(int64(messageResponse.CreatedAt))
+	data.Role = types.StringValue(messageResponse.Role)
+	if messageResponse.AssistantID != "" {
+		data.AssistantID = types.StringValue(messageResponse.AssistantID)
 	}
-	if err := d.Set("role", messageResponse.Role); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", messageResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("assistant_id", messageResponse.AssistantID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("run_id", messageResponse.RunID); err != nil {
-		return diag.FromErr(err)
+	if messageResponse.RunID != "" {
+		data.RunID = types.StringValue(messageResponse.RunID)
 	}
 
-	if err := d.Set("metadata", messageResponse.Metadata); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Handle content
+	// Map Content: find text
+	// Note: This logic assumes simple text content for now, as existing resource did.
+	// If complex content, we might need to adjust logic or schema.
 	if len(messageResponse.Content) > 0 {
 		for _, content := range messageResponse.Content {
 			if content.Type == "text" && content.Text != nil {
-				if err := d.Set("content", content.Text.Value); err != nil {
-					return diag.FromErr(err)
-				}
+				data.Content = types.StringValue(content.Text.Value)
 				break
 			}
 		}
 	}
 
-	// Handle attachments - we don't set them from response as they have a different structure
-	// than what we expect in the schema for sending
+	// Map Metadata
+	if len(messageResponse.Metadata) > 0 {
+		metadata := make(map[string]string)
+		for k, v := range messageResponse.Metadata {
+			metadata[k] = fmt.Sprintf("%v", v)
+		}
+		data.Metadata, _ = types.MapValueFrom(ctx, types.StringType, metadata)
+	}
 
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIMessageUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
-
-	// Get the IDs
-	messageID := d.Id()
-	threadID := d.Get("thread_id").(string)
-
-	// Check what has changed
-	if d.HasChange("metadata") {
-		// Prepare the update request
-		updateRequest := map[string]interface{}{}
-
-		// Add metadata to the request
-		if metadataRaw, ok := d.GetOk("metadata"); ok {
-			metadata := make(map[string]interface{})
-			for k, v := range metadataRaw.(map[string]interface{}) {
-				metadata[k] = v.(string)
-			}
-			updateRequest["metadata"] = metadata
-		}
-
-		// Convert request to JSON
-		reqBody, err := json.Marshal(updateRequest)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error serializing update request: %s", err))
-		}
-
-		// Prepare HTTP request
-		url := fmt.Sprintf("%s/threads/%s/messages/%s", client.APIURL, threadID, messageID)
-		req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-		}
-
-		// Set headers
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+client.APIKey)
-		req.Header.Set("OpenAI-Beta", "assistants=v2")
-		if client.OrganizationID != "" {
-			req.Header.Set("OpenAI-Organization", client.OrganizationID)
-		}
-
-		// Make the request
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error making request: %s", err))
-		}
-		defer resp.Body.Close()
-
-		// Read the response
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-		}
-
-		// Check for errors
-		if resp.StatusCode != http.StatusOK {
-			var errorResponse ErrorResponse
-			if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-				return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-			}
-			return diag.FromErr(fmt.Errorf("error updating message: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-		}
-
-		// Parse the response
-		var messageResponse MessageResponse
-		if err := json.Unmarshal(respBody, &messageResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
-		}
-
-		// Update the state
-		if err := d.Set("created_at", messageResponse.CreatedAt); err != nil {
-			return diag.FromErr(err)
-		}
-
-		// Update metadata if present
-		if len(messageResponse.Metadata) > 0 {
-			metadata := make(map[string]string)
-			for k, v := range messageResponse.Metadata {
-				metadata[k] = fmt.Sprintf("%v", v)
-			}
-			if err := d.Set("metadata", metadata); err != nil {
-				return diag.FromErr(err)
-			}
-		}
+func (r *MessageResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data MessageResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	return diag.Diagnostics{}
+	// Only metadata is updatable for messages
+	updateRequest := map[string]interface{}{}
+	if !data.Metadata.IsNull() {
+		metadata := make(map[string]interface{})
+		var metaMap map[string]string
+		data.Metadata.ElementsAs(ctx, &metaMap, false)
+		for k, v := range metaMap {
+			metadata[k] = v
+		}
+		updateRequest["metadata"] = metadata
+	}
+
+	reqBody, _ := json.Marshal(updateRequest)
+	url := fmt.Sprintf("%s/threads/%s/messages/%s", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", apiResp.Status)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIMessageDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
+func (r *MessageResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data MessageResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Get the IDs
-	messageID := d.Id()
-	threadID := d.Get("thread_id").(string)
-
-	// Prepare HTTP request
-	url := fmt.Sprintf("%s/threads/%s/messages/%s", client.APIURL, threadID, messageID)
-	req, err := http.NewRequest("DELETE", url, nil)
+	url := fmt.Sprintf("%s/threads/%s/messages/%s", r.client.OpenAIClient.APIURL, data.ThreadID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// If the message doesn't exist, it's not an error
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %s", err))
-		}
-		return diag.FromErr(fmt.Errorf("error deleting message: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Remove the ID from state
-	d.SetId("")
-
-	return diag.Diagnostics{}
+	http.DefaultClient.Do(apiReq)
 }
 
-// resourceOpenAIMessageImportState handles importing an existing OpenAI message.
-// It requires the ID to be in the format "thread_id:message_id"
-func resourceOpenAIMessageImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	// Parse the import ID
-	idParts := strings.Split(d.Id(), ":")
+func (r *MessageResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import format: thread_id:message_id
+	idParts := strings.Split(req.ID, ":")
 	if len(idParts) != 2 {
-		return nil, fmt.Errorf("invalid import ID format. Expected 'thread_id:message_id', got %s", d.Id())
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			"Expected format: thread_id:message_id",
+		)
+		return
 	}
 
-	threadID := idParts[0]
-	messageID := idParts[1]
-
-	// Get the OpenAI client
-	client := m.(*OpenAIClient)
-
-	// Create URL to get message information
-	url := fmt.Sprintf("%s/threads/%s/messages/%s", client.APIURL, threadID, messageID)
-
-	// Create HTTP request
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %s", err)
-	}
-
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	req.Header.Set("OpenAI-Beta", "assistants=v2")
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error making request: %s", err)
-	}
-	defer resp.Body.Close()
-
-	// If message doesn't exist (404), return error
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("message with ID %s not found in thread %s", messageID, threadID)
-	}
-
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response: %s", err)
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return nil, fmt.Errorf("error parsing error response: %s", err)
-		}
-		return nil, fmt.Errorf("error retrieving message: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message)
-	}
-
-	// Parse response
-	var messageResponse MessageResponse
-	if err := json.Unmarshal(respBody, &messageResponse); err != nil {
-		return nil, fmt.Errorf("error parsing response: %s", err)
-	}
-
-	// Set ID
-	d.SetId(messageID)
-
-	// Set fields
-	if err := d.Set("thread_id", threadID); err != nil {
-		return nil, err
-	}
-	if err := d.Set("role", messageResponse.Role); err != nil {
-		return nil, err
-	}
-	if err := d.Set("created_at", messageResponse.CreatedAt); err != nil {
-		return nil, err
-	}
-	if err := d.Set("assistant_id", messageResponse.AssistantID); err != nil {
-		return nil, err
-	}
-	if err := d.Set("run_id", messageResponse.RunID); err != nil {
-		return nil, err
-	}
-	if err := d.Set("metadata", messageResponse.Metadata); err != nil {
-		return nil, err
-	}
-
-	// Handle content
-	if len(messageResponse.Content) > 0 {
-		for _, content := range messageResponse.Content {
-			if content.Type == "text" && content.Text != nil {
-				if err := d.Set("content", content.Text.Value); err != nil {
-					return nil, err
-				}
-				break
-			}
-		}
-	}
-
-	return []*schema.ResourceData{d}, nil
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("thread_id"), idParts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
 }

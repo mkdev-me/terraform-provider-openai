@@ -3,12 +3,12 @@
 page_title: "openai_audio_translations Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Retrieving all audio translations is not supported by the OpenAI API.
 ---
 
 # openai_audio_translations (Data Source)
 
-
+Retrieving all audio translations is not supported by the OpenAI API.
 
 
 
@@ -17,22 +17,9 @@ description: |-
 
 ### Optional
 
-- `model` (String) Filter translations by model. Options include 'whisper-1'.
-- `project_id` (String) The ID of the project associated with the audio translations. If not specified, the API key's default project will be used.
+- `model` (String) Filter by model.
+- `project_id` (String) The ID of the project.
 
 ### Read-Only
 
-- `id` (String) The ID of this resource.
-- `translations` (List of Object) (see [below for nested schema](#nestedatt--translations))
-
-<a id="nestedatt--translations"></a>
-### Nested Schema for `translations`
-
-Read-Only:
-
-- `created_at` (Number)
-- `duration` (Number)
-- `id` (String)
-- `model` (String)
-- `status` (String)
-- `text` (String)
+- `translations` (List of String) List of translations (Empty as not supported).

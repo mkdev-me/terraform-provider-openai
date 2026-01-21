@@ -6,257 +6,447 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-// dataSourceOpenAIBatch returns a schema.Resource that represents a data source for an OpenAI batch job.
-// This data source allows users to retrieve information about batch processing jobs they've created.
-func dataSourceOpenAIBatch() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIBatchRead,
-		Schema: map[string]*schema.Schema{
-			"batch_id": {
-				Type:        schema.TypeString,
-				Required:    true,
+// Ensure implementation satisfies interface
+var _ datasource.DataSource = &BatchDataSource{}
+var _ datasource.DataSource = &BatchesDataSource{}
+
+func NewBatchDataSource() datasource.DataSource {
+	return &BatchDataSource{}
+}
+
+type BatchDataSource struct {
+	client *OpenAIClient
+}
+
+type BatchDataSourceModel struct {
+	BatchID          types.String `tfsdk:"batch_id"`
+	ProjectID        types.String `tfsdk:"project_id"`
+	ID               types.String `tfsdk:"id"`
+	InputFileID      types.String `tfsdk:"input_file_id"`
+	Endpoint         types.String `tfsdk:"endpoint"`
+	CompletionWindow types.String `tfsdk:"completion_window"`
+	OutputFileID     types.String `tfsdk:"output_file_id"`
+	ErrorFileID      types.String `tfsdk:"error_file_id"`
+	Status           types.String `tfsdk:"status"`
+	CreatedAt        types.Int64  `tfsdk:"created_at"`
+	InProgressAt     types.Int64  `tfsdk:"in_progress_at"`
+	ExpiresAt        types.Int64  `tfsdk:"expires_at"`
+	CompletedAt      types.Int64  `tfsdk:"completed_at"`
+	RequestCounts    types.Map    `tfsdk:"request_counts"` // Map<Int>
+	Error            types.String `tfsdk:"error"`
+	Metadata         types.Map    `tfsdk:"metadata"`
+}
+
+func (d *BatchDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_batch"
+}
+
+func (d *BatchDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific OpenAI batch job.",
+		Attributes: map[string]schema.Attribute{
+			"batch_id": schema.StringAttribute{
 				Description: "The ID of the batch job to retrieve",
+				Required:    true,
 			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
+			"project_id": schema.StringAttribute{
 				Description: "The ID of the project associated with the batch job. If not specified, the API key's default project will be used.",
+				Optional:    true,
 			},
-			"input_file_id": {
-				Type:        schema.TypeString,
+			"id": schema.StringAttribute{
+				Description: "The ID of the batch job",
 				Computed:    true,
+			},
+			"input_file_id": schema.StringAttribute{
 				Description: "The ID of the input file used for the batch",
-			},
-			"endpoint": {
-				Type:        schema.TypeString,
 				Computed:    true,
+			},
+			"endpoint": schema.StringAttribute{
 				Description: "The endpoint used for the batch request (e.g., '/v1/chat/completions')",
-			},
-			"completion_window": {
-				Type:        schema.TypeString,
 				Computed:    true,
+			},
+			"completion_window": schema.StringAttribute{
 				Description: "The time window specified for batch completion",
-			},
-			"output_file_id": {
-				Type:        schema.TypeString,
 				Computed:    true,
+			},
+			"output_file_id": schema.StringAttribute{
 				Description: "The ID of the output file (if available)",
-			},
-			"error_file_id": {
-				Type:        schema.TypeString,
 				Computed:    true,
+			},
+			"error_file_id": schema.StringAttribute{
 				Description: "The ID of the error file (if available)",
-			},
-			"status": {
-				Type:        schema.TypeString,
 				Computed:    true,
+			},
+			"status": schema.StringAttribute{
 				Description: "The current status of the batch job",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
+			},
+			"created_at": schema.Int64Attribute{
 				Description: "The timestamp when the batch job was created",
-			},
-			"in_progress_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
+			},
+			"in_progress_at": schema.Int64Attribute{
 				Description: "The timestamp when the batch job began processing",
-			},
-			"expires_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
+			},
+			"expires_at": schema.Int64Attribute{
 				Description: "The timestamp when the batch job expires",
-			},
-			"completed_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
+			},
+			"completed_at": schema.Int64Attribute{
 				Description: "The timestamp when the batch job completed",
-			},
-			"request_counts": {
-				Type:        schema.TypeMap,
 				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeInt},
+			},
+			"request_counts": schema.MapAttribute{
 				Description: "Statistics about request processing",
-			},
-			"error": {
-				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Information about errors that occurred during processing",
+				ElementType: types.Int64Type,
 			},
-			"metadata": {
-				Type:        schema.TypeMap,
+			"error": schema.StringAttribute{
+				Description: "Information about errors that occurred during processing (JSON string)",
 				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
+			"metadata": schema.MapAttribute{
 				Description: "Custom metadata attached to the batch job",
+				Computed:    true,
+				ElementType: types.StringType,
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIBatchRead handles the read operation for the OpenAI batch data source.
-// It retrieves information about an existing batch job from the OpenAI API.
-func dataSourceOpenAIBatchRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, ok := m.(*OpenAIClient)
+func (d *BatchDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
 	if !ok {
-		return diag.Errorf("error getting OpenAI client")
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+	d.client = client
+}
+
+func (d *BatchDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data BatchDataSourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Get the batch ID
-	batchID := d.Get("batch_id").(string)
-	if batchID == "" {
-		return diag.Errorf("batch_id is required")
-	}
+	batchID := data.BatchID.ValueString()
 
-	// Get project_id if present
-	var projectID string
-	if v, ok := d.GetOk("project_id"); ok {
-		projectID = v.(string)
-	}
-
-	// Prepare the HTTP request
-	url := fmt.Sprintf("%s/batches/%s", client.APIURL, batchID)
-	req, err := http.NewRequest("GET", url, nil)
+	url := fmt.Sprintf("%s/batches/%s", d.client.OpenAIClient.APIURL, batchID)
+	httpReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+d.client.OpenAIClient.APIKey)
+	if d.client.OpenAIClient.OrganizationID != "" {
+		httpReq.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
 	}
-	// Add project_id header if present
+	if !data.ProjectID.IsNull() {
+		httpReq.Header.Set("OpenAI-Project", data.ProjectID.ValueString())
+	}
+
+	httpResp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(httpResp.Body)
+		resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s, Body: %s", httpResp.Status, string(bodyBytes)))
+		return
+	}
+
+	var batchResp BatchResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&batchResp); err != nil {
+		resp.Diagnostics.AddError("Error decoding response", err.Error())
+		return
+	}
+
+	data.ID = types.StringValue(batchResp.ID)
+	data.InputFileID = types.StringValue(batchResp.InputFileID)
+	data.Endpoint = types.StringValue(batchResp.Endpoint)
+	data.CompletionWindow = types.StringValue(batchResp.CompletionWindow)
+	data.Status = types.StringValue(batchResp.Status)
+	data.CreatedAt = types.Int64Value(batchResp.CreatedAt)
+	data.ExpiresAt = types.Int64Value(batchResp.ExpiresAt)
+
+	if batchResp.OutputFileID != "" {
+		data.OutputFileID = types.StringValue(batchResp.OutputFileID)
+	}
+	if batchResp.ErrorFileID != "" {
+		data.ErrorFileID = types.StringValue(batchResp.ErrorFileID)
+	}
+
+	if batchResp.InProgressAt != nil {
+		data.InProgressAt = types.Int64Value(*batchResp.InProgressAt)
+	}
+	if batchResp.CompletedAt != nil {
+		data.CompletedAt = types.Int64Value(*batchResp.CompletedAt)
+	}
+
+	if batchResp.RequestCounts != nil {
+		rc := map[string]int64{
+			"total":     int64(batchResp.RequestCounts.Total),
+			"completed": int64(batchResp.RequestCounts.Completed),
+			"failed":    int64(batchResp.RequestCounts.Failed),
+		}
+		data.RequestCounts, _ = types.MapValueFrom(ctx, types.Int64Type, rc)
+	}
+
+	if batchResp.Errors != nil {
+		errorStr, err := json.Marshal(batchResp.Errors)
+		if err == nil {
+			data.Error = types.StringValue(string(errorStr))
+		}
+	}
+
+	if len(batchResp.Metadata) > 0 {
+		meta := make(map[string]string)
+		for k, v := range batchResp.Metadata {
+			meta[k] = fmt.Sprintf("%v", v)
+		}
+		data.Metadata, _ = types.MapValueFrom(ctx, types.StringType, meta)
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// --- Batches (Plural) ---
+
+func NewBatchesDataSource() datasource.DataSource {
+	return &BatchesDataSource{}
+}
+
+type BatchesDataSource struct {
+	client *OpenAIClient
+}
+
+type BatchesDataSourceModel struct {
+	ProjectID types.String `tfsdk:"project_id"`
+	Batches   types.List   `tfsdk:"batches"` // List<BatchResultModel>
+	ID        types.String `tfsdk:"id"`
+}
+
+type BatchResultModel struct {
+	ID               types.String `tfsdk:"id"`
+	InputFileID      types.String `tfsdk:"input_file_id"`
+	Endpoint         types.String `tfsdk:"endpoint"`
+	CompletionWindow types.String `tfsdk:"completion_window"`
+	OutputFileID     types.String `tfsdk:"output_file_id"`
+	ErrorFileID      types.String `tfsdk:"error_file_id"`
+	Status           types.String `tfsdk:"status"`
+	CreatedAt        types.Int64  `tfsdk:"created_at"`
+	InProgressAt     types.Int64  `tfsdk:"in_progress_at"`
+	ExpiresAt        types.Int64  `tfsdk:"expires_at"`
+	CompletedAt      types.Int64  `tfsdk:"completed_at"`
+	RequestCounts    types.Map    `tfsdk:"request_counts"`
+	Metadata         types.Map    `tfsdk:"metadata"`
+}
+
+// BatchesListResponse represents the API response for listing batches
+type BatchesListResponse struct {
+	Object  string          `json:"object"`
+	Data    []BatchResponse `json:"data"`
+	HasMore bool            `json:"has_more"`
+}
+
+func (d *BatchesDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_batches"
+}
+
+func (d *BatchesDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve a list of batch jobs.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of this resource",
+				Computed:    true,
+			},
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project associated with the batch jobs. If not specified, the API key's default project will be used.",
+				Optional:    true,
+			},
+			"batches": schema.ListNestedAttribute{
+				Description: "List of batch jobs.",
+				Computed:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id":                schema.StringAttribute{Computed: true},
+						"input_file_id":     schema.StringAttribute{Computed: true},
+						"endpoint":          schema.StringAttribute{Computed: true},
+						"completion_window": schema.StringAttribute{Computed: true},
+						"output_file_id":    schema.StringAttribute{Computed: true},
+						"error_file_id":     schema.StringAttribute{Computed: true},
+						"status":            schema.StringAttribute{Computed: true},
+						"created_at":        schema.Int64Attribute{Computed: true},
+						"in_progress_at":    schema.Int64Attribute{Computed: true},
+						"expires_at":        schema.Int64Attribute{Computed: true},
+						"completed_at":      schema.Int64Attribute{Computed: true},
+						"request_counts": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.Int64Type,
+						},
+						"metadata": schema.MapAttribute{
+							Computed:    true,
+							ElementType: types.StringType,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (d *BatchesDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+	d.client = client
+}
+
+func (d *BatchesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data BatchesDataSourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/batches", d.client.OpenAIClient.APIURL)
+	httpReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+d.client.OpenAIClient.APIKey)
+	if d.client.OpenAIClient.OrganizationID != "" {
+		httpReq.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
+	}
+	projectID := data.ProjectID.ValueString()
 	if projectID != "" {
-		req.Header.Set("OpenAI-Project", projectID)
+		httpReq.Header.Set("OpenAI-Project", projectID)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	httpResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check if there was an error
-	if resp.StatusCode != http.StatusOK {
-		// Print the response body to help with debugging
-		responsePreview := string(respBody)
-		if len(responsePreview) > 1000 {
-			responsePreview = responsePreview[:1000] + "... (truncated)"
+	if httpResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(httpResp.Body)
+		// Check for permission error
+		if strings.Contains(string(bodyBytes), "insufficient permissions") {
+			tflog.Info(ctx, fmt.Sprintf("Permission error reading batches: %s", string(bodyBytes)))
+			resp.Diagnostics.AddError("Permission Error", "You have insufficient permissions for this operation")
+			return
 		}
-		fmt.Printf("Error response from API (Status %d): %s\n", resp.StatusCode, responsePreview)
+		resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s, Body: %s", httpResp.Status, string(bodyBytes)))
+		return
+	}
 
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			// Check if response looks like HTML (starts with '<')
-			if len(respBody) > 0 && respBody[0] == '<' {
-				return diag.FromErr(fmt.Errorf("received HTML response instead of JSON (likely auth or endpoint issue): Status %d, Response starts with: %s",
-					resp.StatusCode, responsePreview[:100]))
+	var listResp BatchesListResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+		resp.Diagnostics.AddError("Error decoding response", err.Error())
+		return
+	}
+
+	var batches []BatchResultModel
+	for _, batch := range listResp.Data {
+		b := BatchResultModel{
+			ID:               types.StringValue(batch.ID),
+			InputFileID:      types.StringValue(batch.InputFileID),
+			Endpoint:         types.StringValue(batch.Endpoint),
+			CompletionWindow: types.StringValue(batch.CompletionWindow),
+			Status:           types.StringValue(batch.Status),
+			CreatedAt:        types.Int64Value(batch.CreatedAt),
+			ExpiresAt:        types.Int64Value(batch.ExpiresAt),
+		}
+
+		if batch.OutputFileID != "" {
+			b.OutputFileID = types.StringValue(batch.OutputFileID)
+		}
+		if batch.ErrorFileID != "" {
+			b.ErrorFileID = types.StringValue(batch.ErrorFileID)
+		}
+		if batch.InProgressAt != nil {
+			b.InProgressAt = types.Int64Value(*batch.InProgressAt)
+		}
+		if batch.CompletedAt != nil {
+			b.CompletedAt = types.Int64Value(*batch.CompletedAt)
+		}
+		if batch.RequestCounts != nil {
+			rc := map[string]int64{
+				"total":     int64(batch.RequestCounts.Total),
+				"completed": int64(batch.RequestCounts.Completed),
+				"failed":    int64(batch.RequestCounts.Failed),
 			}
-			return diag.FromErr(fmt.Errorf("error parsing error response (Status %d): %s\nResponse body: %s",
-				resp.StatusCode, err, responsePreview))
+			b.RequestCounts, _ = types.MapValueFrom(ctx, types.Int64Type, rc)
 		}
-		return diag.FromErr(fmt.Errorf("error retrieving batch: %s - %s", errorResponse.Error.Type, errorResponse.Error.Message))
-	}
-
-	// Parse the response
-	var batchResponse BatchResponse
-	if err := json.Unmarshal(respBody, &batchResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
-	}
-
-	// Set the resource ID
-	d.SetId(batchResponse.ID)
-
-	// Set the attributes
-	if err := d.Set("input_file_id", batchResponse.InputFileID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("endpoint", batchResponse.Endpoint); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("completion_window", batchResponse.CompletionWindow); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("output_file_id", batchResponse.OutputFileID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("error_file_id", batchResponse.ErrorFileID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("status", batchResponse.Status); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", batchResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("expires_at", batchResponse.ExpiresAt); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Set optional attributes that may be null
-	if batchResponse.InProgressAt != nil {
-		if err := d.Set("in_progress_at", *batchResponse.InProgressAt); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-	if batchResponse.CompletedAt != nil {
-		if err := d.Set("completed_at", *batchResponse.CompletedAt); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Convert request counts to map
-	if batchResponse.RequestCounts != nil {
-		if err := d.Set("request_counts", batchResponse.RequestCounts); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Handle errors if any
-	if batchResponse.Errors != nil {
-		errorStr, err := json.Marshal(batchResponse.Errors)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		if err := d.Set("error", string(errorStr)); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	// Convert metadata to strings for Terraform
-	if len(batchResponse.Metadata) > 0 {
-		metadataMap := make(map[string]string)
-		for k, v := range batchResponse.Metadata {
-			switch val := v.(type) {
-			case string:
-				metadataMap[k] = val
-			default:
-				// Convert non-string values to JSON string
-				jsonBytes, err := json.Marshal(val)
-				if err != nil {
-					return diag.FromErr(fmt.Errorf("error marshaling metadata value: %s", err))
-				}
-				metadataMap[k] = string(jsonBytes)
+		if len(batch.Metadata) > 0 {
+			meta := make(map[string]string)
+			for k, v := range batch.Metadata {
+				meta[k] = fmt.Sprintf("%v", v)
 			}
+			b.Metadata, _ = types.MapValueFrom(ctx, types.StringType, meta)
 		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return diag.FromErr(err)
-		}
+
+		batches = append(batches, b)
 	}
 
-	return diag.Diagnostics{}
+	data.ID = types.StringValue("batches")
+	if projectID != "" {
+		data.ID = types.StringValue(fmt.Sprintf("batches-%s", projectID))
+	}
+
+	data.Batches, _ = types.ListValueFrom(ctx, types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"id":                types.StringType,
+			"input_file_id":     types.StringType,
+			"endpoint":          types.StringType,
+			"completion_window": types.StringType,
+			"output_file_id":    types.StringType,
+			"error_file_id":     types.StringType,
+			"status":            types.StringType,
+			"created_at":        types.Int64Type,
+			"in_progress_at":    types.Int64Type,
+			"expires_at":        types.Int64Type,
+			"completed_at":      types.Int64Type,
+			"request_counts":    types.MapType{ElemType: types.Int64Type},
+			"metadata":          types.MapType{ElemType: types.StringType},
+		},
+	}, batches)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

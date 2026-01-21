@@ -3,12 +3,12 @@
 page_title: "openai_thread_run Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI run within a thread.
 ---
 
 # openai_thread_run (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI run within a thread.
 
 
 
@@ -17,21 +17,36 @@ description: |-
 
 ### Required
 
-- `run_id` (String) The ID of the run to retrieve
-- `thread_id` (String) The ID of the thread the run belongs to
+- `run_id` (String) The ID of the run.
+- `thread_id` (String) The ID of the thread the run belongs to.
 
 ### Read-Only
 
-- `assistant_id` (String) The ID of the assistant used for the run
-- `completed_at` (Number) The timestamp for when the run was completed
-- `created_at` (Number) The timestamp for when the run was created
-- `file_ids` (List of String) The IDs of the files used in the run
+- `assistant_id` (String) The ID of the assistant used for execution of this run.
+- `cancelled_at` (Number)
+- `completed_at` (Number) The Unix timestamp (in seconds) for when the run was completed.
+- `created_at` (Number) The Unix timestamp (in seconds) for when the run was created.
+- `expires_at` (Number)
+- `failed_at` (Number)
 - `id` (String) The ID of this resource.
-- `instructions` (String) The instructions used for the run
-- `metadata` (Map of String) Metadata associated with the run
-- `model` (String) The ID of the model used for the run
-- `object` (String) The object type, which is always 'thread.run'
-- `started_at` (Number) The timestamp for when the run was started
-- `status` (String) The status of the run (queued, in_progress, completed, failed, etc.)
-- `tools` (List of Map of String) The tools available to the assistant for the run
-- `usage` (Map of Number) Usage statistics for the run
+- `instructions` (String) The instructions that the assistant used for this run.
+- `max_completion_tokens` (Number)
+- `max_prompt_tokens` (Number)
+- `metadata` (Map of String) Set of key-value pairs that can be attached to an object.
+- `model` (String) The model that the assistant used for this run.
+- `object` (String) The object type, which is always 'thread.run'.
+- `response_format` (String)
+- `started_at` (Number) The Unix timestamp (in seconds) for when the run was started.
+- `status` (String) The status of the run.
+- `temperature` (Number)
+- `top_p` (Number)
+- `usage` (Attributes) Usage statistics related to the run. (see [below for nested schema](#nestedatt--usage))
+
+<a id="nestedatt--usage"></a>
+### Nested Schema for `usage`
+
+Read-Only:
+
+- `completion_tokens` (Number)
+- `prompt_tokens` (Number)
+- `total_tokens` (Number)

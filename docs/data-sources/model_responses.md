@@ -17,17 +17,17 @@ Data source for listing OpenAI model responses
 
 ### Optional
 
-- `after` (String) Pagination cursor for fetching responses after this response ID
-- `before` (String) Pagination cursor for fetching responses before this response ID
-- `filter_by_user` (String) Filter responses by user ID
-- `limit` (Number) Limit the number of responses returned (default: 20, max: 100)
-- `order` (String) Sort order by created_at timestamp (asc or desc)
+- `after` (String)
+- `before` (String)
+- `filter_by_user` (String)
+- `limit` (Number)
+- `order` (String)
 
 ### Read-Only
 
-- `has_more` (Boolean) Whether there are more responses to fetch
+- `has_more` (Boolean)
 - `id` (String) The ID of this resource.
-- `responses` (List of Object) (see [below for nested schema](#nestedatt--responses))
+- `responses` (Attributes List) (see [below for nested schema](#nestedatt--responses))
 
 <a id="nestedatt--responses"></a>
 ### Nested Schema for `responses`

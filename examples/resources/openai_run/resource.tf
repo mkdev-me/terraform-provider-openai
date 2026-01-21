@@ -6,9 +6,11 @@ resource "openai_assistant" "code_reviewer" {
 
   instructions = "You are an expert code reviewer. Analyze code for bugs, security issues, performance problems, and suggest improvements. Be constructive and educational in your feedback."
 
-  tools {
-    type = "code_interpreter"
-  }
+  tools = [
+    {
+      type = "code_interpreter"
+    }
+  ]
 
   metadata = {
     version = "1.0"
@@ -18,10 +20,12 @@ resource "openai_assistant" "code_reviewer" {
 
 # Create a thread with code to review
 resource "openai_thread" "code_review_thread" {
-  messages {
-    role    = "user"
-    content = "Please review this Python function for security and performance:\n\n```python\ndef process_user_input(user_data):\n    query = f\"SELECT * FROM users WHERE id = {user_data['id']}\"\n    result = db.execute(query)\n    return result\n```"
-  }
+  messages = [
+    {
+      role    = "user"
+      content = "Please review this Python function for security and performance:\n\n```python\ndef process_user_input(user_data):\n    query = f\"SELECT * FROM users WHERE id = {user_data['id']}\"\n    result = db.execute(query)\n    return result\n```"
+    }
+  ]
 
   metadata = {
     review_type = "security-performance"
@@ -75,7 +79,7 @@ resource "openai_run" "optimization_run" {
   temperature = 0.7
 
   # Optional: Set maximum tokens
-  max_tokens = 1000
+  max_completion_tokens = 1000
 
   metadata = {
     optimization_type = "algorithm"
@@ -94,9 +98,11 @@ resource "openai_assistant" "docs_assistant" {
 
   instructions = "You help users find and understand documentation."
 
-  tools {
-    type = "file_search"
-  }
+  tools = [
+    {
+      type = "file_search"
+    }
+  ]
 
   tool_resources = {
     file_search = {
@@ -118,9 +124,11 @@ resource "openai_run" "docs_search_run" {
   thread_id    = openai_thread.docs_thread.id
   assistant_id = openai_assistant.docs_assistant.id
 
-  tools {
-    type = "file_search"
-  }
+  tools = [
+    {
+      type = "file_search"
+    }
+  ]
 
   metadata = {
     search_type = "documentation"

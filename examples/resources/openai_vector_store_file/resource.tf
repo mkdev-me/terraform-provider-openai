@@ -36,8 +36,8 @@ resource "openai_vector_store_file" "add_tech_docs" {
 
   # Optional: Chunking strategy
   chunking_strategy {
-    type = "fixed"
-    size = 800
+    type                  = "static"
+    max_chunk_size_tokens = 800
   }
 }
 
@@ -58,8 +58,8 @@ resource "openai_vector_store_file" "add_faq" {
   file_id         = openai_file.faq_document.id
 
   chunking_strategy {
-    type = "fixed"
-    size = 200 # Smaller chunks for Q&A format
+    type                  = "static"
+    max_chunk_size_tokens = 200 # Smaller chunks for Q&A format
   }
 }
 
@@ -79,8 +79,8 @@ resource "openai_vector_store_file" "support_knowledge" {
 
   # Larger chunks for conversation context
   chunking_strategy {
-    type = "fixed"
-    size = 1200
+    type                  = "static"
+    max_chunk_size_tokens = 1200
   }
 }
 
@@ -104,8 +104,8 @@ resource "openai_vector_store_file" "code_index" {
 
   # Specific chunking for code
   chunking_strategy {
-    type = "fixed"
-    size = 500
+    type                  = "static"
+    max_chunk_size_tokens = 500
   }
 }
 

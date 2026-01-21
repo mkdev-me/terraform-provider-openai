@@ -3,12 +3,12 @@
 page_title: "openai_assistant Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The assistant resource allows users to create, read, update, and delete assistants through the OpenAI API.
 ---
 
 # openai_assistant (Resource)
 
-
+The assistant resource allows users to create, read, update, and delete assistants through the OpenAI API.
 
 ## Example Usage
 
@@ -71,41 +71,67 @@ output "assistant_id" {
 
 ### Required
 
-- `model` (String) The ID of the model to use for this assistant
+- `model` (String) The ID of the model to use for this assistant.
 
 ### Optional
 
-- `description` (String) The description of the assistant
-- `file_ids` (List of String) A list of file IDs attached to this assistant
-- `instructions` (String) The system instructions that the assistant uses
-- `metadata` (Map of String) Metadata for the assistant
-- `name` (String) The name of the assistant
-- `tools` (Block List) (see [below for nested schema](#nestedblock--tools))
+- `description` (String) The description of the assistant.
+- `file_ids` (List of String) A list of file IDs attached to this assistant.
+- `instructions` (String) The system instructions that the assistant uses.
+- `metadata` (Map of String) Metadata for the assistant.
+- `name` (String) The name of the assistant.
+- `tool_resources` (Attributes) A set of resources that are used by the assistant's tools. (see [below for nested schema](#nestedatt--tool_resources))
+- `tools` (Attributes List) A list of tools enabled on the assistant. (see [below for nested schema](#nestedatt--tools))
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the assistant was created
-- `id` (String) The ID of this resource.
+- `created_at` (Number) The timestamp for when the assistant was created.
+- `id` (String) The identifier of the assistant.
 
-<a id="nestedblock--tools"></a>
+<a id="nestedatt--tool_resources"></a>
+### Nested Schema for `tool_resources`
+
+Optional:
+
+- `code_interpreter` (Attributes) Resources for the code_interpreter tool. (see [below for nested schema](#nestedatt--tool_resources--code_interpreter))
+- `file_search` (Attributes) Resources for the file_search tool. (see [below for nested schema](#nestedatt--tool_resources--file_search))
+
+<a id="nestedatt--tool_resources--code_interpreter"></a>
+### Nested Schema for `tool_resources.code_interpreter`
+
+Optional:
+
+- `file_ids` (List of String) A list of file IDs attached to this assistant.
+
+
+<a id="nestedatt--tool_resources--file_search"></a>
+### Nested Schema for `tool_resources.file_search`
+
+Optional:
+
+- `vector_store_ids` (List of String) A list of vector store IDs attached to this assistant.
+
+
+
+<a id="nestedatt--tools"></a>
 ### Nested Schema for `tools`
 
 Required:
 
-- `type` (String) The type of tool being defined: code_interpreter, retrieval, function, or file_search
+- `type` (String) The type of tool being defined: code_interpreter, retrieval, function, or file_search.
 
 Optional:
 
-- `function` (Block List, Max: 1) (see [below for nested schema](#nestedblock--tools--function))
+- `function` (Attributes List) (see [below for nested schema](#nestedatt--tools--function))
 
-<a id="nestedblock--tools--function"></a>
+<a id="nestedatt--tools--function"></a>
 ### Nested Schema for `tools.function`
 
 Required:
 
-- `name` (String) The name of the function
-- `parameters` (String) The parameters of the function in JSON Schema format (as a string)
+- `name` (String) The name of the function.
+- `parameters` (String) The parameters of the function in JSON Schema format (as a string).
 
 Optional:
 
-- `description` (String) The description of the function
+- `description` (String) The description of the function.

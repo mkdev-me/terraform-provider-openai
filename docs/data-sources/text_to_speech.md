@@ -3,12 +3,12 @@
 page_title: "openai_text_to_speech Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve OpenAI text-to-speech details. This data source verifies the existence of a previously generated speech file.
 ---
 
 # openai_text_to_speech (Data Source)
 
-
+Use this data source to retrieve OpenAI text-to-speech details. This data source verifies the existence of a previously generated speech file.
 
 
 
