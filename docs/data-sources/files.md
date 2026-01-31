@@ -3,12 +3,12 @@
 page_title: "openai_files Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Files data source allows you to list files.
 ---
 
 # openai_files (Data Source)
 
-
+Files data source allows you to list files.
 
 ## Example Usage
 
@@ -35,12 +35,12 @@ output "total_files" {
 
 ### Optional
 
-- `project_id` (String) The project ID to associate with this file lookup (for Terraform reference only, not sent to OpenAI API)
+- `project_id` (String) The project ID (for Terraform logic only)
 - `purpose` (String) Filter files by purpose (e.g., 'fine-tune', 'assistants', etc.)
 
 ### Read-Only
 
-- `files` (List of Object) List of OpenAI files (see [below for nested schema](#nestedatt--files))
+- `files` (Attributes List) List of files. (see [below for nested schema](#nestedatt--files))
 - `id` (String) The ID of this resource.
 
 <a id="nestedatt--files"></a>
@@ -48,9 +48,9 @@ output "total_files" {
 
 Read-Only:
 
-- `bytes` (Number)
-- `created_at` (String)
-- `filename` (String)
-- `id` (String)
-- `object` (String)
-- `purpose` (String)
+- `bytes` (Number) The size of the file in bytes.
+- `created_at` (Number) The timestamp when the file was created.
+- `filename` (String) The name of the file.
+- `id` (String) The ID of the file.
+- `object` (String) The object type.
+- `purpose` (String) The purpose of the file.

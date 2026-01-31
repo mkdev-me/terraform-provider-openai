@@ -3,12 +3,12 @@
 page_title: "openai_audio_translation Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  Creates an audio translation. Note: This resource does not support updates - any configuration change will create a new resource.
+  Creates an audio translation. Note: This resource does not support updates.
 ---
 
 # openai_audio_translation (Resource)
 
-Creates an audio translation. Note: This resource does not support updates - any configuration change will create a new resource.
+Creates an audio translation. Note: This resource does not support updates.
 
 ## Example Usage
 
@@ -69,34 +69,28 @@ output "translated_text" {
 
 ### Required
 
-- `file` (String) Path to the audio file to translate (format: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, or webm)
-- `model` (String) ID of the model to use. Currently only 'whisper-1' is supported for audio translation.
+- `file` (String) Path to the audio file to translate.
+- `model` (String) ID of the model to use (e.g., 'whisper-1').
 
 ### Optional
 
-- `prompt` (String) An optional text to guide the model's style or continue a previous audio segment. The prompt should be in English.
-- `response_format` (String) The format of the translation output
-- `temperature` (Number) The sampling temperature, between 0 and 1
+- `prompt` (String) An optional text to guide the model.
+- `response_format` (String) The format of the transcript output (e.g. json, text).
+- `temperature` (Number) The sampling temperature, between 0 and 1.
 
 ### Read-Only
 
-- `duration` (Number) The duration of the audio in seconds
-- `id` (String) The ID of this resource.
-- `segments` (List of Object) (see [below for nested schema](#nestedatt--segments))
-- `text` (String) The translated text
+- `duration` (Number) Duration of the audio in seconds.
+- `id` (String) The identifier.
+- `segments` (List of Object) Segments of the translation. (see [below for nested schema](#nestedatt--segments))
+- `text` (String) The translated text.
 
 <a id="nestedatt--segments"></a>
 ### Nested Schema for `segments`
 
 Read-Only:
 
-- `avg_logprob` (Number)
-- `compression_ratio` (Number)
 - `end` (Number)
 - `id` (Number)
-- `no_speech_prob` (Number)
-- `seek` (Number)
 - `start` (Number)
-- `temperature` (Number)
 - `text` (String)
-- `tokens` (List of Number)

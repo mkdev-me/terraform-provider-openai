@@ -3,12 +3,12 @@
 page_title: "openai_project Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI Project.
 ---
 
 # openai_project (Resource)
 
-
+Manages an OpenAI Project.
 
 ## Example Usage
 
@@ -35,27 +35,14 @@ output "dev_project_id" {
 
 ### Required
 
-- `name` (String) The name of the project
-
-### Optional
-
-- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `name` (String) The name of the project.
 
 ### Read-Only
 
-- `archived_at` (String) Timestamp when the project was archived, if applicable
-- `created_at` (String) Timestamp when the project was created
-- `id` (String) The ID of this resource.
-- `status` (String) Status of the project (active, archived, etc.)
-
-<a id="nestedblock--timeouts"></a>
-### Nested Schema for `timeouts`
-
-Optional:
-
-- `create` (String)
-- `delete` (String)
-- `update` (String)
+- `archived_at` (String) The timestamp when the project was archived.
+- `created_at` (String) The timestamp when the project was created.
+- `id` (String) The identifier of the project.
+- `status` (String) The status of the project (e.g. active, archived).
 
 ## Import
 

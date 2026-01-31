@@ -3,12 +3,12 @@
 page_title: "openai_file Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  File data source allows you to retrieve details of a specific file.
 ---
 
 # openai_file (Data Source)
 
-
+File data source allows you to retrieve details of a specific file.
 
 ## Example Usage
 
@@ -29,16 +29,16 @@ output "file_id" {
 
 ### Required
 
-- `file_id` (String) The ID of the file to retrieve
+- `file_id` (String) The ID of the file to retrieve.
 
 ### Optional
 
-- `project_id` (String) The project ID to associate with this file lookup (for Terraform reference only, not sent to OpenAI API)
+- `project_id` (String) The project ID (for Terraform logic only)
 
 ### Read-Only
 
-- `bytes` (Number) The size of the file in bytes
-- `created_at` (Number) The timestamp for when the file was created
-- `filename` (String) The name of the file
-- `id` (String) The ID of this resource.
-- `purpose` (String) The purpose of the file
+- `bytes` (Number) The size of the file in bytes.
+- `created_at` (Number) The timestamp when the file was created.
+- `filename` (String) The name of the file.
+- `id` (String) The ID of the file.
+- `purpose` (String) The purpose of the file.

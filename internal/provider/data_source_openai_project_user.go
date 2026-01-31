@@ -2,217 +2,469 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// dataSourceOpenAIProjectUser returns a schema.Resource that represents a data source for an OpenAI project user.
-// This data source allows users to retrieve information about a specific user in an OpenAI project.
-func dataSourceOpenAIProjectUser() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIProjectUserRead,
-		Schema: map[string]*schema.Schema{
-			"project_id": {
-				Type:        schema.TypeString,
+var _ datasource.DataSource = &ProjectUserDataSource{}
+
+func NewProjectUserDataSource() datasource.DataSource {
+	return &ProjectUserDataSource{}
+}
+
+type ProjectUserDataSource struct {
+	client *OpenAIClient
+}
+
+type ProjectUserDataSourceModel struct {
+	ProjectID types.String `tfsdk:"project_id"`
+	UserID    types.String `tfsdk:"user_id"`
+	Email     types.String `tfsdk:"email"`
+	ID        types.String `tfsdk:"id"`
+	Role      types.String `tfsdk:"role"`
+	AddedAt   types.Int64  `tfsdk:"added_at"`
+}
+
+func (d *ProjectUserDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_project_user"
+}
+
+func (d *ProjectUserDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific user in an OpenAI project.",
+		Attributes: map[string]schema.Attribute{
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project to retrieve the user from.",
 				Required:    true,
-				Description: "The ID of the project to retrieve the user from",
 			},
-			"user_id": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Description:  "The ID of the user to retrieve",
-				AtLeastOneOf: []string{"user_id", "email"},
+			"user_id": schema.StringAttribute{
+				Description: "The ID of the user to retrieve.",
+				Optional:    true,
 			},
-			"email": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Description:  "The email address of the user to retrieve",
-				AtLeastOneOf: []string{"user_id", "email"},
+			"email": schema.StringAttribute{
+				Description: "The email address of the user to retrieve.",
+				Optional:    true,
 			},
-			"role": {
-				Type:        schema.TypeString,
+			"id": schema.StringAttribute{
+				Description: "The ID of the resource (composite of project_id:user_id).",
 				Computed:    true,
-				Description: "The role of the user in the project (owner or member)",
 			},
-			"added_at": {
-				Type:        schema.TypeInt,
+			"role": schema.StringAttribute{
+				Description: "The role of the user in the project (owner or member).",
 				Computed:    true,
-				Description: "Timestamp when the user was added to the project",
+			},
+			"added_at": schema.Int64Attribute{
+				Description: "Timestamp when the user was added to the project.",
+				Computed:    true,
 			},
 		},
 	}
 }
 
-// dataSourceFindProjectUser finds a user in a project by ID with automatic pagination.
-// This is used by the data source to ensure proper user lookups across all pages.
-func dataSourceFindProjectUser(ctx context.Context, c interface{}, projectID, userID string) (*client.ProjectUser, bool, error) {
-	clientInstance, err := GetOpenAIClientWithAdminKey(c)
-	if err != nil {
-		return nil, false, err
+func (d *ProjectUserDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
 
-	const batchSize = 100
-	tflog.Debug(ctx, fmt.Sprintf("Finding user %s in project %s with pagination", userID, projectID))
+	client, ok := req.ProviderData.(*OpenAIClient)
 
-	var after string
-	hasMore := true
-	pageCount := 0
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
 
-	for hasMore {
-		pageCount++
-		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
-
-		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
-		if err != nil {
-			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
-		}
-
-		// Look for the user in this page
-		for _, user := range userList.Data {
-			if user.ID == userID {
-				tflog.Debug(ctx, fmt.Sprintf("Found user %s in project %s on page %d", userID, projectID, pageCount))
-				return &user, true, nil
-			}
-		}
-
-		// Check if there are more pages
-		hasMore = userList.HasMore
-		if hasMore && userList.LastID != "" {
-			after = userList.LastID
-		}
+		return
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("User %s not found in project %s after checking %d pages", userID, projectID, pageCount))
-	return nil, false, nil
+	d.client = client
 }
 
-// dataSourceFindProjectUserByEmail finds a user in a project by email with automatic pagination.
-// This is used by the data source to ensure proper user lookups across all pages.
-func dataSourceFindProjectUserByEmail(ctx context.Context, c interface{}, projectID, email string) (*client.ProjectUser, bool, error) {
-	clientInstance, err := GetOpenAIClientWithAdminKey(c)
-	if err != nil {
-		return nil, false, err
+func (d *ProjectUserDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ProjectUserDataSourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	const batchSize = 100
-	tflog.Debug(ctx, fmt.Sprintf("Finding user by email %s in project %s with pagination", email, projectID))
+	projectID := data.ProjectID.ValueString()
+	userID := data.UserID.ValueString()
+	email := data.Email.ValueString()
 
-	var after string
-	hasMore := true
-	pageCount := 0
-
-	for hasMore {
-		pageCount++
-		tflog.Debug(ctx, fmt.Sprintf("Fetching page %d for project %s (after: %s)", pageCount, projectID, after))
-
-		userList, err := clientInstance.ListProjectUsers(projectID, after, batchSize)
-		if err != nil {
-			return nil, false, fmt.Errorf("error fetching project users (page %d): %w", pageCount, err)
-		}
-
-		// Look for the user with matching email in this page (case insensitive)
-		for _, user := range userList.Data {
-			if strings.EqualFold(user.Email, email) {
-				tflog.Debug(ctx, fmt.Sprintf("Found user with email %s in project %s on page %d", email, projectID, pageCount))
-				return &user, true, nil
-			}
-		}
-
-		// Check if there are more pages
-		hasMore = userList.HasMore
-		if hasMore && userList.LastID != "" {
-			after = userList.LastID
-		}
+	if userID == "" && email == "" {
+		resp.Diagnostics.AddError(
+			"Missing User Identifier",
+			"Either user_id or email must be provided.",
+		)
+		return
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("User with email %s not found in project %s after checking %d pages", email, projectID, pageCount))
-	return nil, false, nil
-}
-
-// dataSourceOpenAIProjectUserRead handles the read operation for the OpenAI project user data source.
-// It retrieves information about a specific user in a project from the OpenAI API.
-func dataSourceOpenAIProjectUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	projectID := d.Get("project_id").(string)
-	if projectID == "" {
-		return diag.FromErr(fmt.Errorf("project_id is required"))
+	// We need Admin Key
+	adminKey := d.client.AdminAPIKey
+	if adminKey == "" {
+		resp.Diagnostics.AddError(
+			"Missing Admin API Key",
+			"The provider must be configured with an Admin API Key (admin_key) to read project users.",
+		)
+		return
 	}
 
-	var projectUser *client.ProjectUser
-	var exists bool
-	var err error
+	// Helper to fetch all users and find logic
+	// Since we don't have a direct "Get Project User by Email" API, we likely need to list and filter.
+	// Even for ID, checking existence via list is common if Get endpoint doesn't exist or we want to be safe.
+	// Actually typical API is GET /v1/organization/projects/{project_id}/users/{user_id}
+	// Let's check if that endpoint exists.
+	// Legacy code uses `ListProjectUsers` for both ID and Email lookup.
+	// This implies there might NOT be a direct GET endpoint or legacy implementation preferred listing.
+	// Checking `dataSourceFindProjectUser` in legacy: it loops `ListProjectUsers`.
+	// So we must replicate that.
 
-	// Check if we're looking up by user_id or email
-	if userID, ok := d.GetOk("user_id"); ok {
-		// Look up by user ID
-		userID := userID.(string)
-		if userID == "" {
-			return diag.FromErr(fmt.Errorf("user_id cannot be empty"))
-		}
+	apiURL := d.client.OpenAIClient.APIURL
+	// /v1/organization/projects/{project_id}/users
+	suffix := fmt.Sprintf("/organization/projects/%s/users", projectID)
 
-		tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in project %s", userID, projectID))
-
-		// Check if the user exists in the project using the provider's API key
-		projectUser, exists, err = dataSourceFindProjectUser(ctx, m, projectID, userID)
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists: %v", err))
-			return diag.Errorf("Error checking if user exists in project: %s", err)
-		}
-
-		if !exists {
-			return diag.FromErr(fmt.Errorf("user with ID %s not found in project %s", userID, projectID))
-		}
-
-		// Generate a unique ID for the resource
-		d.SetId(fmt.Sprintf("%s:%s", projectID, userID))
-	} else if email, ok := d.GetOk("email"); ok {
-		// Look up by email
-		email := email.(string)
-		if email == "" {
-			return diag.FromErr(fmt.Errorf("email cannot be empty"))
-		}
-
-		tflog.Debug(ctx, fmt.Sprintf("Checking if user with email %s exists in project %s", email, projectID))
-
-		// Check if the user exists in the project by email using the provider's API key
-		projectUser, exists, err = dataSourceFindProjectUserByEmail(ctx, m, projectID, email)
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("Error checking if user exists by email: %v", err))
-			return diag.Errorf("Error checking if user exists in project by email: %s", err)
-		}
-
-		if !exists {
-			return diag.FromErr(fmt.Errorf("user with email %s not found in project %s", email, projectID))
-		}
-
-		// Generate a unique ID for the resource using the actual user ID
-		d.SetId(fmt.Sprintf("%s:%s", projectID, projectUser.ID))
+	var reqURL string
+	if strings.Contains(apiURL, "/v1") {
+		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1" + suffix
 	} else {
-		// This should never happen due to schema validation
-		return diag.Errorf("either user_id or email must be provided")
+		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1" + suffix
 	}
 
-	// Update the state with both user_id and email for convenience
-	if err := d.Set("user_id", projectUser.ID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting user_id: %s", err))
+	var foundUser *ProjectUserResponseFramework
+	cursor := ""
+
+	// Loop until found or done
+	for foundUser == nil {
+		parsedURL, _ := url.Parse(reqURL)
+		q := parsedURL.Query()
+		q.Set("limit", "100")
+		if cursor != "" {
+			q.Set("after", cursor)
+		}
+		parsedURL.RawQuery = q.Encode()
+
+		httpRequest, err := http.NewRequest("GET", parsedURL.String(), nil)
+		if err != nil {
+			resp.Diagnostics.AddError("Error creating request", err.Error())
+			return
+		}
+
+		httpRequest.Header.Set("Authorization", "Bearer "+adminKey)
+		httpRequest.Header.Set("Content-Type", "application/json")
+
+		httpClient := &http.Client{}
+		httpResp, err := httpClient.Do(httpRequest)
+		if err != nil {
+			resp.Diagnostics.AddError("Error executing request", err.Error())
+			return
+		}
+		defer httpResp.Body.Close()
+
+		if httpResp.StatusCode != 200 {
+			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
+			return
+		}
+
+		// We need a list response struct for Project Users
+		// I'll define it here locally or check if I defined it earlier.
+		// ProjectUserResponseFramework is in types_project_org.go.
+		type ProjectUserListResponse struct {
+			Object  string                         `json:"object"`
+			Data    []ProjectUserResponseFramework `json:"data"`
+			FirstID string                         `json:"first_id"`
+			LastID  string                         `json:"last_id"`
+			HasMore bool                           `json:"has_more"`
+		}
+
+		var listResp ProjectUserListResponse
+		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			resp.Diagnostics.AddError("Error decoding response", err.Error())
+			return
+		}
+
+		for i := range listResp.Data {
+			user := listResp.Data[i]
+			if userID != "" && user.ID == userID {
+				foundUser = &user
+				break
+			}
+			if email != "" && strings.EqualFold(user.Email, email) {
+				foundUser = &user
+				break
+			}
+		}
+
+		if foundUser != nil {
+			break
+		}
+
+		if !listResp.HasMore || listResp.LastID == "" {
+			break
+		}
+		cursor = listResp.LastID
 	}
 
-	if err := d.Set("email", projectUser.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting email: %s", err))
+	if foundUser == nil {
+		identifier := userID
+		if identifier == "" {
+			identifier = email
+		}
+		resp.Diagnostics.AddError(
+			"User Not Found",
+			fmt.Sprintf("User %s not found in project %s", identifier, projectID),
+		)
+		return
 	}
 
-	// Update the state with the project user details
-	if err := d.Set("role", projectUser.Role); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting role: %s", err))
-	}
+	data.ID = types.StringValue(fmt.Sprintf("%s:%s", projectID, foundUser.ID))
+	data.UserID = types.StringValue(foundUser.ID) // Store actual ID even if lookup was by email
+	data.Email = types.StringValue(foundUser.Email)
+	data.Role = types.StringValue(foundUser.Role)
+	data.AddedAt = types.Int64Value(foundUser.AddedAt)
 
-	if err := d.Set("added_at", projectUser.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
-	}
-
-	return nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
+
+// ProjectUsersDataSource
+
+func NewProjectUsersDataSource() datasource.DataSource {
+	return &ProjectUsersDataSource{}
+}
+
+type ProjectUsersDataSource struct {
+	client *OpenAIClient
+}
+
+type ProjectUsersDataSourceModel struct {
+	ProjectID types.String             `tfsdk:"project_id"`
+	Users     []ProjectUserResultModel `tfsdk:"users"`
+	UserIDs   []types.String           `tfsdk:"user_ids"`
+	UserCount types.Int64              `tfsdk:"user_count"`
+	OwnerIDs  []types.String           `tfsdk:"owner_ids"`
+	MemberIDs []types.String           `tfsdk:"member_ids"`
+	ID        types.String             `tfsdk:"id"`
+}
+
+type ProjectUserResultModel struct {
+	ID      types.String `tfsdk:"id"`
+	Email   types.String `tfsdk:"email"`
+	Role    types.String `tfsdk:"role"`
+	AddedAt types.Int64  `tfsdk:"added_at"`
+}
+
+func (d *ProjectUsersDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_project_users"
+}
+
+func (d *ProjectUsersDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve a list of all users in a specific OpenAI project.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of this resource.",
+				Computed:    true,
+			},
+			"project_id": schema.StringAttribute{
+				Description: "The ID of the project to retrieve users from.",
+				Required:    true,
+			},
+			"users": schema.ListNestedAttribute{
+				Description: "List of users in the project.",
+				Computed:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							Description: "The ID of the user.",
+							Computed:    true,
+						},
+						"email": schema.StringAttribute{
+							Description: "The email address of the user.",
+							Computed:    true,
+						},
+						"role": schema.StringAttribute{
+							Description: "The role of the user (owner or member).",
+							Computed:    true,
+						},
+						"added_at": schema.Int64Attribute{
+							Description: "Timestamp when the user was added to the project.",
+							Computed:    true,
+						},
+					},
+				},
+			},
+			"user_ids": schema.ListAttribute{
+				Description: "List of user IDs in the project.",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
+			"user_count": schema.Int64Attribute{
+				Description: "Number of users in the project.",
+				Computed:    true,
+			},
+			"owner_ids": schema.ListAttribute{
+				Description: "List of user IDs with owner role.",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
+			"member_ids": schema.ListAttribute{
+				Description: "List of user IDs with member role.",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
+		},
+	}
+}
+
+func (d *ProjectUsersDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+}
+
+func (d *ProjectUsersDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ProjectUsersDataSourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	projectID := data.ProjectID.ValueString()
+	adminKey := d.client.AdminAPIKey
+	if adminKey == "" {
+		resp.Diagnostics.AddError(
+			"Missing Admin API Key",
+			"Admin API Key is required.",
+		)
+		return
+	}
+
+	apiURL := d.client.OpenAIClient.APIURL
+	// /v1/organization/projects/{project_id}/users
+	suffix := fmt.Sprintf("/organization/projects/%s/users", projectID)
+
+	var reqURL string
+	if strings.Contains(apiURL, "/v1") {
+		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1" + suffix
+	} else {
+		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1" + suffix
+	}
+
+	var allUsers []ProjectUserResultModel
+	var userIDs []string
+	var ownerIDs []string
+	var memberIDs []string
+
+	cursor := ""
+	for {
+		parsedURL, _ := url.Parse(reqURL)
+		q := parsedURL.Query()
+		q.Set("limit", "100")
+		if cursor != "" {
+			q.Set("after", cursor)
+		}
+		parsedURL.RawQuery = q.Encode()
+
+		httpRequest, err := http.NewRequest("GET", parsedURL.String(), nil)
+		if err != nil {
+			resp.Diagnostics.AddError("Error creating request", err.Error())
+			return
+		}
+		httpRequest.Header.Set("Authorization", "Bearer "+adminKey)
+		httpRequest.Header.Set("Content-Type", "application/json")
+
+		httpClient := &http.Client{}
+		httpResp, err := httpClient.Do(httpRequest)
+		if err != nil {
+			resp.Diagnostics.AddError("Error executing request", err.Error())
+			return
+		}
+		defer httpResp.Body.Close()
+
+		if httpResp.StatusCode != 200 {
+			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
+			return
+		}
+
+		type ProjectUserListResponse struct {
+			Object  string                         `json:"object"`
+			Data    []ProjectUserResponseFramework `json:"data"`
+			FirstID string                         `json:"first_id"`
+			LastID  string                         `json:"last_id"`
+			HasMore bool                           `json:"has_more"`
+		}
+
+		var listResp ProjectUserListResponse
+		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			resp.Diagnostics.AddError("Error decoding response", err.Error())
+			return
+		}
+
+		for _, u := range listResp.Data {
+			userModel := ProjectUserResultModel{
+				ID:      types.StringValue(u.ID),
+				Email:   types.StringValue(u.Email),
+				Role:    types.StringValue(u.Role),
+				AddedAt: types.Int64Value(u.AddedAt),
+			}
+			allUsers = append(allUsers, userModel)
+			userIDs = append(userIDs, u.ID)
+
+			if u.Role == "owner" {
+				ownerIDs = append(ownerIDs, u.ID)
+			} else if u.Role == "member" {
+				memberIDs = append(memberIDs, u.ID)
+			}
+		}
+
+		if !listResp.HasMore || listResp.LastID == "" {
+			break
+		}
+		cursor = listResp.LastID
+	}
+
+	data.ID = types.StringValue(projectID)
+	data.Users = allUsers
+	data.UserCount = types.Int64Value(int64(len(allUsers)))
+
+	data.UserIDs = make([]types.String, len(userIDs))
+	for i, v := range userIDs {
+		data.UserIDs[i] = types.StringValue(v)
+	}
+
+	data.OwnerIDs = make([]types.String, len(ownerIDs))
+	for i, v := range ownerIDs {
+		data.OwnerIDs[i] = types.StringValue(v)
+	}
+
+	data.MemberIDs = make([]types.String, len(memberIDs))
+	for i, v := range memberIDs {
+		data.MemberIDs[i] = types.StringValue(v)
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// ProjectUserResponseFramework defined in types_project_org.go

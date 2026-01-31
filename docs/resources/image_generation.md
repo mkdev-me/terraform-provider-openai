@@ -3,12 +3,12 @@
 page_title: "openai_image_generation Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Generates images from text.
 ---
 
 # openai_image_generation (Resource)
 
-
+Generates images from text.
 
 ## Example Usage
 
@@ -41,21 +41,21 @@ output "image_url" {
 
 ### Required
 
-- `prompt` (String) A text description of the desired image(s)
+- `prompt` (String)
 
 ### Optional
 
-- `model` (String) The model to use for image generation
-- `n` (Number) The number of images to generate. Must be between 1 and 10.
-- `quality` (String) The quality of the image that will be generated. Can be 'standard' or 'hd'.
-- `response_format` (String) The format in which the generated images are returned. Can be 'url' or 'b64_json'.
-- `size` (String) The size of the generated images
-- `style` (String) The style of the generated images. Can be 'vivid' or 'natural'.
-- `user` (String) A unique identifier representing your end-user
+- `model` (String)
+- `n` (Number)
+- `quality` (String)
+- `response_format` (String)
+- `size` (String)
+- `style` (String)
+- `user` (String)
 
 ### Read-Only
 
-- `created` (Number) The timestamp for when the image was created
+- `created` (Number)
 - `data` (List of Object) (see [below for nested schema](#nestedatt--data))
 - `id` (String) The ID of this resource.
 

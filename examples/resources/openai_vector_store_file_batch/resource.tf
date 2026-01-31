@@ -53,8 +53,8 @@ resource "openai_vector_store_file_batch" "documentation_batch" {
 
   # Optional: Default chunking strategy for all files
   chunking_strategy {
-    type = "fixed"
-    size = 600
+    type                  = "static"
+    max_chunk_size_tokens = 600
   }
 }
 
@@ -138,8 +138,8 @@ resource "openai_vector_store_file_batch" "research_batch" {
 
   # Academic papers need larger chunks for context
   chunking_strategy {
-    type = "fixed"
-    size = 1000
+    type                  = "static"
+    max_chunk_size_tokens = 1000
   }
 }
 

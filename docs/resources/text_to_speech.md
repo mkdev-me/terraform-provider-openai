@@ -3,12 +3,12 @@
 page_title: "openai_text_to_speech Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Generates audio from text.
 ---
 
 # openai_text_to_speech (Resource)
 
-
+Generates audio from text.
 
 ## Example Usage
 
@@ -17,7 +17,7 @@ resource "openai_text_to_speech" "example" {
   model       = "tts-1"
   input       = "Hello world! This is a test of the OpenAI text-to-speech API."
   voice       = "alloy"
-  output_path = "output/speech.mp3"
+  output_file = "output/speech.mp3"
 
   # Optional parameters
   response_format = "mp3"
@@ -25,7 +25,7 @@ resource "openai_text_to_speech" "example" {
 }
 
 output "audio_file_path" {
-  value = openai_text_to_speech.example.output_path
+  value = openai_text_to_speech.example.output_file
 }
 ```
 
@@ -34,20 +34,20 @@ output "audio_file_path" {
 
 ### Required
 
-- `input` (String) The text to convert to speech. Max length is 4096 characters.
-- `model` (String) The model to use for text-to-speech conversion. Options include 'tts-1', 'tts-1-hd', and 'gpt-4o-mini-tts'.
-- `output_file` (String) The path where the audio file will be saved.
-- `voice` (String) The voice to use for speech. Options include 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'ballad', 'coral', 'sage', and 'verse'.
+- `input` (String) The text input.
+- `model` (String) The model to use.
+- `output_file` (String) Path to save the output audio.
+- `voice` (String) The voice to use.
 
 ### Optional
 
-- `instructions` (String) Control the voice of your generated audio with additional instructions. Only works with 'gpt-4o-mini-tts' model.
-- `response_format` (String) The format of the audio output. Options include 'mp3', 'opus', 'aac', 'flac', 'wav', and 'pcm'.
-- `speed` (Number) The speed of the audio output. Must be between 0.25 and 4.0. Default is 1.0.
+- `instructions` (String)
+- `response_format` (String) Audio format.
+- `speed` (Number)
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp when the speech was generated.
+- `created_at` (Number)
 - `id` (String) The ID of this resource.
 
 ## Import

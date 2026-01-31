@@ -3,12 +3,12 @@
 page_title: "openai_admin_api_key Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI admin API key.
 ---
 
 # openai_admin_api_key (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI admin API key.
 
 
 
@@ -17,13 +17,13 @@ description: |-
 
 ### Required
 
-- `api_key_id` (String) The ID of the admin API key to retrieve
+- `api_key_id` (String) The ID of the admin API key to retrieve.
 
 ### Read-Only
 
-- `created_at` (String) Timestamp when the admin API key was created
-- `expires_at` (Number) Timestamp when the admin API key expires (optional)
-- `id` (String) The ID of this resource.
-- `name` (String) The name of the admin API key
-- `object` (String) The object type
-- `scopes` (List of String) Scopes assigned to the admin API key
+- `created_at` (String) Timestamp when the admin API key was created.
+- `expires_at` (Number) Timestamp when the admin API key expires (optional).
+- `id` (String) The ID of the admin API key.
+- `name` (String) The name of the admin API key.
+- `object` (String) The object type.
+- `scopes` (List of String) Scopes assigned to the admin API key.

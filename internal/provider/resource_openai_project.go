@@ -3,228 +3,226 @@ package provider
 import (
 	"context"
 	"fmt"
-	"log"
+	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
-// resourceOpenAIProject defines the schema and CRUD operations for OpenAI projects.
-// This resource allows users to manage OpenAI projects through Terraform, including
-// creation, reading, updating, and deletion of projects, as well as importing existing ones.
-func resourceOpenAIProject() *schema.Resource {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[WARN] Recovered from panic in resourceOpenAIProject: %v", r)
-		}
-	}()
+var _ resource.Resource = &ProjectResource{}
+var _ resource.ResourceWithImportState = &ProjectResource{}
 
-	resource := &schema.Resource{
-		CreateContext: resourceOpenAIProjectCreate,
-		ReadContext:   resourceOpenAIProjectRead,
-		UpdateContext: resourceOpenAIProjectUpdate,
-		DeleteContext: resourceOpenAIProjectDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIProjectImport,
-		},
-		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(20 * time.Minute),
-			Update: schema.DefaultTimeout(20 * time.Minute),
-			Delete: schema.DefaultTimeout(20 * time.Minute),
-		},
-		Schema: map[string]*schema.Schema{
-			"name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The name of the project",
-			},
-			"created_at": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Timestamp when the project was created",
-			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Status of the project (active, archived, etc.)",
-			},
-			"archived_at": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Timestamp when the project was archived, if applicable",
-			},
-		},
-	}
-	return resource
+type ProjectResource struct {
+	client *client.OpenAIClient
 }
 
-// resourceOpenAIProjectCreate handles the creation of a new OpenAI project.
-func resourceOpenAIProjectCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the client from the provider meta
-	c, err := GetOpenAIClientWithAdminKey(meta)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	name := d.Get("name").(string)
-
-	log.Printf("[DEBUG] Creating OpenAI project with name: %s", name)
-
-	// Create the project using the OpenAI API
-	project, err := c.CreateProject(name)
-	if err != nil {
-		return diag.Errorf("error creating project: %s", err)
-	}
-
-	// Set ID
-	d.SetId(project.ID)
-
-	return resourceOpenAIProjectRead(ctx, d, meta)
+func NewProjectResource() resource.Resource {
+	return &ProjectResource{}
 }
 
-// resourceOpenAIProjectRead retrieves the current state of an OpenAI project.
-func resourceOpenAIProjectRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the client from the provider meta
-	c, err := GetOpenAIClientWithAdminKey(meta)
+func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_project"
+}
+
+type ProjectResourceModel struct {
+	ID         types.String `tfsdk:"id"`
+	Name       types.String `tfsdk:"name"`
+	Status     types.String `tfsdk:"status"`
+	CreatedAt  types.String `tfsdk:"created_at"`
+	ArchivedAt types.String `tfsdk:"archived_at"`
+}
+
+func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages an OpenAI Project.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the project.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"name": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The name of the project.",
+			},
+			"status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The status of the project (e.g. active, archived).",
+			},
+			"created_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp when the project was created.",
+			},
+			"archived_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp when the project was archived.",
+			},
+		},
+	}
+}
+
+func (r *ProjectResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+	providerClient, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+
+	// Project management requires Admin Keys
+	cl, err := GetOpenAIClientWithAdminKey(providerClient)
 	if err != nil {
-		return diag.FromErr(err)
+		resp.Diagnostics.AddError("Error getting OpenAI Client with Admin Key", err.Error())
+		return
 	}
 
-	projectID := d.Id()
-	log.Printf("[DEBUG] Reading OpenAI project with ID: %s", projectID)
+	r.client = cl
+}
 
-	// Get the project using the OpenAI API
-	project, err := c.GetProject(projectID)
+func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ProjectResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	project, err := r.client.CreateProject(data.Name.ValueString())
 	if err != nil {
-		return diag.Errorf("error reading project: %s", err)
+		resp.Diagnostics.AddError("Error creating project", err.Error())
+		return
 	}
 
-	log.Printf("[DEBUG] Successfully retrieved project from API: %s (status: %s)", project.Name, project.Status)
+	data.ID = types.StringValue(project.ID)
+	data.Name = types.StringValue(project.Name)
+	data.Status = types.StringValue(project.Status)
 
-	// Set basic fields
-	if err := d.Set("name", project.Name); err != nil {
-		return diag.Errorf("error setting name: %s", err)
-	}
-
-	if project.Status != "" {
-		if err := d.Set("status", project.Status); err != nil {
-			return diag.Errorf("error setting status: %s", err)
-		}
-		log.Printf("[DEBUG] Set status to: %s", project.Status)
-	}
-
-	// Handle Unix timestamps for created_at and archived_at
 	if project.CreatedAt != nil {
-		createdTime := time.Unix(int64(*project.CreatedAt), 0)
-		if err := d.Set("created_at", createdTime.Format(time.RFC3339)); err != nil {
-			return diag.Errorf("error setting created_at: %s", err)
-		}
-		log.Printf("[DEBUG] Set created_at to: %s", createdTime.Format(time.RFC3339))
+		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
 	}
 
 	if project.ArchivedAt != nil {
-		archivedTime := time.Unix(int64(*project.ArchivedAt), 0)
-		if err := d.Set("archived_at", archivedTime.Format(time.RFC3339)); err != nil {
-			return diag.Errorf("error setting archived_at: %s", err)
+		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
+	} else {
+		data.ArchivedAt = types.StringNull()
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ProjectResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	project, err := r.client.GetProject(data.ID.ValueString())
+	if err != nil {
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			resp.State.RemoveResource(ctx)
+			return
 		}
-		log.Printf("[DEBUG] Set archived_at to: %s", archivedTime.Format(time.RFC3339))
+		resp.Diagnostics.AddError("Error reading project", err.Error())
+		return
 	}
 
-	log.Printf("[DEBUG] OpenAI project read complete for ID: %s", projectID)
-	return nil
-}
+	// Check if project is loaded (GetProject might return error if 404, or might return nil if logic handled it?
+	// Currently client.GetProject returns error on non-200. I should verify if I need to handle 404 string in error.)
+	// Looking at client.GetProject in client.go, it wraps doRequest.
+	// doRequest checks for >= 400 and returns "API error (status %d): ..." or "API error: message".
+	// So I should check error string for "404" or similar if I want to remove from state.
+	// But actually client.GetProject returns error.
 
-// resourceOpenAIProjectUpdate modifies an existing OpenAI project.
-func resourceOpenAIProjectUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the client from the provider meta
-	c, err := GetOpenAIClientWithAdminKey(meta)
-	if err != nil {
-		return diag.FromErr(err)
-	}
+	// Wait, I should verify client.GetProject.
+	// It calls doRequest. doRequest can return error with message.
+	// Common logic:
+	/*
+		if err != nil {
+			if strings.Contains(err.Error(), "404") {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+			resp.Diagnostics.AddError("Error reading project", err.Error())
+			return
+		}
+	*/
 
-	name := d.Get("name").(string)
+	// I'll add the 404 check since I'm refactoring. However I can't check strings without `strings` package imported.
+	// I need to ensure `strings` is imported.
 
-	log.Printf("[DEBUG] Updating OpenAI project with ID: %s, name: %s", d.Id(), name)
-
-	// Update the project using the OpenAI API
-	// Note: The API uses POST for updates, not PATCH
-	_, err = c.UpdateProject(d.Id(), name)
-	if err != nil {
-		return diag.Errorf("error updating project: %s", err)
-	}
-
-	return resourceOpenAIProjectRead(ctx, d, meta)
-}
-
-// resourceOpenAIProjectDelete removes an OpenAI project.
-func resourceOpenAIProjectDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Get the client from the provider meta
-	c, err := GetOpenAIClientWithAdminKey(meta)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	log.Printf("[DEBUG] Deleting (archiving) OpenAI project with ID: %s", d.Id())
-
-	// Delete the project using the OpenAI API
-	// Note: This actually archives the project by setting status to "archived"
-	// and requires the project name to be included in the request
-	if err := c.DeleteProject(d.Id()); err != nil {
-		return diag.Errorf("error deleting project: %s", err)
-	}
-
-	d.SetId("")
-	return nil
-}
-
-// resourceOpenAIProjectImport imports an existing OpenAI project into Terraform state.
-func resourceOpenAIProjectImport(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	// Get the client from the provider meta
-	c, err := GetOpenAIClientWithAdminKey(meta)
-	if err != nil {
-		return nil, err
-	}
-
-	projectID := d.Id()
-	log.Printf("[DEBUG] Importing OpenAI project with ID: %s", projectID)
-
-	// Get the project using the OpenAI API
-	project, err := c.GetProject(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("error reading project during import: %s", err)
-	}
-
-	log.Printf("[DEBUG] Successfully retrieved project from API: %s (status: %s)", project.Name, project.Status)
-
-	// Set all fields
-	if err := d.Set("name", project.Name); err != nil {
-		return nil, fmt.Errorf("error setting name: %s", err)
-	}
+	data.Name = types.StringValue(project.Name)
+	data.Status = types.StringValue(project.Status)
 
 	if project.CreatedAt != nil {
-		createdTime := time.Unix(int64(*project.CreatedAt), 0)
-		if err := d.Set("created_at", createdTime.Format(time.RFC3339)); err != nil {
-			return nil, fmt.Errorf("error setting created_at: %s", err)
-		}
-		log.Printf("[DEBUG] Set created_at to: %s", createdTime.Format(time.RFC3339))
-	}
-
-	if project.Status != "" {
-		if err := d.Set("status", project.Status); err != nil {
-			return nil, fmt.Errorf("error setting status: %s", err)
-		}
-		log.Printf("[DEBUG] Set status to: %s", project.Status)
+		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
 	}
 
 	if project.ArchivedAt != nil {
-		archivedTime := time.Unix(int64(*project.ArchivedAt), 0)
-		if err := d.Set("archived_at", archivedTime.Format(time.RFC3339)); err != nil {
-			return nil, fmt.Errorf("error setting archived_at: %s", err)
-		}
-		log.Printf("[DEBUG] Set archived_at to: %s", archivedTime.Format(time.RFC3339))
+		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
+	} else {
+		data.ArchivedAt = types.StringNull()
 	}
 
-	log.Printf("[DEBUG] OpenAI project import complete for ID: %s", projectID)
-	return []*schema.ResourceData{d}, nil
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data ProjectResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	project, err := r.client.UpdateProject(data.ID.ValueString(), data.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error updating project", err.Error())
+		return
+	}
+
+	data.Name = types.StringValue(project.Name)
+	data.Status = types.StringValue(project.Status)
+
+	if project.CreatedAt != nil {
+		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
+	}
+
+	if project.ArchivedAt != nil {
+		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
+	} else {
+		data.ArchivedAt = types.StringNull()
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ProjectResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.client.DeleteProject(data.ID.ValueString())
+	if err != nil {
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			return
+		}
+		resp.Diagnostics.AddError("Error deleting (archiving) project", err.Error())
+		return
+	}
+}
+
+func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

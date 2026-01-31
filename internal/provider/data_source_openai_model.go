@@ -6,83 +6,153 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
-// Model represents an OpenAI model
-type Model struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Created int    `json:"created"`
-	OwnedBy string `json:"owned_by"`
+// Ensure implementation satisfies interfaces.
+var _ datasource.DataSource = &ModelDataSource{}
+
+// ModelDataSource defines the data source implementation.
+type ModelDataSource struct {
+	client *OpenAIClient
 }
 
-// dataSourceOpenAIModel returns a schema.Resource that represents a data source for a single OpenAI model.
-// This data source allows users to retrieve detailed information about a specific OpenAI model by its ID.
-func dataSourceOpenAIModel() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIModelRead,
-		Schema: map[string]*schema.Schema{
-			"model_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The ID of the model to retrieve information for",
+// ModelDataSourceModel describes the data source data model.
+type ModelDataSourceModel struct {
+	ModelID types.String `tfsdk:"model_id"`
+	ID      types.String `tfsdk:"id"`
+	Created types.Int64  `tfsdk:"created"`
+	OwnedBy types.String `tfsdk:"owned_by"`
+	Object  types.String `tfsdk:"object"`
+}
+
+func NewModelDataSource() datasource.DataSource {
+	return &ModelDataSource{}
+}
+
+func (d *ModelDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_model"
+}
+
+func (d *ModelDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "The model data source allows you to retrieve information about a specific OpenAI model.",
+
+		Attributes: map[string]schema.Attribute{
+			"model_id": schema.StringAttribute{
+				MarkdownDescription: "The ID of the model to retrieve information for.",
+				Required:            true,
 			},
-			"created": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the model was created",
+			"id": schema.StringAttribute{
+				MarkdownDescription: "The ID of the model.",
+				Computed:            true,
 			},
-			"owned_by": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The organization that owns the model",
+			"created": schema.Int64Attribute{
+				MarkdownDescription: "The timestamp for when the model was created.",
+				Computed:            true,
 			},
-			"object": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The object type, which is always 'model'",
+			"owned_by": schema.StringAttribute{
+				MarkdownDescription: "The organization that owns the model.",
+				Computed:            true,
+			},
+			"object": schema.StringAttribute{
+				MarkdownDescription: "The object type, which is always 'model'.",
+				Computed:            true,
 			},
 		},
 	}
 }
 
-// dataSourceOpenAIModelRead handles the read operation for the OpenAI model data source.
-// It retrieves information about a specific model from the OpenAI API and updates the Terraform state.
-func dataSourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClientWithProjectKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (d *ModelDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
 	}
 
-	modelID := d.Get("model_id").(string)
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *provider.OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+}
+
+func (d *ModelDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data ModelDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Logic to get the client with project key if needed.
+	// In the SDKv2 implementation, it used GetOpenAIClientWithProjectKey.
+	// Here we need to replicate that logic or just use d.client if it's already configured correctly?
+	// The provider configuration injects the client.
+	// SDKv2 logic:
+	/*
+		func GetOpenAIClientWithProjectKey(m interface{}) (*client.OpenAIClient, error) {
+			if c, ok := m.(*OpenAIClient); ok {
+				if c.ProjectAPIKey != "" {
+					// create new client with project key
+				}
+				return c.OpenAIClient, nil
+			}
+			return client.NewClient("", "", ""), nil
+		}
+	*/
+
+	// We can invoke a helper or do it inline.
+	// Since OpenAiClient is available in d.client, we can check ProjectAPIKey.
+	apiClient := d.client.OpenAIClient
+	if d.client.ProjectAPIKey != "" {
+		config := client.ClientConfig{
+			APIKey:         d.client.ProjectAPIKey,
+			OrganizationID: d.client.OpenAIClient.OrganizationID,
+			APIURL:         d.client.OpenAIClient.APIURL,
+			Timeout:        d.client.OpenAIClient.Timeout,
+		}
+		apiClient = client.NewClientWithConfig(config)
+	}
+
+	modelID := data.ModelID.ValueString()
 	url := fmt.Sprintf("models/%s", modelID)
 
-	respBody, reqErr := client.DoRequest(http.MethodGet, url, nil)
-
+	respBody, reqErr := apiClient.DoRequest(http.MethodGet, url, nil)
 	if reqErr != nil {
-		return diag.Errorf("Error retrieving model: %s", reqErr)
+		resp.Diagnostics.AddError("Error retrieving model", fmt.Sprintf("Could not retrieve model %s: %s", modelID, reqErr))
+		return
 	}
 
-	var model Model
+	var model struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		OwnedBy string `json:"owned_by"`
+	}
 	if err := json.Unmarshal(respBody, &model); err != nil {
-		return diag.Errorf("Error parsing model response: %s", err)
+		resp.Diagnostics.AddError("Error parsing model response", fmt.Sprintf("Could not parse response: %s", err))
+		return
 	}
 
-	d.SetId(modelID)
+	// Set state
+	data.ID = types.StringValue(model.ID)
+	data.Created = types.Int64Value(model.Created)
+	data.OwnedBy = types.StringValue(model.OwnedBy)
+	data.Object = types.StringValue(model.Object)
 
-	if err := d.Set("created", model.Created); err != nil {
-		return diag.Errorf("Error setting created: %s", err)
-	}
-
-	if err := d.Set("owned_by", model.OwnedBy); err != nil {
-		return diag.Errorf("Error setting owned_by: %s", err)
-	}
-
-	if err := d.Set("object", model.Object); err != nil {
-		return diag.Errorf("Error setting object: %s", err)
-	}
-
-	return nil
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

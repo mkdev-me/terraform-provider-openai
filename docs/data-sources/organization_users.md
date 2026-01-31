@@ -3,21 +3,18 @@
 page_title: "openai_organization_users Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of all users in your organization.
 ---
 
 # openai_organization_users (Data Source)
 
-
+Use this data source to retrieve a list of all users in your organization.
 
 ## Example Usage
 
 ```terraform
 # List all users in the organization
-data "openai_organization_users" "all" {
-  # Optional: filter by role
-  role = "owner"
-}
+data "openai_organization_users" "all" {}
 
 # List all organization users without filtering
 data "openai_organization_users" "everyone" {}
@@ -39,16 +36,16 @@ output "all_users_count" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `users` (List of Object) List of users in the organization (see [below for nested schema](#nestedatt--users))
+- `users` (Attributes List) List of users in the organization. (see [below for nested schema](#nestedatt--users))
 
 <a id="nestedatt--users"></a>
 ### Nested Schema for `users`
 
 Read-Only:
 
-- `added_at` (Number)
-- `email` (String)
-- `id` (String)
-- `name` (String)
-- `object` (String)
-- `role` (String)
+- `added_at` (Number) The Unix timestamp when the user was added to the organization.
+- `email` (String) The email address of the user.
+- `id` (String) The ID of the user.
+- `name` (String) The name of the user.
+- `object` (String) The object type, always 'organization.user'.
+- `role` (String) The role of the user.

@@ -1,335 +1,291 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"net/http"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func resourceOpenAIVectorStoreFileBatch() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIVectorStoreFileBatchCreate,
-		ReadContext:   resourceOpenAIVectorStoreFileBatchRead,
-		UpdateContext: resourceOpenAIVectorStoreFileBatchUpdate,
-		DeleteContext: resourceOpenAIVectorStoreFileBatchDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: importVectorStoreFileBatchState,
+var _ resource.Resource = &VectorStoreFileBatchResource{}
+var _ resource.ResourceWithImportState = &VectorStoreFileBatchResource{}
+
+type VectorStoreFileBatchResource struct {
+	client *OpenAIClient
+}
+
+func NewVectorStoreFileBatchResource() resource.Resource {
+	return &VectorStoreFileBatchResource{}
+}
+
+func (r *VectorStoreFileBatchResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_vector_store_file_batch"
+}
+
+type VectorStoreFileBatchResourceModel struct {
+	ID               types.String             `tfsdk:"id"`
+	VectorStoreID    types.String             `tfsdk:"vector_store_id"`
+	FileIDs          []types.String           `tfsdk:"file_ids"`
+	ChunkingStrategy *VSChunkingStrategyModel `tfsdk:"chunking_strategy"` // Reusing from vector store
+
+	// Computed
+	Object     types.String       `tfsdk:"object"`
+	Status     types.String       `tfsdk:"status"`
+	CreatedAt  types.Int64        `tfsdk:"created_at"`
+	FileCounts *VSFileCountsModel `tfsdk:"file_counts"`
+}
+
+func (r *VectorStoreFileBatchResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages a file batch in an OpenAI Vector Store.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the vector store file batch.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"vector_store_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the vector store to add the batch to.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"file_ids": schema.ListAttribute{
+				Required:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "A list of file IDs to add to the vector store.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplace(),
+				},
+			},
+
+			// Computed
+			"object":     schema.StringAttribute{Computed: true},
+			"status":     schema.StringAttribute{Computed: true},
+			"created_at": schema.Int64Attribute{Computed: true},
+			"file_counts": schema.SingleNestedAttribute{
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"in_progress": schema.Int64Attribute{Computed: true},
+					"completed":   schema.Int64Attribute{Computed: true},
+					"failed":      schema.Int64Attribute{Computed: true},
+					"cancelled":   schema.Int64Attribute{Computed: true},
+					"total":       schema.Int64Attribute{Computed: true},
+				},
+			},
 		},
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the vector store file batch operation.",
-			},
-			"vector_store_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the vector store to add the files to.",
-			},
-			"file_ids": {
-				Type:        schema.TypeList,
-				Required:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "The list of file IDs to add to the vector store.",
-			},
-			"attributes": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				Description: "Set of key-value pairs that can be attached to an object. Values can be strings, booleans, or numbers.",
-				Elem:        &schema.Schema{Type: schema.TypeString},
-			},
-			"chunking_strategy": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				MaxItems:    1,
-				ForceNew:    true,
-				Description: "The chunking strategy used to chunk the files.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"type": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "The type of chunking strategy (auto, fixed, or semantic).",
-						},
-						"size": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Description: "The size in characters for fixed chunking strategy.",
-						},
-						"max_tokens": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Description: "The maximum tokens per chunk for semantic chunking strategy.",
-						},
+		Blocks: map[string]schema.Block{
+			"chunking_strategy": schema.SingleNestedBlock{
+				MarkdownDescription: "The chunking strategy used to chunk the files.",
+				Attributes: map[string]schema.Attribute{
+					"type": schema.StringAttribute{Required: true},
+					"max_chunk_size_tokens": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "The maximum number of tokens in each chunk. The default is 800. The minimum is 100 and the maximum is 4096.",
+					},
+					"chunk_overlap_tokens": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "The number of tokens that overlap between chunks. The default is 400. The maximum is half of max_chunk_size_tokens.",
 					},
 				},
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the files were added to the vector store.",
-			},
-			"object": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The object type (always 'vector_store.file.batch').",
-			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The current status of the file batch operation.",
-			},
 		},
 	}
 }
 
-// importVectorStoreFileBatchState handles the import of a vector store file batch resource
-// The ID is expected to be in the format "{vector_store_id}/{batch_id}"
-func importVectorStoreFileBatchState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	parts := strings.Split(d.Id(), "/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("Invalid ID format. Expected 'vector_store_id/batch_id', got: %s", d.Id())
+func (r *VectorStoreFileBatchResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
-
-	vectorStoreID, batchID := parts[0], parts[1]
-
-	// Set the component IDs
-	if err := d.Set("vector_store_id", vectorStoreID); err != nil {
-		return nil, err
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
 	}
-
-	// Set the ID to the batch_id
-	d.SetId(batchID)
-
-	return []*schema.ResourceData{d}, nil
+	r.client = client
 }
 
-func resourceOpenAIVectorStoreFileBatchCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+func (r *VectorStoreFileBatchResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data VectorStoreFileBatchResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createRequest := VectorStoreFileBatchCreateRequest{}
+
+	if len(data.FileIDs) > 0 {
+		ids := make([]string, len(data.FileIDs))
+		for i, id := range data.FileIDs {
+			ids[i] = id.ValueString()
+		}
+		createRequest.FileIDs = ids
+	}
+
+	if data.ChunkingStrategy != nil {
+		cs := &ChunkingStrategy{
+			Type: data.ChunkingStrategy.Type.ValueString(),
+		}
+		if cs.Type == "static" {
+			sc := &StaticChunking{}
+			if !data.ChunkingStrategy.MaxChunkSizeTokens.IsNull() {
+				sc.MaxChunkSizeTokens = int(data.ChunkingStrategy.MaxChunkSizeTokens.ValueInt64())
+			}
+			if !data.ChunkingStrategy.ChunkOverlapTokens.IsNull() {
+				sc.ChunkOverlapTokens = int(data.ChunkingStrategy.ChunkOverlapTokens.ValueInt64())
+			}
+			cs.Static = sc
+		}
+		createRequest.ChunkingStrategy = cs
+	}
+
+	reqBody, err := json.Marshal(createRequest)
 	if err != nil {
-		return diag.FromErr(err)
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
 	}
 
-	vectorStoreID := d.Get("vector_store_id").(string)
-
-	// Convert file_ids to []string
-	var fileIDs []string
-	if v, ok := d.GetOk("file_ids"); ok {
-		for _, id := range v.([]interface{}) {
-			fileIDs = append(fileIDs, id.(string))
-		}
-	}
-
-	// Validate that file_ids is not empty
-	if len(fileIDs) == 0 {
-		return diag.Errorf("Error: file_ids cannot be empty. You must specify at least one file ID")
-	}
-
-	// Extract attributes
-	var attributes map[string]interface{}
-	if v, ok := d.GetOk("attributes"); ok {
-		attributes = make(map[string]interface{})
-		for k, attr := range v.(map[string]interface{}) {
-			attributes[k] = attr
-		}
-	}
-
-	// Extract chunking_strategy
-	var chunkingStrategy map[string]interface{}
-	if v, ok := d.GetOk("chunking_strategy"); ok && len(v.([]interface{})) > 0 {
-		chunk := v.([]interface{})[0].(map[string]interface{})
-		chunkingStrategy = map[string]interface{}{
-			"type": chunk["type"].(string),
-		}
-
-		if size, ok := chunk["size"]; ok && size != nil {
-			chunkingStrategy["size"] = size.(int)
-		}
-
-		if maxTokens, ok := chunk["max_tokens"]; ok && maxTokens != nil {
-			chunkingStrategy["max_tokens"] = maxTokens.(int)
-		}
-	}
-
-	// Create request body
-	requestBody := map[string]interface{}{
-		"file_ids": fileIDs,
-	}
-
-	if len(attributes) > 0 {
-		requestBody["attributes"] = attributes
-	}
-
-	if chunkingStrategy != nil {
-		requestBody["chunking_strategy"] = chunkingStrategy
-	}
-
-	// Debug output
-	debugJSON, _ := json.MarshalIndent(requestBody, "", "  ")
-	log.Printf("[DEBUG] Vector store file batch request body: %s", string(debugJSON))
-
-	// Make API call
-	responseBytes, err := client.DoRequest("POST", fmt.Sprintf("/v1/vector_stores/%s/file_batches", vectorStoreID), requestBody)
+	url := fmt.Sprintf("%s/vector_stores/%s/file_batches", r.client.OpenAIClient.APIURL, data.VectorStoreID.ValueString())
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return diag.Errorf("Error adding file batch to vector store: %s", err.Error())
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Parse response
-	var response map[string]interface{}
-	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		return diag.Errorf("Error parsing response: %s", err.Error())
+	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set ID and other attributes
-	if id, ok := response["id"]; ok && id != nil {
-		d.SetId(id.(string))
-	} else {
-		return diag.Errorf("Response missing required 'id' field")
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	if createdAt, ok := response["created_at"]; ok && createdAt != nil {
-		if err := d.Set("created_at", int(createdAt.(float64))); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
-		}
+	var vsBatchResp VectorStoreFileBatchResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &vsBatchResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	if object, ok := response["object"]; ok && object != nil {
-		if err := d.Set("object", object.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set object: %v", err))
-		}
-	}
+	data.ID = types.StringValue(vsBatchResp.ID)
+	data.Object = types.StringValue(vsBatchResp.Object)
+	data.CreatedAt = types.Int64Value(vsBatchResp.CreatedAt)
+	data.Status = types.StringValue(vsBatchResp.Status)
 
-	if status, ok := response["status"]; ok && status != nil {
-		if err := d.Set("status", status.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
-		}
-	}
-
-	return resourceOpenAIVectorStoreFileBatchRead(ctx, d, m)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIVectorStoreFileBatchRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+func (r *VectorStoreFileBatchResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data VectorStoreFileBatchResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/vector_stores/%s/file_batches/%s", r.client.OpenAIClient.APIURL, data.VectorStoreID.ValueString(), data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(err)
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	vectorStoreID := d.Get("vector_store_id").(string)
-
-	// Make API call
-	responseBytes, err := client.DoRequest("GET", fmt.Sprintf("/v1/vector_stores/%s/file_batches/%s", vectorStoreID, d.Id()), nil)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.Errorf("Error reading vector store file batch: %s", err.Error())
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
 	}
 
-	// Parse response
-	var response map[string]interface{}
-	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		return diag.Errorf("Error parsing response: %s", err.Error())
+	var vsBatchResp VectorStoreFileBatchResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &vsBatchResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Set the computed attributes
-	if createdAt, ok := response["created_at"]; ok && createdAt != nil {
-		if err := d.Set("created_at", int(createdAt.(float64))); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
+	data.Status = types.StringValue(vsBatchResp.Status)
+	data.CreatedAt = types.Int64Value(vsBatchResp.CreatedAt)
+
+	if vsBatchResp.FileCounts != nil {
+		data.FileCounts = &VSFileCountsModel{
+			InProgress: types.Int64Value(int64(vsBatchResp.FileCounts.InProgress)),
+			Completed:  types.Int64Value(int64(vsBatchResp.FileCounts.Completed)),
+			Failed:     types.Int64Value(int64(vsBatchResp.FileCounts.Failed)),
+			Cancelled:  types.Int64Value(int64(vsBatchResp.FileCounts.Cancelled)),
+			Total:      types.Int64Value(int64(vsBatchResp.FileCounts.Total)),
 		}
 	}
 
-	if object, ok := response["object"]; ok && object != nil {
-		if err := d.Set("object", object.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set object: %v", err))
-		}
-	}
+	// Note: file_ids might not be returned in the batch object GET response, or they might be.
+	// The API ref says the response object has "file_counts" but not "file_ids".
+	// So we rely on what's in state for file_ids, as they are immutable.
 
-	if status, ok := response["status"]; ok && status != nil {
-		if err := d.Set("status", status.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
-		}
-	}
-
-	// Handle file_ids
-	if fileIDs, ok := response["file_ids"].([]interface{}); ok {
-		if err := d.Set("file_ids", fileIDs); err != nil {
-			return diag.Errorf("Error setting file_ids: %s", err)
-		}
-	}
-
-	// Handle attributes
-	if attributes, ok := response["attributes"].(map[string]interface{}); ok {
-		if err := d.Set("attributes", attributes); err != nil {
-			return diag.Errorf("Error setting attributes: %s", err)
-		}
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIVectorStoreFileBatchUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	vectorStoreID := d.Get("vector_store_id").(string)
-
-	// Extract attributes
-	var attributes map[string]interface{}
-	if v, ok := d.GetOk("attributes"); ok {
-		attributes = make(map[string]interface{})
-		for k, attr := range v.(map[string]interface{}) {
-			attributes[k] = attr
-		}
-	}
-
-	// Only attributes can be updated
-	requestBody := map[string]interface{}{}
-	if len(attributes) > 0 {
-		requestBody["attributes"] = attributes
-	}
-
-	// Make API call
-	responseBytes, err := client.DoRequest("PUT", fmt.Sprintf("/v1/vector_stores/%s/file_batches/%s", vectorStoreID, d.Id()), requestBody)
-	if err != nil {
-		return diag.Errorf("Error updating vector store file batch: %s", err.Error())
-	}
-
-	// Parse response
-	var response map[string]interface{}
-	if err := json.Unmarshal(responseBytes, &response); err != nil {
-		return diag.Errorf("Error parsing response: %s", err.Error())
-	}
-
-	// Set the computed attributes
-	if createdAt, ok := response["created_at"]; ok && createdAt != nil {
-		if err := d.Set("created_at", int(createdAt.(float64))); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set created_at: %v", err))
-		}
-	}
-
-	if object, ok := response["object"]; ok && object != nil {
-		if err := d.Set("object", object.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set object: %v", err))
-		}
-	}
-
-	if status, ok := response["status"]; ok && status != nil {
-		if err := d.Set("status", status.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to set status: %v", err))
-		}
-	}
-
-	return resourceOpenAIVectorStoreFileBatchRead(ctx, d, m)
+func (r *VectorStoreFileBatchResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Immutable
 }
 
-func resourceOpenAIVectorStoreFileBatchDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// OpenAI API doesn't support batch deletion, so this is a no-op.
-	// Just clear the ID so Terraform knows the resource is gone.
-	d.SetId("")
-	return diag.Diagnostics{}
+func (r *VectorStoreFileBatchResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// API docs: "You can't delete a file batch object."
+	// But we can just remove it from state.
+	// Legacy provider did nothing (SetId("")).
+	// We also do nothing, just let it be removed from state.
+}
+
+func (r *VectorStoreFileBatchResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Expected format: vector_store_id:batch_id
+	idParts := strings.Split(req.ID, ":")
+	if len(idParts) != 2 || idParts[0] == "" || idParts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			fmt.Sprintf("Expected import identifier with format: vector_store_id:batch_id. Got: %q", req.ID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("vector_store_id"), idParts[0])...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), idParts[1])...)
 }

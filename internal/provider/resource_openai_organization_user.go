@@ -1,201 +1,284 @@
 package provider
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// resourceOpenAIOrganizationUser defines the schema and CRUD operations for OpenAI organization users.
-// This resource allows users to manage organization users through Terraform.
-// Note: Users cannot be created through this resource, they must already exist.
-// The resource allows updating user roles and removing users from the organization.
-func resourceOpenAIOrganizationUser() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIOrganizationUserCreate,
-		ReadContext:   resourceOpenAIOrganizationUserRead,
-		UpdateContext: resourceOpenAIOrganizationUserUpdate,
-		DeleteContext: resourceOpenAIOrganizationUserDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+var _ resource.Resource = &OrganizationUserResource{}
+var _ resource.ResourceWithImportState = &OrganizationUserResource{}
+
+type OrganizationUserResource struct {
+	client *OpenAIClient
+}
+
+func NewOrganizationUserResource() resource.Resource {
+	return &OrganizationUserResource{}
+}
+
+func (r *OrganizationUserResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_organization_user"
+}
+
+type OrganizationUserResourceModel struct {
+	UserID types.String `tfsdk:"user_id"`
+	// ID mapping to UserID for terraform state
+	ID      types.String `tfsdk:"id"`
+	Role    types.String `tfsdk:"role"`
+	Email   types.String `tfsdk:"email"`
+	Name    types.String `tfsdk:"name"`
+	AddedAt types.Int64  `tfsdk:"added_at"`
+}
+
+func (r *OrganizationUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages a user in an OpenAI Organization.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the user (same as user_id).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"user_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the user.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"role": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The role of the user in the organization (owner or reader).",
+			},
+			"email": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The email of the user.",
+			},
+			"name": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The name of the user.",
+			},
+			"added_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "The timestamp when the user was added to the organization.",
+			},
 		},
-		Schema: map[string]*schema.Schema{
-			"user_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The ID of the user to manage in the organization",
-			},
-			"role": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringInSlice([]string{"owner", "reader"}, false),
-				Description:  "The role to assign to the user (owner or reader)",
-			},
-			"email": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The email address of the user",
-			},
-			"name": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The name of the user",
-			},
-			"added_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The Unix timestamp when the user was added to the organization",
-			},
-		},
 	}
 }
 
-// resourceOpenAIOrganizationUserCreate handles the creation of the organization user resource.
-// Since users cannot be created through the API, this function verifies the user exists
-// and updates their role if necessary.
-func resourceOpenAIOrganizationUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *OrganizationUserResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
-
-	userID := d.Get("user_id").(string)
-	role := d.Get("role").(string)
-
-	// Check if the user exists in the organization
-	tflog.Debug(ctx, fmt.Sprintf("Checking if user %s exists in the organization", userID))
-	user, exists, err := c.GetUser(userID)
-	if err != nil {
-		return diag.Errorf("Error checking if user exists: %s", err)
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
 	}
-
-	if !exists {
-		return diag.Errorf("User with ID %s does not exist in the organization", userID)
-	}
-
-	// Set the resource ID
-	d.SetId(userID)
-
-	// Update the user's role if it's different from the current role
-	if user.Role != role {
-		tflog.Info(ctx, fmt.Sprintf("Updating user %s role from %s to %s", userID, user.Role, role))
-		updatedUser, err := c.UpdateUserRole(userID, role)
-		if err != nil {
-			return diag.Errorf("Error updating user role: %s", err)
-		}
-		user = updatedUser
-	}
-
-	// Set the computed fields
-	if err := d.Set("email", user.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting email: %s", err))
-	}
-	if err := d.Set("name", user.Name); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
-	}
-	if err := d.Set("added_at", user.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
-	}
-
-	return nil
+	r.client = client
 }
 
-// resourceOpenAIOrganizationUserRead retrieves information about a user in the organization.
-func resourceOpenAIOrganizationUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
+func (r *OrganizationUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data OrganizationUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Check if user exists first. API doesn't support "creating" an org user directly via this endpoint usually,
+	// they are invited. This resource manages existing users.
+	// Equivalent of Read + Update if needed.
+	// Logic from SDKv2: "Since users cannot be created through the API, this function verifies the user exists and updates their role if necessary."
+
+	userID := data.UserID.ValueString()
+	data.ID = types.StringValue(userID)
+
+	// Read user
+	url := fmt.Sprintf("%s/organization/users/%s", r.client.OpenAIClient.APIURL, userID)
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(err)
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	userID := d.Id()
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
 
-	// Get the user information
-	tflog.Debug(ctx, fmt.Sprintf("Retrieving user with ID: %s", userID))
-	user, exists, err := c.GetUser(userID)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.Errorf("Error retrieving user: %s", err)
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.Diagnostics.AddError("User not found", fmt.Sprintf("User %s does not exist in the organization", userID))
+		return
 	}
 
-	if !exists {
-		// User no longer exists, remove from state
-		tflog.Warn(ctx, fmt.Sprintf("User %s no longer exists in the organization, removing from state", userID))
-		d.SetId("")
-		return nil
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API Error", fmt.Sprintf("API returned status: %s", apiResp.Status))
+		return
 	}
 
-	// Update the state with the user information
-	if err := d.Set("user_id", user.ID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting user_id: %s", err))
-	}
-	if err := d.Set("email", user.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting email: %s", err))
-	}
-	if err := d.Set("name", user.Name); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
-	}
-	if err := d.Set("role", user.Role); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting role: %s", err))
-	}
-	if err := d.Set("added_at", user.AddedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
+	var userResp OrganizationUserResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	json.Unmarshal(respBodyBytes, &userResp)
+
+	// Check role, update if needed
+	if userResp.Role != data.Role.ValueString() {
+		// Update role
+		reqMap := map[string]string{"role": data.Role.ValueString()}
+		reqBytes, _ := json.Marshal(reqMap)
+		url := fmt.Sprintf("%s/organization/users/%s", r.client.OpenAIClient.APIURL, userID)
+		apiUpdateReq, _ := http.NewRequest("POST", url, bytes.NewReader(reqBytes))
+		apiUpdateReq.Header.Set("Content-Type", "application/json")
+		apiUpdateReq.Header.Set("Authorization", "Bearer "+apiKey)
+		if r.client.OpenAIClient.OrganizationID != "" {
+			apiUpdateReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+		}
+
+		upResp, err := http.DefaultClient.Do(apiUpdateReq)
+		if err != nil || upResp.StatusCode != http.StatusOK {
+			resp.Diagnostics.AddError("Error updating role", "Failed to update user role")
+			return
+		}
+		// Read again? Or rely on explicit set.
+		userResp.Role = data.Role.ValueString()
 	}
 
-	return nil
+	data.Name = types.StringValue(userResp.Name)
+	data.Email = types.StringValue(userResp.Email)
+	data.AddedAt = types.Int64Value(userResp.AddedAt)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIOrganizationUserUpdate updates a user's role in the organization.
-func resourceOpenAIOrganizationUserUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
+func (r *OrganizationUserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data OrganizationUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/organization/users/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(err)
+		return
 	}
 
-	userID := d.Id()
-
-	if d.HasChange("role") {
-		newRole := d.Get("role").(string)
-
-		tflog.Info(ctx, fmt.Sprintf("Updating user %s role to %s", userID, newRole))
-		user, err := c.UpdateUserRole(userID, newRole)
-		if err != nil {
-			return diag.Errorf("Error updating user role: %s", err)
-		}
-
-		// Update the computed fields
-		if err := d.Set("email", user.Email); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting email: %s", err))
-		}
-		if err := d.Set("name", user.Name); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting name: %s", err))
-		}
-		if err := d.Set("added_at", user.AddedAt); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting added_at: %s", err))
-		}
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	return nil
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	var userResp OrganizationUserResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	json.Unmarshal(respBodyBytes, &userResp)
+
+	data.UserID = types.StringValue(userResp.ID)
+	data.Name = types.StringValue(userResp.Name)
+	data.Email = types.StringValue(userResp.Email)
+	data.Role = types.StringValue(userResp.Role)
+	data.AddedAt = types.Int64Value(userResp.AddedAt)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIOrganizationUserDelete removes a user from the organization.
-func resourceOpenAIOrganizationUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *OrganizationUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data OrganizationUserResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	userID := d.Id()
+	// Update role
+	reqMap := map[string]string{"role": data.Role.ValueString()}
+	reqBytes, _ := json.Marshal(reqMap)
+	url := fmt.Sprintf("%s/organization/users/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiUpdateReq, _ := http.NewRequest("POST", url, bytes.NewReader(reqBytes))
+	apiUpdateReq.Header.Set("Content-Type", "application/json")
 
-	tflog.Info(ctx, fmt.Sprintf("Deleting user %s from organization", userID))
-	err = c.DeleteUser(userID)
-	if err != nil {
-		return diag.Errorf("Error deleting user: %s", err)
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiUpdateReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiUpdateReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	d.SetId("")
-	return nil
+	upResp, err := http.DefaultClient.Do(apiUpdateReq)
+	if err != nil || upResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("Error updating role", "Failed to update user role")
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *OrganizationUserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data OrganizationUserResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/organization/users/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return
+	}
+
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	http.DefaultClient.Do(apiReq)
+}
+
+func (r *OrganizationUserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

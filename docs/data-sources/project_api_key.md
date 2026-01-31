@@ -3,12 +3,12 @@
 page_title: "openai_project_api_key Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI project API key.
 ---
 
 # openai_project_api_key (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI project API key.
 
 
 
@@ -17,16 +17,16 @@ description: |-
 
 ### Required
 
-- `api_key_id` (String) The ID of the API key to retrieve
-- `project_id` (String) The ID of the project to which the API key belongs
+- `api_key_id` (String) The ID of the API key to retrieve.
+- `project_id` (String) The ID of the project to which the API key belongs.
 
 ### Optional
 
-- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default API key will be used.
+- `admin_key` (String, Sensitive) Admin API key for authentication. If not provided, the provider's default Admin API key will be used.
 
 ### Read-Only
 
-- `created_at` (String) Timestamp when the API key was created
-- `id` (String) The ID of this resource.
-- `last_used_at` (String) Timestamp when the API key was last used
-- `name` (String) The name of the API key
+- `created_at` (String) Timestamp when the API key was created.
+- `id` (String) The ID of the API key resource (composite of project_id:api_key_id).
+- `last_used_at` (String) Timestamp when the API key was last used.
+- `name` (String) The name of the API key.

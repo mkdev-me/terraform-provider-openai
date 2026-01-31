@@ -3,12 +3,12 @@
 page_title: "openai_moderation Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The moderation resource allows you to check text usage against OpenAI's content policy.
 ---
 
 # openai_moderation (Resource)
 
-
+The moderation resource allows you to check text usage against OpenAI's content policy.
 
 ## Example Usage
 
@@ -28,27 +28,15 @@ output "moderation_results" {
 
 ### Required
 
-- `input` (String) Input (or inputs) to classify. Can be a single string, an array of strings, or an array of multi-modal input objects.
+- `input` (String) The input text to moderate
 
 ### Optional
 
-- `model` (String) The content moderation model you would like to use.
+- `model` (String) The model to use for moderation
 
 ### Read-Only
 
-- `_api_response` (String) The full API response from OpenAI.
-- `categories` (Map of Boolean) Map of category names to boolean values indicating if the content violates that category (first result if multiple inputs).
-- `category_scores` (Map of Number) Map of category names to scores (0.0 to 1.0) indicating the confidence of the model (first result if multiple inputs).
-- `flagged` (Boolean) Whether the content violates OpenAI's usage policies (first result if multiple inputs).
-- `id` (String) The ID of the moderation result.
-- `results` (List of Object) The full results of the moderation API call. (see [below for nested schema](#nestedatt--results))
-
-<a id="nestedatt--results"></a>
-### Nested Schema for `results`
-
-Read-Only:
-
-- `categories` (Map of Boolean)
-- `category_applied_input_types` (Map of List of String)
-- `category_scores` (Map of Number)
-- `flagged` (Boolean)
+- `categories` (Map of Boolean) Map of category names to boolean values
+- `category_scores` (Map of Number) Map of category names to scores
+- `flagged` (Boolean) Whether the content was flagged
+- `id` (String) The ID of the moderation

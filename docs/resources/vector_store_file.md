@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages a file in an OpenAI Vector Store.
 ---
 
 # openai_vector_store_file (Resource)
 
-
+Manages a file in an OpenAI Vector Store.
 
 ## Example Usage
 
@@ -51,8 +51,8 @@ resource "openai_vector_store_file" "add_tech_docs" {
 
   # Optional: Chunking strategy
   chunking_strategy {
-    type = "fixed"
-    size = 800
+    type                  = "static"
+    max_chunk_size_tokens = 800
   }
 }
 
@@ -73,8 +73,8 @@ resource "openai_vector_store_file" "add_faq" {
   file_id         = openai_file.faq_document.id
 
   chunking_strategy {
-    type = "fixed"
-    size = 200 # Smaller chunks for Q&A format
+    type                  = "static"
+    max_chunk_size_tokens = 200 # Smaller chunks for Q&A format
   }
 }
 
@@ -94,8 +94,8 @@ resource "openai_vector_store_file" "support_knowledge" {
 
   # Larger chunks for conversation context
   chunking_strategy {
-    type = "fixed"
-    size = 1200
+    type                  = "static"
+    max_chunk_size_tokens = 1200
   }
 }
 
@@ -119,8 +119,8 @@ resource "openai_vector_store_file" "code_index" {
 
   # Specific chunking for code
   chunking_strategy {
-    type = "fixed"
-    size = 500
+    type                  = "static"
+    max_chunk_size_tokens = 500
   }
 }
 
@@ -135,29 +135,39 @@ output "tech_docs_status" {
 
 ### Required
 
-- `file_id` (String) The ID of the file to add to the vector store.
-- `vector_store_id` (String) The ID of the vector store.
+- `file_id` (String) The ID of the file to add.
+- `vector_store_id` (String) The ID of the vector store to add the file to.
 
 ### Optional
 
-- `attributes` (Map of String) Dynamic description or tags for the file in the vector store.
-- `chunking_strategy` (Block List, Max: 1) The chunking strategy used to chunk the file. (see [below for nested schema](#nestedblock--chunking_strategy))
+- `chunking_strategy` (Block, Optional) The chunking strategy used to chunk the file(s). (see [below for nested schema](#nestedblock--chunking_strategy))
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the file was added to the vector store.
-- `id` (String) The ID of the vector store file.
-- `object` (String) The object type (always 'vector_store.file').
-- `status` (String) The current status of the file in the vector store.
+- `created_at` (Number)
+- `id` (String) The identifier of the vector store file.
+- `last_error` (Attributes) (see [below for nested schema](#nestedatt--last_error))
+- `object` (String)
+- `status` (String)
+- `usage_bytes` (Number)
 
 <a id="nestedblock--chunking_strategy"></a>
 ### Nested Schema for `chunking_strategy`
 
 Required:
 
-- `type` (String) The type of chunking strategy (auto, fixed, or semantic).
+- `type` (String)
 
 Optional:
 
-- `max_tokens` (Number) The maximum tokens per chunk for semantic chunking strategy.
-- `size` (Number) The size in characters for fixed chunking strategy.
+- `chunk_overlap_tokens` (Number) The number of tokens that overlap between chunks. The default is 400. The maximum is half of max_chunk_size_tokens.
+- `max_chunk_size_tokens` (Number) The maximum number of tokens in each chunk. The default is 800. The minimum is 100 and the maximum is 4096.
+
+
+<a id="nestedatt--last_error"></a>
+### Nested Schema for `last_error`
+
+Read-Only:
+
+- `code` (String)
+- `message` (String)

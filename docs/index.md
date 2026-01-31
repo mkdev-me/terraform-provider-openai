@@ -3,12 +3,12 @@
 page_title: "openai Provider"
 subcategory: ""
 description: |-
-  
+  The OpenAI Terraform Provider allows you to manage OpenAI resources using Terraform.
 ---
 
 # openai Provider
 
-
+The OpenAI Terraform Provider allows you to manage OpenAI resources using Terraform.
 
 ## Example Usage
 
@@ -41,8 +41,8 @@ provider "openai" {
 
 ### Optional
 
-- `admin_key` (String, Sensitive) The Admin API key for OpenAI administrative operations. If not set, the OPENAI_ADMIN_KEY environment variable will be used.
+- `admin_key` (String, Sensitive) The Admin API key for OpenAI administrative operations.
 - `api_key` (String, Sensitive) Project API key (sk-proj...) for authentication. Note: Use project keys, not admin keys.
-- `api_url` (String) The URL for OpenAI API. If not set, the OPENAI_API_URL environment variable will be used, or the default value of 'https://api.openai.com/v1'.
-- `organization` (String) The Organization ID for OpenAI API operations. If not set, the OPENAI_ORGANIZATION environment variable will be used.
-- `timeout` (Number) Timeout in seconds for API operations. If not set, the OPENAI_TIMEOUT environment variable will be used, or the default value of 300 seconds (5 minutes).
+- `api_url` (String) The URL for OpenAI API. Defaults to https://api.openai.com/v1
+- `organization` (String) The Organization ID for OpenAI API operations.
+- `timeout` (Number) Timeout in seconds for API operations. Defaults to 300.

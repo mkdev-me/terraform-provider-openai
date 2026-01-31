@@ -12,494 +12,279 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// FileResponse represents the API response for an OpenAI file.
-// It contains all the fields returned by the OpenAI API when creating or retrieving a file.
-// This structure provides comprehensive information about the file's status, purpose, and metadata.
-type FileResponse struct {
-	ID        string `json:"id"`         // Unique identifier for the file
-	Object    string `json:"object"`     // Type of object (e.g., "file")
-	Bytes     int    `json:"bytes"`      // Size of the file in bytes
-	CreatedAt int    `json:"created_at"` // Unix timestamp of file creation
-	Filename  string `json:"filename"`   // Original name of the uploaded file
-	Purpose   string `json:"purpose"`    // Intended use of the file (e.g., "fine-tune", "assistants")
+// Ensure implementation satisfies interfaces.
+var _ resource.Resource = &FileResource{}
+var _ resource.ResourceWithImportState = &FileResource{}
+
+// FileResource defines the resource implementation.
+type FileResource struct {
+	client *OpenAIClient
 }
 
-// ErrorResponse represents an error response from the OpenAI API.
-// It contains detailed information about any errors that occur during API operations,
-// providing structured error information for proper error handling and debugging.
-type ErrorResponse struct {
-	Error struct {
-		Message string `json:"message"` // Human-readable error message
-		Type    string `json:"type"`    // Type of error (e.g., "invalid_request_error")
-		Code    string `json:"code"`    // Error code for programmatic handling
-	} `json:"error"`
+// FileResourceModel describes the resource data model.
+type FileResourceModel struct {
+	ID        types.String `tfsdk:"id"`
+	File      types.String `tfsdk:"file"`
+	Purpose   types.String `tfsdk:"purpose"`
+	ProjectID types.String `tfsdk:"project_id"`
+	Filename  types.String `tfsdk:"filename"`
+	Bytes     types.Int64  `tfsdk:"bytes"`
+	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
-// resourceOpenAIFile defines the schema and CRUD operations for OpenAI files.
-// This resource allows users to upload, read, and delete files through the OpenAI API.
-// It supports various file purposes including fine-tuning, assistants, vision, and batch operations.
-// The resource provides comprehensive file management capabilities with proper validation and error handling.
-func resourceOpenAIFile() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIFileCreate,
-		ReadContext:   resourceOpenAIFileRead,
-		DeleteContext: resourceOpenAIFileDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIFileImport,
-		},
-		Schema: map[string]*schema.Schema{
-			"file": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Path to the file to upload. Required for creation, ignored during import.",
+func NewFileResource() resource.Resource {
+	return &FileResource{}
+}
+
+func (r *FileResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_file"
+}
+
+func (r *FileResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "The file resource allows users to upload, read, and delete files through the OpenAI API.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				MarkdownDescription: "The identifier of the file.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
-			"purpose": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"fine-tune", "assistants", "vision", "batch"}, false),
-				Description:  "The purpose of the file. Can be 'fine-tune', 'assistants', 'vision', or 'batch'. Required for creation, computed for import.",
-				Computed:     true,
+			"file": schema.StringAttribute{
+				MarkdownDescription: "Path to the file to upload. Required for creation, ignored during import.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"project_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "The project ID to associate this file with (for Terraform reference only, not sent to OpenAI API)",
+			"purpose": schema.StringAttribute{
+				MarkdownDescription: "The purpose of the file. Can be 'fine-tune', 'assistants', 'vision', or 'batch'. Required for creation, computed for import.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"filename": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The name of the file",
+			"project_id": schema.StringAttribute{
+				MarkdownDescription: "The project ID to associate this file with (for Terraform reference only, not sent to OpenAI API)",
+				Optional:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"bytes": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The size of the file in bytes",
+			"filename": schema.StringAttribute{
+				MarkdownDescription: "The name of the file",
+				Computed:            true,
 			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the file was created",
+			"bytes": schema.Int64Attribute{
+				MarkdownDescription: "The size of the file in bytes",
+				Computed:            true,
 			},
-			"id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The identifier of the file",
+			"created_at": schema.Int64Attribute{
+				MarkdownDescription: "The timestamp for when the file was created",
+				Computed:            true,
 			},
 		},
 	}
 }
 
-// resourceOpenAIFileCreate handles the creation and upload of a new file to OpenAI.
-// It processes the file upload, validates the file purpose, and manages the upload process.
-// The function supports various file types and purposes, with appropriate error handling.
-func resourceOpenAIFileCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *FileResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
 	}
 
-	// Get parameters
-	filePath, filePathOk := d.GetOk("file")
-	if !filePathOk {
-		return diag.FromErr(fmt.Errorf("file path is required for creating a new file"))
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *provider.OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
 	}
 
-	purpose := d.Get("purpose").(string)
+	r.client = client
+}
 
-	// Check if there's a project_id (we save it for state but don't send it to the API)
-	var projectID string
-	if v, ok := d.GetOk("project_id"); ok {
-		projectID = v.(string)
+func (r *FileResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data FileResourceModel
+
+	// Read Terraform plan data into the model
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
+	filePath := data.File.ValueString()
 	// Read the file
-	fileContent, err := os.ReadFile(filePath.(string))
+	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading file %s: %s", filePath, err))
+		resp.Diagnostics.AddError("Error reading file", fmt.Sprintf("Error reading file %s: %s", filePath, err))
+		return
 	}
 
-	// Prepare the OpenAI API request
-	url := fmt.Sprintf("%s/v1/files", client.APIURL)
-
-	// If the APIURL already contains /v1, adjust the URL construction
-	if strings.Contains(client.APIURL, "/v1") {
-		url = fmt.Sprintf("%s/files", client.APIURL)
+	url := fmt.Sprintf("%s/v1/files", r.client.OpenAIClient.APIURL)
+	if strings.Contains(r.client.OpenAIClient.APIURL, "/v1") {
+		url = fmt.Sprintf("%s/files", r.client.OpenAIClient.APIURL)
 	}
 
-	// Create form-data for upload
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Add the file
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath.(string)))
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating form file: %s", err))
+		resp.Diagnostics.AddError("Error creating form file", err.Error())
+		return
 	}
 	_, err = part.Write(fileContent)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error writing file content: %s", err))
+		resp.Diagnostics.AddError("Error writing file content", err.Error())
+		return
 	}
 
-	// Add the purpose
-	err = writer.WriteField("purpose", purpose)
+	err = writer.WriteField("purpose", data.Purpose.ValueString())
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error writing purpose field: %s", err))
+		resp.Diagnostics.AddError("Error writing purpose field", err.Error())
+		return
 	}
-
-	// Note: We no longer send project_id to the API as it's not supported
-	// We keep project_id in the state for future use or reference
 
 	err = writer.Close()
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error closing writer: %s", err))
+		resp.Diagnostics.AddError("Error closing writer", err.Error())
+		return
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("POST", url, body)
+	apiReq, err := http.NewRequest("POST", url, body)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Add headers
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
+	apiReq.Header.Set("Content-Type", writer.FormDataContentType())
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(apiResp.Body)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
+		resp.Diagnostics.AddError("Error reading response", err.Error())
+		return
 	}
 
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody)))
-		}
-		return diag.FromErr(fmt.Errorf("API error: %s - %s (%s)", errorResponse.Error.Type, errorResponse.Error.Message, errorResponse.Error.Code))
-	}
-
-	// Parse JSON response
 	var fileResponse FileResponse
 	err = json.Unmarshal(responseBody, &fileResponse)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Save data to state
-	d.SetId(fileResponse.ID)
-	if err := d.Set("filename", fileResponse.Filename); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("bytes", fileResponse.Bytes); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", fileResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("purpose", fileResponse.Purpose); err != nil {
-		return diag.FromErr(err)
-	}
+	data.ID = types.StringValue(fileResponse.ID)
+	data.Filename = types.StringValue(fileResponse.Filename)
+	data.Bytes = types.Int64Value(fileResponse.Bytes)
+	data.CreatedAt = types.Int64Value(fileResponse.CreatedAt)
+	// Purpose is already in data
+	// ProjectID is already in data (if set)
 
-	// If project_id was provided, save it to state as well
-	// Note: This is for reference only as the API doesn't actually use this field
-	if projectID != "" {
-		if err := d.Set("project_id", projectID); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIFileRead retrieves the current state of an OpenAI file.
-// It fetches the latest information about the file from OpenAI's API and updates
-// the Terraform state with the current file metadata and status.
-func resourceOpenAIFileRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *FileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data FileResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Get the file ID
-	fileID := d.Id()
-	if fileID == "" {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
+	client := r.client.OpenAIClient
+	// Use project key if needed, analogous to GetOpenAIClient logic which defaults to standard client
+	// but lets stick to the configured client in `r.client`.
 
-	// Create URL to get file information
-	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, fileID)
-
-	// If the APIURL already contains /v1, adjust the URL construction
+	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, data.ID.ValueString())
 	if strings.Contains(client.APIURL, "/v1") {
-		url = fmt.Sprintf("%s/files/%s", client.APIURL, fileID)
+		url = fmt.Sprintf("%s/files/%s", client.APIURL, data.ID.ValueString())
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	respBody, err := client.DoRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-	}
-
-	// Add headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// If file doesn't exist (404), mark as deleted
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody)))
+		// Handle 404
+		if strings.Contains(err.Error(), "404") { // Simple check, ideally check status code
+			resp.State.RemoveResource(ctx)
+			return
 		}
-		return diag.FromErr(fmt.Errorf("API error: %s - %s (%s)", errorResponse.Error.Type, errorResponse.Error.Message, errorResponse.Error.Code))
+		resp.Diagnostics.AddError("Error retrieving file", err.Error())
+		return
 	}
 
-	// Parse JSON response
 	var fileResponse FileResponse
-	err = json.Unmarshal(responseBody, &fileResponse)
+	err = json.Unmarshal(respBody, &fileResponse)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
 	}
 
-	// Update state
-	if err := d.Set("filename", fileResponse.Filename); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("bytes", fileResponse.Bytes); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created_at", fileResponse.CreatedAt); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("purpose", fileResponse.Purpose); err != nil {
-		return diag.FromErr(err)
-	}
+	data.Filename = types.StringValue(fileResponse.Filename)
+	data.Bytes = types.Int64Value(fileResponse.Bytes)
+	data.CreatedAt = types.Int64Value(fileResponse.CreatedAt)
+	data.Purpose = types.StringValue(fileResponse.Purpose)
 
-	// Keep project_id if it was set
-	// The API doesn't return project_id, so we have to keep it from the state
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIFileDelete removes a file from OpenAI.
-// It handles the deletion of the file through OpenAI's API and ensures proper cleanup.
-// Note: Some file types may have specific deletion requirements or restrictions.
-func resourceOpenAIFileDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Get the file ID
-	fileID := d.Id()
-	if fileID == "" {
-		return diag.Diagnostics{}
-	}
-
-	// Create the URL to delete the file
-	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, fileID)
-
-	// If the APIURL already contains /v1, adjust the URL construction
-	if strings.Contains(client.APIURL, "/v1") {
-		url = fmt.Sprintf("%s/files/%s", client.APIURL, fileID)
-	}
-
-	// Create the HTTP request
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-	}
-
-	// Add headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the call
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// Si el archivo no existe, no es un error
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check if there were errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody)))
-		}
-		return diag.FromErr(fmt.Errorf("API error: %s - %s (%s)", errorResponse.Error.Type, errorResponse.Error.Message, errorResponse.Error.Code))
-	}
-
-	// Remove the ID to mark that the resource no longer exists
-	d.SetId("")
-
-	return diag.Diagnostics{}
+func (r *FileResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Files are immutable in OpenAI, so any change requires replacement (handled by plan modifiers)
+	// Theoretically we shouldn't get here if PlanModifiers are set correctly.
 }
 
-// resourceOpenAIFileImport handles the import of an existing file.
-// It retrieves the file details directly from the OpenAI API and sets them in the Terraform state.
-// If the file cannot be found or accessed, it returns an error rather than setting placeholder values.
-func resourceOpenAIFileImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	// Get the OpenAI client
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return nil, fmt.Errorf("error getting OpenAI client: %s", err)
+func (r *FileResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data FileResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Get the file ID from the import command
-	fileID := d.Id()
-	if fileID == "" {
-		return nil, fmt.Errorf("error: no file ID provided for import")
-	}
-
-	// Construct the API URL for retrieving the file
-	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, fileID)
-
-	// If the APIURL already contains /v1, adjust the URL construction
+	client := r.client.OpenAIClient
+	url := fmt.Sprintf("%s/v1/files/%s", client.APIURL, data.ID.ValueString())
 	if strings.Contains(client.APIURL, "/v1") {
-		url = fmt.Sprintf("%s/files/%s", client.APIURL, fileID)
+		url = fmt.Sprintf("%s/files/%s", client.APIURL, data.ID.ValueString())
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	_, err := client.DoRequest(http.MethodDelete, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %s", err)
-	}
-
-	// Add headers
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error making request: %s", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response: %s", err)
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(responseBody, &errorResponse); err != nil {
-			return nil, fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody))
+		// If 404, consider it gone
+		if strings.Contains(err.Error(), "404") {
+			return
 		}
-		return nil, fmt.Errorf("API error: %s - %s (%s)", errorResponse.Error.Type, errorResponse.Error.Message, errorResponse.Error.Code)
+		resp.Diagnostics.AddError("Error deleting file", err.Error())
+		return
 	}
+}
 
-	// Parse JSON response
-	var fileResponse FileResponse
-	if err := json.Unmarshal(responseBody, &fileResponse); err != nil {
-		return nil, fmt.Errorf("error parsing response: %s", err)
-	}
+func (r *FileResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 
-	// Set the ID first
-	d.SetId(fileResponse.ID)
-
-	// Use a more common path pattern that's likely to match existing configurations
-	// This helps prevent unnecessary resource replacement after import
-	filePath := fmt.Sprintf("./data/%s", fileResponse.Filename)
-
-	// Check if the file exists at common locations
-	_, errData := os.Stat(filePath)
-	if errData != nil {
-		// Try without the data subdirectory
-		altPath := fmt.Sprintf("./%s", fileResponse.Filename)
-		_, errAlt := os.Stat(altPath)
-		if errAlt == nil {
-			// Use the file path if found
-			filePath = altPath
-		} else {
-			// Fallback to a placeholder that's less likely to cause replacement
-			filePath = fmt.Sprintf("./data/%s", fileResponse.Filename)
-		}
-	}
-
-	if err := d.Set("file", filePath); err != nil {
-		return nil, fmt.Errorf("error setting file path: %s", err)
-	}
-
-	// Set all the computed fields from the API response
-	if err := d.Set("filename", fileResponse.Filename); err != nil {
-		return nil, fmt.Errorf("error setting filename: %s", err)
-	}
-	if err := d.Set("bytes", fileResponse.Bytes); err != nil {
-		return nil, fmt.Errorf("error setting bytes: %s", err)
-	}
-	if err := d.Set("created_at", fileResponse.CreatedAt); err != nil {
-		return nil, fmt.Errorf("error setting created_at: %s", err)
-	}
-	if err := d.Set("purpose", fileResponse.Purpose); err != nil {
-		return nil, fmt.Errorf("error setting purpose: %s", err)
-	}
-
-	// Return the resourceData with properly populated fields
-	return []*schema.ResourceData{d}, nil
+	// Note: We cannot populate the 'file' attribute (path) from import because the API doesn't return it.
+	// Users will have to adjust state or config manually if they want to manage the file content.
+	// This matches the SDKv2 behavior where 'file' was ignored during import, or we tried to guess it.
+	// In the framework, we can leave it null or try to populate it if possible, but usually for file paths
+	// we can't really guess.
 }

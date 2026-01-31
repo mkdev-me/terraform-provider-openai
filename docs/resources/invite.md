@@ -3,20 +3,20 @@
 page_title: "openai_invite Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI User Invitation.
 ---
 
 # openai_invite (Resource)
 
-
+Manages an OpenAI User Invitation.
 
 ## Example Usage
 
 ```terraform
 # Create a project first (or reference an existing one)
 resource "openai_project" "main" {
-  name        = "Main Project"
-  description = "Primary project for team collaboration"
+  name = "Main Project"
+
 }
 
 # Invite a new user to the organization with owner role
@@ -44,13 +44,13 @@ resource "openai_invite" "developer" {
 
 # Create multiple projects for fine-grained access
 resource "openai_project" "api_development" {
-  name        = "API Development"
-  description = "API development and testing"
+  name = "API Development"
+
 }
 
 resource "openai_project" "ml_research" {
-  name        = "ML Research"
-  description = "Machine learning research projects"
+  name = "ML Research"
+
 }
 
 # Invite data scientist with access to multiple projects
@@ -91,17 +91,20 @@ output "team_lead_invite_id" {
 
 ### Required
 
-- `email` (String) The email address of the user to invite
-- `projects` (Block List, Min: 1) Projects to assign to the invited user (see [below for nested schema](#nestedblock--projects))
-- `role` (String) The role to assign to the user (owner or reader)
+- `email` (String) The email address of the user to invite.
+- `role` (String) The role to assign to the user (owner or reader).
+
+### Optional
+
+- `projects` (Block List) The projects to invite the user to. (see [below for nested schema](#nestedblock--projects))
 
 ### Read-Only
 
-- `created_at` (Number) When the invitation was created
-- `expires_at` (Number) When the invitation expires
-- `id` (String) The ID of this resource.
-- `invite_id` (String) The ID of the invitation
-- `status` (String) The status of the invitation
+- `created_at` (Number) When the invitation was created.
+- `expires_at` (Number) When the invitation expires.
+- `id` (String) The identifier of the invitation.
+- `invite_id` (String) The ID of the invitation.
+- `status` (String) The status of the invitation.
 
 <a id="nestedblock--projects"></a>
 ### Nested Schema for `projects`

@@ -3,12 +3,12 @@
 page_title: "openai_models Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Models data source allows you to list all available models.
 ---
 
 # openai_models (Data Source)
 
-
+Models data source allows you to list all available models.
 
 ## Example Usage
 
@@ -26,14 +26,14 @@ output "available_models" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `models` (List of Object) (see [below for nested schema](#nestedatt--models))
+- `models` (Attributes List) List of models. (see [below for nested schema](#nestedatt--models))
 
 <a id="nestedatt--models"></a>
 ### Nested Schema for `models`
 
 Read-Only:
 
-- `created` (Number)
-- `id` (String)
-- `object` (String)
-- `owned_by` (String)
+- `created` (Number) The timestamp when the model was created.
+- `id` (String) The ID of the model.
+- `object` (String) The object type.
+- `owned_by` (String) The organization that owns the model.

@@ -1,236 +1,305 @@
 package provider
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func resourceOpenAIInvite() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIInviteCreate,
-		ReadContext:   resourceOpenAIInviteRead,
-		DeleteContext: resourceOpenAIInviteDelete,
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIInviteImport,
+var _ resource.Resource = &InviteResource{}
+var _ resource.ResourceWithImportState = &InviteResource{}
+
+type InviteResource struct {
+	client *OpenAIClient
+}
+
+func NewInviteResource() resource.Resource {
+	return &InviteResource{}
+}
+
+func (r *InviteResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_invite"
+}
+
+type InviteResourceModel struct {
+	ID        types.String         `tfsdk:"id"`
+	Email     types.String         `tfsdk:"email"`
+	Role      types.String         `tfsdk:"role"`
+	Projects  []InviteProjectModel `tfsdk:"projects"`
+	InviteID  types.String         `tfsdk:"invite_id"`
+	Status    types.String         `tfsdk:"status"`
+	CreatedAt types.Int64          `tfsdk:"created_at"`
+	ExpiresAt types.Int64          `tfsdk:"expires_at"`
+}
+
+type InviteProjectModel struct {
+	ID   types.String `tfsdk:"id"`
+	Role types.String `tfsdk:"role"`
+}
+
+func (r *InviteResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Manages an OpenAI User Invitation.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The identifier of the invitation.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"email": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The email address of the user to invite.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"role": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The role to assign to the user (owner or reader).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"expires_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "When the invitation expires.",
+			},
+			"invite_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The ID of the invitation.",
+			},
+			"status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The status of the invitation.",
+			},
+			"created_at": schema.Int64Attribute{
+				Computed:            true,
+				MarkdownDescription: "When the invitation was created.",
+			},
 		},
-		Schema: map[string]*schema.Schema{
-			"email": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The email address of the user to invite",
-			},
-			"role": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"owner", "reader"}, false),
-				Description:  "The role to assign to the user (owner or reader)",
-			},
-			"projects": {
-				Type:        schema.TypeList,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Projects to assign to the invited user",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:        schema.TypeString,
+
+		Blocks: map[string]schema.Block{
+			"projects": schema.ListNestedBlock{
+				Description: "The projects to invite the user to.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
 							Required:    true,
 							Description: "The ID of the project",
 						},
-						"role": {
-							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.StringInSlice([]string{"owner", "member"}, false),
-							Description:  "The role to assign to the user within the project (owner or member)",
+						"role": schema.StringAttribute{
+							Required:    true,
+							Description: "The role to assign to the user within the project (owner or member)",
 						},
 					},
 				},
-				MinItems: 1,
-			},
-			"invite_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The ID of the invitation",
-			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The status of the invitation",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "When the invitation was created",
-			},
-			"expires_at": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "When the invitation expires",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplace(),
+				},
 			},
 		},
 	}
 }
 
-func resourceOpenAIInviteCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *InviteResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
-
-	email := d.Get("email").(string)
-	role := d.Get("role").(string)
-
-	// Process project assignments if present
-	var projects []client.InviteProject
-	if projectsRaw, ok := d.GetOk("projects"); ok {
-		projectsList := projectsRaw.([]interface{})
-		projects = make([]client.InviteProject, 0, len(projectsList))
-
-		for _, projectRaw := range projectsList {
-			projectMap := projectRaw.(map[string]interface{})
-			project := client.InviteProject{
-				ID:   projectMap["id"].(string),
-				Role: projectMap["role"].(string),
-			}
-			projects = append(projects, project)
-		}
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
 	}
-
-	// Create the invitation
-	invite, err := c.CreateInvite(email, role, projects)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating invitation: %s", err))
-	}
-
-	// Set the resource ID and computed fields
-	d.SetId(invite.ID)
-	if err := d.Set("invite_id", invite.ID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting invite_id: %s", err))
-	}
-	if err := d.Set("status", invite.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting status: %s", err))
-	}
-	if err := d.Set("created_at", invite.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %s", err))
-	}
-	if err := d.Set("expires_at", invite.ExpiresAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting expires_at: %s", err))
-	}
-
-	return resourceOpenAIInviteRead(ctx, d, m)
+	r.client = client
 }
 
-func resourceOpenAIInviteRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *InviteResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data InviteResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	inviteID := d.Id()
-
-	// Retrieve the invitation
-	invite, err := c.GetInvite(inviteID)
-	if err != nil {
-		// If the invite doesn't exist anymore, remove it from state
-		d.SetId("")
-		return nil
+	createRequest := InviteCreateRequest{
+		Email: data.Email.ValueString(),
+		Role:  data.Role.ValueString(),
 	}
 
-	// Update computed fields
-	if err := d.Set("email", invite.Email); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting email: %s", err))
-	}
-	if err := d.Set("role", invite.Role); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting role: %s", err))
-	}
-	if err := d.Set("invite_id", invite.ID); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting invite_id: %s", err))
-	}
-	if err := d.Set("status", invite.Status); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting status: %s", err))
-	}
-	if err := d.Set("created_at", invite.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting created_at: %s", err))
-	}
-	if err := d.Set("expires_at", invite.ExpiresAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting expires_at: %s", err))
-	}
-
-	// Update projects if present
-	if len(invite.Projects) > 0 {
-		projects := make([]map[string]interface{}, len(invite.Projects))
-		for i, project := range invite.Projects {
-			projects[i] = map[string]interface{}{
-				"id":   project.ID,
-				"role": project.Role,
-			}
+	if len(data.Projects) > 0 {
+		projects := []InviteProject{}
+		for _, p := range data.Projects {
+			projects = append(projects, InviteProject{
+				ID:   p.ID.ValueString(),
+				Role: p.Role.ValueString(),
+			})
 		}
-		if err := d.Set("projects", projects); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting projects: %s", err))
-		}
+		createRequest.Projects = projects
 	}
 
-	return nil
+	reqBody, err := json.Marshal(createRequest)
+	if err != nil {
+		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		return
+	}
+
+	url := fmt.Sprintf("%s/organization/invites", r.client.OpenAIClient.APIURL)
+	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+
+	apiReq.Header.Set("Content-Type", "application/json")
+
+	// Use Admin Key if available
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
+	}
+
+	var inviteResp InviteResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &inviteResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.ID = types.StringValue(inviteResp.ID)
+	data.InviteID = types.StringValue(inviteResp.ID)
+	data.Status = types.StringValue(inviteResp.Status)
+	data.CreatedAt = types.Int64Value(inviteResp.CreatedAt)
+	data.ExpiresAt = types.Int64Value(inviteResp.ExpiresAt)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIInviteDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	c, err := GetOpenAIClientWithAdminKey(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *InviteResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data InviteResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	inviteID := d.Id()
-
-	// Delete the invitation
-	err = c.DeleteInvite(inviteID)
+	url := fmt.Sprintf("%s/organization/invites/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error deleting invitation: %s", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
 	}
 
-	// Remove resource from state
-	d.SetId("")
-	return nil
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
+	}
+
+	apiResp, err := http.DefaultClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
+		return
+	}
+
+	var inviteResp InviteResponse
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &inviteResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.Email = types.StringValue(inviteResp.Email)
+	data.Role = types.StringValue(inviteResp.Role)
+	data.Status = types.StringValue(inviteResp.Status)
+	data.CreatedAt = types.Int64Value(inviteResp.CreatedAt)
+	data.ExpiresAt = types.Int64Value(inviteResp.ExpiresAt)
+	data.InviteID = types.StringValue(inviteResp.ID)
+
+	if len(inviteResp.Projects) > 0 {
+		projects := []InviteProjectModel{}
+		for _, p := range inviteResp.Projects {
+			projects = append(projects, InviteProjectModel{
+				ID:   types.StringValue(p.ID),
+				Role: types.StringValue(p.Role),
+			})
+		}
+		data.Projects = projects
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func resourceOpenAIInviteImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	inviteID := d.Id()
+func (r *InviteResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Immutable
+}
 
-	c, err := GetOpenAIClientWithAdminKey(m)
+func (r *InviteResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data InviteResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	url := fmt.Sprintf("%s/organization/invites/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
+	apiReq, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	// Use the provider's configured API key via the DoRequest method, which will use the default key
-	invite, err := c.GetInvite(inviteID)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving invite for import: %s", err)
+	apiKey := r.client.OpenAIClient.APIKey
+	if r.client.AdminAPIKey != "" {
+		apiKey = r.client.AdminAPIKey
+	}
+	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	d.SetId(invite.ID)
-	_ = d.Set("email", invite.Email)
-	_ = d.Set("role", invite.Role)
-	_ = d.Set("invite_id", invite.ID)
-	_ = d.Set("status", invite.Status)
-	_ = d.Set("created_at", invite.CreatedAt)
-	_ = d.Set("expires_at", invite.ExpiresAt)
+	http.DefaultClient.Do(apiReq)
+}
 
-	if len(invite.Projects) > 0 {
-		projects := make([]map[string]interface{}, len(invite.Projects))
-		for i, project := range invite.Projects {
-			projects[i] = map[string]interface{}{
-				"id":   project.ID,
-				"role": project.Role,
-			}
-		}
-		_ = d.Set("projects", projects)
-	}
-
-	return []*schema.ResourceData{d}, nil
+func (r *InviteResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

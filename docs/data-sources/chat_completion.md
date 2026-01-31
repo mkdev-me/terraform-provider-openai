@@ -3,12 +3,12 @@
 page_title: "openai_chat_completion Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific chat completion by ID.
 ---
 
 # openai_chat_completion (Data Source)
 
-
+Use this data source to retrieve information about a specific chat completion by ID.
 
 
 
@@ -21,12 +21,12 @@ description: |-
 
 ### Read-Only
 
-- `choices` (List of Object) The list of chat completion choices the model generated (see [below for nested schema](#nestedatt--choices))
-- `created` (Number) The Unix timestamp (in seconds) of when the chat completion was created
-- `id` (String) The ID of the chat completion
-- `model` (String) The model used for the chat completion
-- `object` (String) The object type, which is always 'chat.completion'
-- `usage` (Map of Number) Usage statistics for the chat completion request
+- `choices` (Attributes List) (see [below for nested schema](#nestedatt--choices))
+- `created` (Number)
+- `id` (String) The ID of this resource.
+- `model` (String)
+- `object` (String)
+- `usage` (Map of Number)
 
 <a id="nestedatt--choices"></a>
 ### Nested Schema for `choices`
@@ -35,19 +35,20 @@ Read-Only:
 
 - `finish_reason` (String)
 - `index` (Number)
-- `message` (List of Object) (see [below for nested schema](#nestedobjatt--choices--message))
+- `message` (Attributes List) (see [below for nested schema](#nestedatt--choices--message))
 
-<a id="nestedobjatt--choices--message"></a>
+<a id="nestedatt--choices--message"></a>
 ### Nested Schema for `choices.message`
 
 Read-Only:
 
 - `content` (String)
-- `function_call` (List of Object) (see [below for nested schema](#nestedobjatt--choices--message--function_call))
+- `function_call` (Attributes List, Deprecated) (see [below for nested schema](#nestedatt--choices--message--function_call))
+- `name` (String)
 - `role` (String)
-- `tool_calls` (List of Object) (see [below for nested schema](#nestedobjatt--choices--message--tool_calls))
+- `tool_calls` (Attributes List) (see [below for nested schema](#nestedatt--choices--message--tool_calls))
 
-<a id="nestedobjatt--choices--message--function_call"></a>
+<a id="nestedatt--choices--message--function_call"></a>
 ### Nested Schema for `choices.message.function_call`
 
 Read-Only:
@@ -56,16 +57,16 @@ Read-Only:
 - `name` (String)
 
 
-<a id="nestedobjatt--choices--message--tool_calls"></a>
+<a id="nestedatt--choices--message--tool_calls"></a>
 ### Nested Schema for `choices.message.tool_calls`
 
 Read-Only:
 
-- `function` (List of Object) (see [below for nested schema](#nestedobjatt--choices--message--tool_calls--function))
+- `function` (Attributes List) (see [below for nested schema](#nestedatt--choices--message--tool_calls--function))
 - `id` (String)
 - `type` (String)
 
-<a id="nestedobjatt--choices--message--tool_calls--function"></a>
+<a id="nestedatt--choices--message--tool_calls--function"></a>
 ### Nested Schema for `choices.message.tool_calls.function`
 
 Read-Only:

@@ -1,8 +1,5 @@
 # List all users in the organization
-data "openai_organization_users" "all" {
-  # Optional: filter by role
-  role = "owner"
-}
+data "openai_organization_users" "all" {}
 
 # List all organization users without filtering
 data "openai_organization_users" "everyone" {}

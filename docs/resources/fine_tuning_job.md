@@ -3,12 +3,12 @@
 page_title: "openai_fine_tuning_job Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI Fine-Tuning Job.
 ---
 
 # openai_fine_tuning_job (Resource)
 
-
+Manages an OpenAI Fine-Tuning Job.
 
 ## Example Usage
 
@@ -95,111 +95,101 @@ output "fine_tuning_job_id" {
 
 ### Required
 
-- `model` (String) The base model to fine-tune (e.g., gpt-3.5-turbo, gpt-4o-mini)
-- `training_file` (String) The ID of the uploaded file containing training data
+- `model` (String) The base model to fine-tune.
+- `training_file` (String) The ID of the training file.
 
 ### Optional
 
-- `cancel_after_timeout` (Number) Automatically cancel the job after this many seconds
-- `hyperparameters` (Block List, Max: 1) Deprecated: Use method instead. Hyperparameters for the fine-tuning job (see [below for nested schema](#nestedblock--hyperparameters))
-- `integrations` (Block List) List of integrations to enable for the fine-tuning job (see [below for nested schema](#nestedblock--integrations))
-- `metadata` (Map of String) Key-value pairs attached to the fine-tuning job
-- `method` (Block List, Max: 1) The method used for fine-tuning (see [below for nested schema](#nestedblock--method))
-- `seed` (Number) Seed for reproducibility
-- `suffix` (String) A string of up to 64 characters added to your fine-tuned model name
-- `validation_file` (String) The ID of the uploaded file containing validation data
+- `integrations` (Attributes List) (see [below for nested schema](#nestedatt--integrations))
+- `metadata` (Map of String) Metadata.
+- `method` (Attributes) (see [below for nested schema](#nestedatt--method))
+- `seed` (Number) The seed used for the fine-tuning job.
+- `suffix` (String, Deprecated) A string of up to 40 characters that will be added to your fine-tuned model name.
+- `validation_file` (String) The ID of the validation file.
 
 ### Read-Only
 
-- `created_at` (Number) Timestamp when the fine-tuning job was created
-- `fine_tuned_model` (String) The name of the fine-tuned model
-- `finished_at` (Number) Timestamp when the fine-tuning job was completed
-- `id` (String) The ID of this resource.
-- `last_updated` (String) Timestamp of when this resource was last updated
-- `organization_id` (String) The organization ID the fine-tuning job belongs to
-- `result_files` (List of String) Result files from the fine-tuning job
-- `status` (String) Status of the fine-tuning job
-- `trained_tokens` (Number) The number of tokens trained during the fine-tuning job
-- `validation_loss` (Number) The validation loss for the fine-tuning job
+- `created_at` (Number)
+- `fine_tuned_model` (String)
+- `finished_at` (Number)
+- `id` (String) The identifier of the fine-tuning job.
+- `organization_id` (String)
+- `result_files` (List of String)
+- `status` (String)
+- `trained_tokens` (Number)
+- `validation_loss` (Number)
 
-<a id="nestedblock--hyperparameters"></a>
-### Nested Schema for `hyperparameters`
-
-Optional:
-
-- `batch_size` (Number) Number of examples in each batch
-- `learning_rate_multiplier` (Number) Learning rate multiplier
-- `n_epochs` (Number) Number of epochs to train for
-
-
-<a id="nestedblock--integrations"></a>
+<a id="nestedatt--integrations"></a>
 ### Nested Schema for `integrations`
 
 Required:
 
-- `type` (String) The type of integration (e.g., wandb)
+- `type` (String)
 
 Optional:
 
-- `wandb` (Block List, Max: 1) Configuration for Weights & Biases integration (see [below for nested schema](#nestedblock--integrations--wandb))
+- `wandb` (Attributes) (see [below for nested schema](#nestedatt--integrations--wandb))
 
-<a id="nestedblock--integrations--wandb"></a>
+<a id="nestedatt--integrations--wandb"></a>
 ### Nested Schema for `integrations.wandb`
 
 Required:
 
-- `project` (String) The W&B project name
+- `project` (String)
 
 Optional:
 
-- `name` (String) The W&B run name
-- `tags` (List of String) Tags for the W&B run
+- `name` (String)
+- `tags` (List of String)
 
 
 
-<a id="nestedblock--method"></a>
+<a id="nestedatt--method"></a>
 ### Nested Schema for `method`
 
 Required:
 
-- `type` (String) The type of fine-tuning method (supervised or dpo)
+- `type` (String)
 
 Optional:
 
-- `dpo` (Block List, Max: 1) Configuration for DPO fine-tuning (see [below for nested schema](#nestedblock--method--dpo))
-- `supervised` (Block List, Max: 1) Configuration for supervised fine-tuning (see [below for nested schema](#nestedblock--method--supervised))
+- `dpo` (Attributes) (see [below for nested schema](#nestedatt--method--dpo))
+- `supervised` (Attributes) (see [below for nested schema](#nestedatt--method--supervised))
 
-<a id="nestedblock--method--dpo"></a>
+<a id="nestedatt--method--dpo"></a>
 ### Nested Schema for `method.dpo`
 
 Optional:
 
-- `hyperparameters` (Block List, Max: 1) Hyperparameters for DPO fine-tuning (see [below for nested schema](#nestedblock--method--dpo--hyperparameters))
+- `hyperparameters` (Attributes) (see [below for nested schema](#nestedatt--method--dpo--hyperparameters))
 
-<a id="nestedblock--method--dpo--hyperparameters"></a>
+<a id="nestedatt--method--dpo--hyperparameters"></a>
 ### Nested Schema for `method.dpo.hyperparameters`
 
 Optional:
 
-- `beta` (Number) Beta parameter for DPO
+- `batch_size` (String)
+- `beta` (String)
+- `learning_rate_multiplier` (String)
+- `n_epochs` (String)
 
 
 
-<a id="nestedblock--method--supervised"></a>
+<a id="nestedatt--method--supervised"></a>
 ### Nested Schema for `method.supervised`
 
 Optional:
 
-- `hyperparameters` (Block List, Max: 1) Hyperparameters for supervised fine-tuning (see [below for nested schema](#nestedblock--method--supervised--hyperparameters))
+- `hyperparameters` (Attributes) (see [below for nested schema](#nestedatt--method--supervised--hyperparameters))
 
-<a id="nestedblock--method--supervised--hyperparameters"></a>
+<a id="nestedatt--method--supervised--hyperparameters"></a>
 ### Nested Schema for `method.supervised.hyperparameters`
 
 Optional:
 
-- `batch_size` (Number) Number of examples in each batch
-- `learning_rate_multiplier` (Number) Learning rate multiplier
-- `n_epochs` (Number) Number of epochs to train for
+- `batch_size` (String)
+- `learning_rate_multiplier` (String)
+- `n_epochs` (String)
 
 ## Import
 

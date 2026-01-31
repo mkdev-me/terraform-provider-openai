@@ -10,7 +10,6 @@ A comprehensive Terraform provider for managing OpenAI resources, enabling infra
 
 ### Core AI Capabilities
 - **Chat Completions**: Generate conversational responses with GPT-4, GPT-3.5-Turbo, and other models
-- **Assistants API**: Create and manage AI assistants with custom instructions and file knowledge
 - **Fine-Tuning**: Create custom models by fine-tuning base models on your data
 - **Embeddings**: Generate vector representations of text for semantic search and analysis
 - **Image Generation**: Create, edit, and generate variations of images using DALL-E
@@ -18,10 +17,9 @@ A comprehensive Terraform provider for managing OpenAI resources, enabling infra
 - **Moderation**: Detect potentially harmful content in text
 
 ### Resource Management
-- **File Management**: Upload, organize, and manage files for training and assistants
+- **File Management**: Upload, organize, and manage files for training and retrieval
 - **Vector Stores**: Create and manage vector databases for retrieval-augmented generation
 - **Batch Processing**: Process multiple requests efficiently with batch operations
-- **Thread Management**: Create and manage conversation threads for assistants
 
 ### Administrative Features
 - **Organization Management**: Manage projects, users, and service accounts
@@ -129,11 +127,6 @@ cd examples/chat_completion
 terraform init
 terraform plan
 terraform apply
-
-# Or test another example
-cd ../assistants
-terraform init
-terraform plan
 ```
 
 #### Development Workflow
@@ -163,6 +156,26 @@ export OPENAI_ORGANIZATION_ID="your-org-id"  # Optional
 #### Documentation
 
 Make sure to run `tfplugindocs` if resources are updated.
+
+## Releasing
+
+The release process is automated using [Release Drafter](https://github.com/release-drafter/release-drafter) and GitHub Actions.
+
+### Automated Release Notes
+A draft release is automatically created and updated as Pull Requests are merged. The changelog is categorized based on PR labels:
+- `feature`, `feat` -> 🚀 Features
+- `fix`, `bug` -> 🐛 Bug Fixes
+- `chore`, `docs`, `refactor`, `style`, `test` -> 🧰 Maintenance
+
+### Cutting a New Release
+To publish a new release:
+
+1. Go to **Actions** -> **Bump Version**.
+2. Click **Run workflow**.
+3. This will:
+    - Calculate the next semantic version based on the labels of merged PRs since the last release.
+    - Create and push a new git tag.
+    - Trigger the official Release workflow which builds binaries and publishes them.
 
 ## Testing
 
@@ -320,8 +333,6 @@ These resources and data sources can be used with project-scoped API keys:
 | Resource/Data Source | Description |
 |----------------------|-------------|
 | `openai_chat_completion` | Generate chat completions |
-| `openai_assistant` | Create and manage assistants |
-| `openai_thread` | Create and manage conversation threads |
 | `openai_file` | Upload and manage files |
 | `openai_image_generation` | Generate images with DALL-E |
 | `openai_embedding` | Create text embeddings |

@@ -3,12 +3,12 @@
 page_title: "openai_chat_completion Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Generates a model response for the given chat conversation.
 ---
 
 # openai_chat_completion (Resource)
 
-
+Generates a model response for the given chat conversation.
 
 ## Example Usage
 
@@ -40,83 +40,127 @@ output "chat_response" {
 
 ### Required
 
-- `messages` (Block List, Min: 1) A list of messages comprising the conversation so far (see [below for nested schema](#nestedblock--messages))
-- `model` (String) ID of the model to use for the chat completion
+- `messages` (Attributes List) A list of messages comprising the conversation so far. (see [below for nested schema](#nestedatt--messages))
+- `model` (String) ID of the model to use for the chat completion.
 
 ### Optional
 
-- `_imported_resource` (String) Internal field to prevent recreation of imported resources
-- `frequency_penalty` (Number) Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far
-- `function_call` (String) Controls how the model responds to function calls. 'none' means the model doesn't call a function, 'auto' means the model can pick between calling a function or generating a message
-- `functions` (Block List) A list of functions the model may generate JSON inputs for (see [below for nested schema](#nestedblock--functions))
-- `imported` (Boolean) Whether this resource was imported from an existing chat completion
-- `logit_bias` (Map of Number) Modify the likelihood of specified tokens appearing in the completion
-- `max_tokens` (Number) The maximum number of tokens to generate in the chat completion
-- `metadata` (Map of String) A map of key-value pairs that can be used to filter chat completions when listing them through the API. Only applicable when store is set to true.
-- `n` (Number) How many chat completion choices to generate for each input message
-- `presence_penalty` (Number) Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far
-- `project_id` (String) The project to use for this request
-- `stop` (List of String) Up to 4 sequences where the API will stop generating further tokens
-- `store` (Boolean) Whether to store the chat completion for later retrieval via API. Note: requires a compatible model (e.g., gpt-4o), this parameter set to true, and the Chat Completions Store feature enabled on your OpenAI account. Without these conditions, completions won't be retrievable through the API.
-- `stream` (Boolean) Whether to stream back partial progress
-- `temperature` (Number) What sampling temperature to use, between 0 and 2. Higher values like 0.8 will make the output more random, while lower values like 0.2 will make it more focused and deterministic
-- `top_p` (Number) Nuclear sampling: consider the results of the tokens with top_p probability mass. Range from 0 to 1
-- `user` (String) A unique identifier representing your end-user
+- `_imported_resource` (String) Internal field to prevent recreation of imported resources.
+- `frequency_penalty` (Number) Frequency penalty parameter.
+- `function_call` (String, Deprecated) Deprecated. Controls how the model responds to function calls.
+- `functions` (Attributes List, Deprecated) Deprecated. A list of functions the model may generate JSON inputs for. (see [below for nested schema](#nestedatt--functions))
+- `imported` (Boolean) Whether this resource was imported from an existing chat completion.
+- `logit_bias` (Map of Number) Modify the likelihood of specified tokens appearing in the completion.
+- `max_tokens` (Number, Deprecated) The maximum number of tokens to generate in the chat completion.
+- `metadata` (Map of String) A map of key-value pairs that can be used to filter chat completions.
+- `n` (Number) How many chat completion choices to generate for each input message.
+- `presence_penalty` (Number) Presence penalty parameter.
+- `project_id` (String) The project to use for this request.
+- `stop` (List of String) Up to 4 sequences where the API will stop generating further tokens.
+- `store` (Boolean) Whether to store the chat completion for later retrieval via API.
+- `stream` (Boolean) Whether to stream back partial progress.
+- `temperature` (Number) What sampling temperature to use, between 0 and 2.
+- `tool_choice` (String) Controls which (if any) tool is called by the model.
+- `tools` (Attributes List) A list of tools the model may call. Currently, only functions are supported as a tool. (see [below for nested schema](#nestedatt--tools))
+- `top_p` (Number) Nucleus sampling parameter.
+- `user` (String, Deprecated) A unique identifier representing your end-user.
 
 ### Read-Only
 
-- `chat_completion_id` (String) The ID of the chat completion
-- `choices` (Block List) The list of chat completion choices the model generated (see [below for nested schema](#nestedblock--choices))
-- `created` (Number) The Unix timestamp (in seconds) of when the chat completion was created
+- `chat_completion_id` (String) The ID of the chat completion.
+- `choices` (Attributes List) The list of chat completion choices the model generated. (see [below for nested schema](#nestedatt--choices))
+- `created` (Number) The Unix timestamp (in seconds) of when the chat completion was created.
 - `id` (String) The ID of this resource.
-- `model_used` (String) The model used for the chat completion
-- `object` (String) The object type, which is always 'chat.completion'
-- `usage` (Map of Number) Usage statistics for the chat completion request
+- `model_used` (String) The model used for the chat completion.
+- `object` (String) The object type, which is always 'chat.completion'.
+- `usage` (Map of Number) Usage statistics for the chat completion request.
 
-<a id="nestedblock--messages"></a>
+<a id="nestedatt--messages"></a>
 ### Nested Schema for `messages`
 
 Required:
 
-- `content` (String) The content of the message
-- `role` (String) The role of the message author. One of 'system', 'user', 'assistant', or 'function'
+- `content` (String) The content of the message.
+- `role` (String) The role of the message author. One of 'system', 'user', 'assistant', or 'function'.
 
 Optional:
 
-- `function_call` (Block List, Max: 1) The name and arguments of a function that should be called, as generated by the model (see [below for nested schema](#nestedblock--messages--function_call))
-- `name` (String) The name of the author of this message. Required if role is 'function'
+- `function_call` (Attributes List, Deprecated) Deprecated. The name and arguments of a function that should be called, as generated by the model. (see [below for nested schema](#nestedatt--messages--function_call))
+- `name` (String) The name of the author of this message. Required if role is 'function'.
+- `tool_calls` (Attributes List) The tool calls generated by the model, such as function calls. (see [below for nested schema](#nestedatt--messages--tool_calls))
 
-<a id="nestedblock--messages--function_call"></a>
+<a id="nestedatt--messages--function_call"></a>
 ### Nested Schema for `messages.function_call`
 
 Required:
 
-- `arguments` (String) The arguments to call the function with, as a JSON string
-- `name` (String) The name of the function to call
+- `arguments` (String) The arguments to call the function with, as a JSON string.
+- `name` (String) The name of the function to call.
+
+
+<a id="nestedatt--messages--tool_calls"></a>
+### Nested Schema for `messages.tool_calls`
+
+Read-Only:
+
+- `function` (Attributes List) The function that the model called. (see [below for nested schema](#nestedatt--messages--tool_calls--function))
+- `id` (String) The ID of the tool call.
+- `type` (String) The type of the tool. Currently, only 'function' is supported.
+
+<a id="nestedatt--messages--tool_calls--function"></a>
+### Nested Schema for `messages.tool_calls.function`
+
+Read-Only:
+
+- `arguments` (String) The arguments to call the function with, as a JSON string.
+- `name` (String) The name of the function to call.
 
 
 
-<a id="nestedblock--functions"></a>
+
+<a id="nestedatt--functions"></a>
 ### Nested Schema for `functions`
 
 Required:
 
-- `name` (String) The name of the function
-- `parameters` (String) The parameters the function accepts, described as a JSON Schema object
+- `name` (String) The name of the function.
+- `parameters` (String) The parameters the function accepts, described as a JSON Schema object.
 
 Optional:
 
-- `description` (String) A description of what the function does
+- `description` (String) A description of what the function does.
 
 
-<a id="nestedblock--choices"></a>
+<a id="nestedatt--tools"></a>
+### Nested Schema for `tools`
+
+Required:
+
+- `function` (Attributes List) Function definition for the tool. (see [below for nested schema](#nestedatt--tools--function))
+- `type` (String) The type of the tool. Currently, only 'function' is supported.
+
+<a id="nestedatt--tools--function"></a>
+### Nested Schema for `tools.function`
+
+Required:
+
+- `name` (String) The name of the function.
+- `parameters` (String) The parameters the function accepts, described as a JSON Schema object.
+
+Optional:
+
+- `description` (String) A description of what the function does.
+
+
+
+<a id="nestedatt--choices"></a>
 ### Nested Schema for `choices`
 
 Read-Only:
 
-- `finish_reason` (String) The reason the model stopped generating text
-- `index` (Number) The index of the choice in the list of choices
-- `message` (List of Object) The message generated by the model (see [below for nested schema](#nestedatt--choices--message))
+- `finish_reason` (String)
+- `index` (Number)
+- `message` (Attributes List) (see [below for nested schema](#nestedatt--choices--message))
 
 <a id="nestedatt--choices--message"></a>
 ### Nested Schema for `choices.message`
@@ -124,10 +168,10 @@ Read-Only:
 Read-Only:
 
 - `content` (String)
-- `function_call` (List of Object) (see [below for nested schema](#nestedobjatt--choices--message--function_call))
+- `function_call` (Attributes List) (see [below for nested schema](#nestedatt--choices--message--function_call))
 - `role` (String)
 
-<a id="nestedobjatt--choices--message--function_call"></a>
+<a id="nestedatt--choices--message--function_call"></a>
 ### Nested Schema for `choices.message.function_call`
 
 Read-Only:

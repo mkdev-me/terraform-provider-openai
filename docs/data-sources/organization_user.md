@@ -3,12 +3,12 @@
 page_title: "openai_organization_user Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific user in your organization.
 ---
 
 # openai_organization_user (Data Source)
 
-
+Use this data source to retrieve information about a specific user in your organization.
 
 
 
@@ -17,12 +17,12 @@ description: |-
 
 ### Optional
 
-- `email` (String) The email address of the user to retrieve
-- `user_id` (String) The ID of the user to retrieve
+- `email` (String) The email address of the user to retrieve.
+- `user_id` (String) The ID of the user to retrieve.
 
 ### Read-Only
 
-- `added_at` (Number) The Unix timestamp when the user was added to the organization
-- `id` (String) The ID of this resource.
-- `name` (String) The name of the user
-- `role` (String) The role of the user in the organization (owner, member, or reader)
+- `added_at` (Number) The Unix timestamp when the user was added to the organization.
+- `id` (String) The ID of the user.
+- `name` (String) The name of the user.
+- `role` (String) The role of the user (owner, member, or reader).

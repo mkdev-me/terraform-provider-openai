@@ -1,7 +1,7 @@
 # Create a project first (or reference an existing one)
 resource "openai_project" "main" {
-  name        = "Main Project"
-  description = "Primary project for team collaboration"
+  name = "Main Project"
+
 }
 
 # Invite a new user to the organization with owner role
@@ -29,13 +29,13 @@ resource "openai_invite" "developer" {
 
 # Create multiple projects for fine-grained access
 resource "openai_project" "api_development" {
-  name        = "API Development"
-  description = "API development and testing"
+  name = "API Development"
+
 }
 
 resource "openai_project" "ml_research" {
-  name        = "ML Research"
-  description = "Machine learning research projects"
+  name = "ML Research"
+
 }
 
 # Invite data scientist with access to multiple projects

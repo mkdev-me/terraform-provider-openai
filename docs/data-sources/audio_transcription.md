@@ -3,12 +3,12 @@
 page_title: "openai_audio_transcription Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about an audio transcription. Since transcriptions in OpenAI are not retrievable after creation, this data source is primarily for documentation and import purposes, acting as a placeholder.
 ---
 
 # openai_audio_transcription (Data Source)
 
-
+Use this data source to retrieve information about an audio transcription. Since transcriptions in OpenAI are not retrievable after creation, this data source is primarily for documentation and import purposes, acting as a placeholder.
 
 
 
@@ -23,14 +23,14 @@ description: |-
 
 - `duration` (Number) The duration of the audio file in seconds.
 - `model` (String) The model used for audio transcription. Options include 'whisper-1'.
-- `segments` (Block List) The segments of the audio transcription, with timing information. (see [below for nested schema](#nestedblock--segments))
+- `segments` (Attributes List) The segments of the audio transcription, with timing information. (see [below for nested schema](#nestedatt--segments))
 - `text` (String) The transcribed text from the audio.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
 
-<a id="nestedblock--segments"></a>
+<a id="nestedatt--segments"></a>
 ### Nested Schema for `segments`
 
 Optional:

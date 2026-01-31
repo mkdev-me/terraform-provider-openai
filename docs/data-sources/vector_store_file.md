@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Data source for retrieving details of a file in a vector store.
 ---
 
 # openai_vector_store_file (Data Source)
 
-
+Data source for retrieving details of a file in a vector store.
 
 
 
@@ -17,16 +17,16 @@ description: |-
 
 ### Required
 
-- `file_id` (String) The ID of the file to retrieve details for.
-- `vector_store_id` (String) The ID of the vector store.
+- `file_id` (String)
+- `vector_store_id` (String)
 
 ### Read-Only
 
-- `attributes` (List of Object) Attributes of the file. (see [below for nested schema](#nestedatt--attributes))
-- `created_at` (Number) The timestamp when the file was created.
-- `id` (String) The ID of the file.
-- `object` (String) The object type (always 'vector_store.file').
-- `status` (String) The status of the file.
+- `attributes` (Attributes List) (see [below for nested schema](#nestedatt--attributes))
+- `created_at` (Number)
+- `id` (String) The ID of this resource.
+- `object` (String)
+- `status` (String)
 
 <a id="nestedatt--attributes"></a>
 ### Nested Schema for `attributes`

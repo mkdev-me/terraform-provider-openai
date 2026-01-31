@@ -4,133 +4,79 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// ModelInfoResponse represents the API response for an OpenAI model info endpoint
-type ModelInfoResponse struct {
-	ID         string            `json:"id"`
-	Object     string            `json:"object"`
-	Created    int               `json:"created"`
-	OwnedBy    string            `json:"owned_by"`
-	Permission []ModelPermission `json:"permission"`
+var _ resource.Resource = &ModelResource{}
+var _ resource.ResourceWithImportState = &ModelResource{}
+
+type ModelResource struct {
+	client *OpenAIClient
 }
 
-// ModelPermission represents the permission details for a model
-type ModelPermission struct {
-	ID                 string      `json:"id"`
-	Object             string      `json:"object"`
-	Created            int         `json:"created"`
-	AllowCreateEngine  bool        `json:"allow_create_engine"`
-	AllowSampling      bool        `json:"allow_sampling"`
-	AllowLogprobs      bool        `json:"allow_logprobs"`
-	AllowSearchIndices bool        `json:"allow_search_indices"`
-	AllowView          bool        `json:"allow_view"`
-	AllowFineTuning    bool        `json:"allow_fine_tuning"`
-	Organization       string      `json:"organization"`
-	Group              interface{} `json:"group"`
-	IsBlocking         bool        `json:"is_blocking"`
+func NewModelResource() resource.Resource {
+	return &ModelResource{}
 }
 
-// resourceOpenAIModel defines the schema and CRUD operations for OpenAI models.
-// This allows users to manage OpenAI models through Terraform.
-func resourceOpenAIModel() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIModelCreate,
-		ReadContext:   resourceOpenAIModelRead,
-		DeleteContext: resourceOpenAIModelDelete,
-		Schema: map[string]*schema.Schema{
-			"model": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
+func (r *ModelResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_model"
+}
+
+type ModelResourceModel struct {
+	Model      types.String `tfsdk:"model"`
+	OwnedBy    types.String `tfsdk:"owned_by"`
+	CreatedAt  types.Int64  `tfsdk:"created_at"`
+	Object     types.String `tfsdk:"object"`
+	Permission types.List   `tfsdk:"permission"`
+}
+
+func (r *ModelResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "The model resource allows you to pull information about a specific model.",
+		Attributes: map[string]schema.Attribute{
+			"model": schema.StringAttribute{
 				Description: "The ID of the model (e.g., gpt-4, gpt-3.5-turbo, etc.)",
+				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
-			"owned_by": {
-				Type:        schema.TypeString,
-				Computed:    true,
+			"owned_by": schema.StringAttribute{
 				Description: "The organization that owns the model",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
+			},
+			"created_at": schema.Int64Attribute{
 				Description: "The timestamp when the model was created",
-			},
-			"object": {
-				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "The object type (always 'model')",
 			},
-			"permission": {
-				Type:     schema.TypeList,
+			"object": schema.StringAttribute{
+				Description: "The object type (always 'model')",
+				Computed:    true,
+			},
+			"permission": schema.ListAttribute{
 				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The ID of the permission",
-						},
-						"object": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The object type (always 'model_permission')",
-						},
-						"created": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "The timestamp when the permission was created",
-						},
-						"allow_create_engine": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can create engines with this model",
-						},
-						"allow_sampling": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can sample from this model",
-						},
-						"allow_logprobs": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can request log probabilities from this model",
-						},
-						"allow_search_indices": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can use this model in search indices",
-						},
-						"allow_view": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can view this model",
-						},
-						"allow_fine_tuning": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether the user can fine-tune this model",
-						},
-						"organization": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The organization this permission applies to",
-						},
-						"group": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The group this permission applies to",
-						},
-						"is_blocking": {
-							Type:        schema.TypeBool,
-							Computed:    true,
-							Description: "Whether this permission is blocking",
-						},
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"id":                   types.StringType,
+						"object":               types.StringType,
+						"created":              types.Int64Type,
+						"allow_create_engine":  types.BoolType,
+						"allow_sampling":       types.BoolType,
+						"allow_logprobs":       types.BoolType,
+						"allow_search_indices": types.BoolType,
+						"allow_view":           types.BoolType,
+						"allow_fine_tuning":    types.BoolType,
+						"organization":         types.StringType,
+						"group":                types.StringType, // Group is interface{} in SDKv2 but usually string or null
+						"is_blocking":          types.BoolType,
 					},
 				},
 			},
@@ -138,144 +84,155 @@ func resourceOpenAIModel() *schema.Resource {
 	}
 }
 
-// resourceOpenAIModelCreate handles the creation of a new model in OpenAI.
-// Since OpenAI API doesn't allow direct model creation, this function mostly sets
-// the model ID and performs a read to populate the remaining fields.
-func resourceOpenAIModelCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the model ID from the configuration
-	modelID := d.Get("model").(string)
-	if modelID == "" {
-		return diag.Errorf("model ID cannot be empty")
+func (r *ModelResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
 	}
-
-	// Set the ID to the model ID
-	d.SetId(modelID)
-
-	// Read the model to populate the state
-	return resourceOpenAIModelRead(ctx, d, m)
+	client, ok := req.ProviderData.(*OpenAIClient)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Resource Configure Type", fmt.Sprintf("Expected *provider.OpenAIClient, got: %T", req.ProviderData))
+		return
+	}
+	r.client = client
 }
 
-// resourceOpenAIModelRead reads the model information from OpenAI API
-func resourceOpenAIModelRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(err)
+func (r *ModelResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// Create for openai_model is just setting the ID and reading, as we helpfully
+	// adopt an existing model ID into state.
+	var data ModelResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Get the model ID from state
-	modelID := d.Id()
+	// Just write to state for now, Read will fetch details
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *ModelResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ModelResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	modelID := data.Model.ValueString()
 	if modelID == "" {
-		return diag.Errorf("model ID is empty")
+		resp.Diagnostics.AddError("Model ID Missing", "Model ID is required")
+		return
 	}
 
-	// Use the provider's API key
-	apiKey := client.APIKey
+	path := fmt.Sprintf("models/%s", modelID)
 
-	// Construct the API URL
-	url := fmt.Sprintf("%s/v1/models/%s", client.APIURL, modelID)
-	// If the APIURL already contains /v1, adjust the URL construction
-	if strings.Contains(client.APIURL, "/v1") {
-		url = fmt.Sprintf("%s/models/%s", client.APIURL, modelID)
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	respBody, err := r.client.DoRequest("GET", path, nil)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %s", err))
-	}
-
-	// Add headers with the provider's API key
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %s", err))
-	}
-	defer resp.Body.Close()
-
-	// For 404 errors, we remove the resource from state
-	if resp.StatusCode == http.StatusNotFound {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	// Read the response
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %s", err))
-	}
-
-	// Check for errors
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		err = json.Unmarshal(responseBody, &errorResponse)
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, string(responseBody)))
+		// Handle 404
+		if strings.Contains(err.Error(), "404") {
+			resp.State.RemoveResource(ctx)
+			return
 		}
-		return diag.FromErr(fmt.Errorf("API returned error: %s - %s", resp.Status, errorResponse.Error.Message))
+		resp.Diagnostics.AddError("Error reading model", err.Error())
+		return
 	}
 
-	// Parse the response
 	var model ModelInfoResponse
-	err = json.Unmarshal(responseBody, &model)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	if err := json.Unmarshal(respBody, &model); err != nil {
+		resp.Diagnostics.AddError("Error parsing model response", err.Error())
+		return
 	}
 
-	// Update the state
-	if err := d.Set("owned_by", model.OwnedBy); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("created", model.Created); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("object", model.Object); err != nil {
-		return diag.FromErr(err)
-	}
+	data.OwnedBy = types.StringValue(model.OwnedBy)
+	data.CreatedAt = types.Int64Value(int64(model.Created))
+	data.Object = types.StringValue(model.Object)
 
-	// Set permissions
-	permissions := make([]map[string]interface{}, 0, len(model.Permission))
-	for _, p := range model.Permission {
-		permMap := map[string]interface{}{
-			"id":                   p.ID,
-			"object":               p.Object,
-			"created":              p.Created,
-			"allow_create_engine":  p.AllowCreateEngine,
-			"allow_sampling":       p.AllowSampling,
-			"allow_logprobs":       p.AllowLogprobs,
-			"allow_search_indices": p.AllowSearchIndices,
-			"allow_view":           p.AllowView,
-			"allow_fine_tuning":    p.AllowFineTuning,
-			"organization":         p.Organization,
-			"group":                p.Group,
-			"is_blocking":          p.IsBlocking,
+	// Permissions
+	if len(model.Permission) > 0 {
+		perms := []attr.Value{}
+		for _, p := range model.Permission {
+			grpStr := types.StringNull()
+			if p.Group != nil {
+				if s, ok := p.Group.(string); ok {
+					grpStr = types.StringValue(s)
+				}
+			}
+
+			obj, _ := types.ObjectValue(
+				map[string]attr.Type{
+					"id":                   types.StringType,
+					"object":               types.StringType,
+					"created":              types.Int64Type,
+					"allow_create_engine":  types.BoolType,
+					"allow_sampling":       types.BoolType,
+					"allow_logprobs":       types.BoolType,
+					"allow_search_indices": types.BoolType,
+					"allow_view":           types.BoolType,
+					"allow_fine_tuning":    types.BoolType,
+					"organization":         types.StringType,
+					"group":                types.StringType,
+					"is_blocking":          types.BoolType,
+				},
+				map[string]attr.Value{
+					"id":                   types.StringValue(p.ID),
+					"object":               types.StringValue(p.Object),
+					"created":              types.Int64Value(int64(p.Created)),
+					"allow_create_engine":  types.BoolValue(p.AllowCreateEngine),
+					"allow_sampling":       types.BoolValue(p.AllowSampling),
+					"allow_logprobs":       types.BoolValue(p.AllowLogprobs),
+					"allow_search_indices": types.BoolValue(p.AllowSearchIndices),
+					"allow_view":           types.BoolValue(p.AllowView),
+					"allow_fine_tuning":    types.BoolValue(p.AllowFineTuning),
+					"organization":         types.StringValue(p.Organization),
+					"group":                grpStr,
+					"is_blocking":          types.BoolValue(p.IsBlocking),
+				},
+			)
+			perms = append(perms, obj)
 		}
-		permissions = append(permissions, permMap)
-	}
-	if err := d.Set("permission", permissions); err != nil {
-		return diag.FromErr(err)
+		permList, _ := types.ListValue(types.ObjectType{AttrTypes: map[string]attr.Type{
+			"id":                   types.StringType,
+			"object":               types.StringType,
+			"created":              types.Int64Type,
+			"allow_create_engine":  types.BoolType,
+			"allow_sampling":       types.BoolType,
+			"allow_logprobs":       types.BoolType,
+			"allow_search_indices": types.BoolType,
+			"allow_view":           types.BoolType,
+			"allow_fine_tuning":    types.BoolType,
+			"organization":         types.StringType,
+			"group":                types.StringType,
+			"is_blocking":          types.BoolType,
+		}}, perms)
+		data.Permission = permList
+	} else {
+		data.Permission = types.ListNull(types.ObjectType{AttrTypes: map[string]attr.Type{
+			"id":                   types.StringType,
+			"object":               types.StringType,
+			"created":              types.Int64Type,
+			"allow_create_engine":  types.BoolType,
+			"allow_sampling":       types.BoolType,
+			"allow_logprobs":       types.BoolType,
+			"allow_search_indices": types.BoolType,
+			"allow_view":           types.BoolType,
+			"allow_fine_tuning":    types.BoolType,
+			"organization":         types.StringType,
+			"group":                types.StringType,
+			"is_blocking":          types.BoolType,
+		}})
 	}
 
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIModelDelete removes the OpenAI model.
-func resourceOpenAIModelDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// In reality, users can't delete OpenAI models, they can just stop using them
-	// So we'll just clear the ID from the terraform state
-
-	d.SetId("")
-	return diag.Diagnostics{}
+func (r *ModelResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	// Models are read-only / immutable in this context
+	resp.Diagnostics.AddError("Operation not supported", "Update is not supported for openai_model")
 }
 
-// createOpenAIModel is a helper function that makes the API call to create a model.
-// This is currently a placeholder implementation.
-func createOpenAIModel(apiKey, name string) (string, error) {
-	// Implement the API call to create a model and return its ID.
-	fmt.Printf("Creating model %s with API key %s\n", name, apiKey)
-	return "new-model-id", nil
+func (r *ModelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	// Removes from state only. Cannot delete model via API using this resource (unless maybe if fine-tuned, but there's a separate resource for that).
+	// Legacy implementation was a no-op on delete.
+}
+
+func (r *ModelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("model"), req, resp)
 }

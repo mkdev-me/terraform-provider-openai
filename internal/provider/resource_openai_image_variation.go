@@ -8,326 +8,256 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// ImageVariationResponse represents the API response for image variations.
-// It contains the generated variations and metadata about the variation process.
-// This structure provides access to both URL and base64-encoded image data.
-type ImageVariationResponse struct {
-	Created int                  `json:"created"` // Unix timestamp of variation creation
-	Data    []ImageVariationData `json:"data"`    // List of generated variations
+var _ resource.Resource = &ImageVariationResource{}
+var _ resource.ResourceWithImportState = &ImageVariationResource{}
+
+type ImageVariationResource struct {
+	client *OpenAIClient
 }
 
-// ImageVariationData represents a single image variation.
-// It contains the variation data in either URL or base64 format.
-type ImageVariationData struct {
-	URL     string `json:"url,omitempty"`      // URL to the variation image
-	B64JSON string `json:"b64_json,omitempty"` // Base64-encoded image data
+func NewImageVariationResource() resource.Resource {
+	return &ImageVariationResource{}
 }
 
-// resourceOpenAIImageVariation defines the schema and CRUD operations for OpenAI image variations.
-// This resource allows users to generate variations of existing images using OpenAI's models.
-// It provides control over the variation process and supports various output formats.
-func resourceOpenAIImageVariation() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceOpenAIImageVariationCreate,
-		ReadContext:   resourceOpenAIImageVariationRead,
-		DeleteContext: resourceOpenAIImageVariationDelete,
-		Schema: map[string]*schema.Schema{
-			"image": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The image to use as the basis for the variation(s). Must be a valid PNG file, less than 4MB, and square.",
-			},
-			"model": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     "dall-e-2",
-				Description: "The model to use for image variation.",
-			},
-			"n": {
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      1,
-				ValidateFunc: validation.IntBetween(1, 10),
-				Description:  "The number of images to generate. Must be between 1 and 10.",
-			},
-			"size": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      "1024x1024",
-				ValidateFunc: validation.StringInSlice([]string{"256x256", "512x512", "1024x1024"}, false),
-				Description:  "The size of the generated images.",
-			},
-			"response_format": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				Default:      "url",
-				ValidateFunc: validation.StringInSlice([]string{"url", "b64_json"}, false),
-				Description:  "The format in which the generated images are returned.",
-			},
-			"user": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "A unique identifier representing your end-user.",
-			},
-			"created": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The timestamp for when the varied image was created.",
-			},
-			"data": {
-				Type:     schema.TypeList,
+func (r *ImageVariationResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_image_variation"
+}
+
+type ImageVariationResourceModel struct {
+	ID             types.String `tfsdk:"id"`
+	Image          types.String `tfsdk:"image"`
+	Model          types.String `tfsdk:"model"`
+	N              types.Int64  `tfsdk:"n"`
+	ResponseFormat types.String `tfsdk:"response_format"`
+	Size           types.String `tfsdk:"size"`
+	User           types.String `tfsdk:"user"`
+
+	Created types.Int64 `tfsdk:"created"`
+	Data    types.List  `tfsdk:"data"` // List of Objects
+}
+
+func (r *ImageVariationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Creates variations of an image.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"url": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The URL of the varied image (if response_format is 'url').",
-						},
-						"b64_json": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The base64-encoded JSON of the varied image (if response_format is 'b64_json').",
-						},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"image": schema.StringAttribute{
+				Required: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"model": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"n": schema.Int64Attribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					planmodifier.Int64(nil), // Should act as ForceNew
+				},
+			},
+			"response_format": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"size": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"user": schema.StringAttribute{
+				Optional: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"created": schema.Int64Attribute{
+				Computed: true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
+			},
+			"data": schema.ListAttribute{
+				Computed: true,
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"url":      types.StringType,
+						"b64_json": types.StringType,
 					},
+				},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
-		Importer: &schema.ResourceImporter{
-			StateContext: resourceOpenAIImageVariationImportState,
-		},
 	}
 }
 
-// resourceOpenAIImageVariationCreate handles the creation of a new image variation request.
-// It processes the parameters and sends them to the OpenAI API.
-func resourceOpenAIImageVariationCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Get the OpenAI client using the GetOpenAIClient helper function
-	client, err := GetOpenAIClient(m)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error getting OpenAI client: %v", err))
+func (r *ImageVariationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	rc_client, ok := req.ProviderData.(*OpenAIClient)
+	if ok {
+		r.client = rc_client
+	}
+}
+
+func (r *ImageVariationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ImageVariationResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
-	// Get the input parameters from the schema
-	imagePath := d.Get("image").(string)
-	n := d.Get("n").(int)
-	size := d.Get("size").(string)
-	responseFormat := d.Get("response_format").(string)
-	model := d.Get("model").(string)
-
-	// Check if the image file exists
-	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		return diag.FromErr(fmt.Errorf("image file does not exist: %s", imagePath))
-	}
-
-	// Create a buffer for the multipart request
+	// Prepare multipart request
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Add the n field
-	if err := writer.WriteField("n", fmt.Sprintf("%d", n)); err != nil {
-		return diag.FromErr(fmt.Errorf("error writing n field: %v", err))
+	if !data.Model.IsNull() {
+		writer.WriteField("model", data.Model.ValueString())
+	}
+	if !data.N.IsNull() {
+		writer.WriteField("n", fmt.Sprintf("%d", data.N.ValueInt64()))
+	}
+	if !data.Size.IsNull() {
+		writer.WriteField("size", data.Size.ValueString())
+	}
+	if !data.ResponseFormat.IsNull() {
+		writer.WriteField("response_format", data.ResponseFormat.ValueString())
+	}
+	if !data.User.IsNull() {
+		writer.WriteField("user", data.User.ValueString())
 	}
 
-	// Add the size field
-	if err := writer.WriteField("size", size); err != nil {
-		return diag.FromErr(fmt.Errorf("error writing size field: %v", err))
-	}
-
-	// Add the response_format field
-	if err := writer.WriteField("response_format", responseFormat); err != nil {
-		return diag.FromErr(fmt.Errorf("error writing response_format field: %v", err))
-	}
-
-	// Add the model field if present
-	if model != "" {
-		if err := writer.WriteField("model", model); err != nil {
-			return diag.FromErr(fmt.Errorf("error writing model field: %v", err))
-		}
-	}
-
-	// Add the user field if present
-	if user, ok := d.GetOk("user"); ok {
-		if err := writer.WriteField("user", user.(string)); err != nil {
-			return diag.FromErr(fmt.Errorf("error writing user field: %v", err))
-		}
-	}
-
-	// Add the image file
-	imageFile, err := os.Open(imagePath)
+	// Image
+	file, err := os.Open(data.Image.ValueString())
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error opening image file: %v", err))
+		resp.Diagnostics.AddError("Error opening image", err.Error())
+		return
 	}
-	defer imageFile.Close()
+	defer file.Close()
 
-	// Create a custom form field with explicit content type for PNG
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="%s"`, filepath.Base(imagePath)))
-	h.Set("Content-Type", "image/png")
-	imagePart, err := writer.CreatePart(h)
+	part, err := writer.CreateFormFile("image", filepath.Base(data.Image.ValueString()))
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating form file: %v", err))
+		resp.Diagnostics.AddError("Error adding image to form", err.Error())
+		return
 	}
+	io.Copy(part, file)
 
-	if _, err := io.Copy(imagePart, imageFile); err != nil {
-		return diag.FromErr(fmt.Errorf("error copying image data: %v", err))
-	}
+	writer.Close()
 
-	// Cerrar el escritor multipart
-	if err := writer.Close(); err != nil {
-		return diag.FromErr(fmt.Errorf("error closing multipart writer: %v", err))
-	}
+	url := fmt.Sprintf("%s/images/variations", r.client.OpenAIClient.APIURL)
 
-	// Prepare the HTTP request
-	url := fmt.Sprintf("%s/images/variations", client.APIURL)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, &requestBody)
+	apiReq, err := http.NewRequest("POST", url, &requestBody)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error creating request: %v", err))
+		resp.Diagnostics.AddError("Error creating request", err.Error())
+		return
+	}
+	apiReq.Header.Set("Content-Type", writer.FormDataContentType())
+	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
+	if r.client.OpenAIClient.OrganizationID != "" {
+		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	// Set headers
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+client.APIKey)
-
-	// Add Organization ID if present
-	if client.OrganizationID != "" {
-		req.Header.Set("OpenAI-Organization", client.OrganizationID)
-	}
-
-	// Make the request
-	resp, err := http.DefaultClient.Do(req)
+	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		return diag.FromErr(fmt.Errorf("error making request: %v", err))
+		resp.Diagnostics.AddError("Error making request", err.Error())
+		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	// Read the response
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading response: %v", err))
+	if apiResp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+		return
 	}
 
-	// Check if there was an error
-	if resp.StatusCode != http.StatusOK {
-		var errorResponse ErrorResponse
-		if err := json.Unmarshal(respBody, &errorResponse); err != nil {
-			return diag.FromErr(fmt.Errorf("error parsing error response: %v, status code: %d, body: %s",
-				err, resp.StatusCode, string(respBody)))
+	var imgResp ImageVariationResponseFramework
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	if err := json.Unmarshal(respBodyBytes, &imgResp); err != nil {
+		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return
+	}
+
+	data.Created = types.Int64Value(imgResp.Created)
+
+	if len(imgResp.Data) > 0 {
+		objs := []attr.Value{}
+		for _, d := range imgResp.Data {
+			obj, _ := types.ObjectValue(
+				map[string]attr.Type{
+					"url":      types.StringType,
+					"b64_json": types.StringType,
+				},
+				map[string]attr.Value{
+					"url":      types.StringValue(d.URL),
+					"b64_json": types.StringValue(d.B64JSON),
+				},
+			)
+			objs = append(objs, obj)
 		}
-		return diag.FromErr(fmt.Errorf("error creating image variation: %s - %s",
-			errorResponse.Error.Type, errorResponse.Error.Message))
+		listVal, _ := types.ListValue(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"url":      types.StringType,
+				"b64_json": types.StringType,
+			},
+		}, objs)
+		data.Data = listVal
+	} else {
+		data.Data = types.ListNull(types.ObjectType{AttrTypes: map[string]attr.Type{
+			"url":      types.StringType,
+			"b64_json": types.StringType,
+		}})
 	}
 
-	// Parse the response
-	var variationResponse ImageVariationResponse
-	if err := json.Unmarshal(respBody, &variationResponse); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %v", err))
-	}
+	data.ID = types.StringValue(fmt.Sprintf("img-var-%d", imgResp.Created))
 
-	// Generar un ID único para este recurso
-	// En variación de imágenes no se devuelve un ID específico, así que creamos uno basado en el timestamp
-	imageVariationID := fmt.Sprintf("img-var-%d", variationResponse.Created)
-	d.SetId(imageVariationID)
-
-	// Set the creation timestamp
-	if err := d.Set("created", variationResponse.Created); err != nil {
-		return diag.FromErr(err)
-	}
-
-	// Process the generated image data
-	if len(variationResponse.Data) > 0 {
-		imageData := make([]map[string]interface{}, len(variationResponse.Data))
-
-		for i, img := range variationResponse.Data {
-			imageResult := map[string]interface{}{}
-
-			if responseFormat == "url" {
-				imageResult["url"] = img.URL
-				imageResult["b64_json"] = ""
-			} else {
-				imageResult["b64_json"] = img.B64JSON
-				imageResult["url"] = ""
-			}
-
-			imageData[i] = imageResult
-		}
-
-		if err := d.Set("data", imageData); err != nil {
-			return diag.FromErr(err)
-		}
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIImageVariationRead handles the reading of an OpenAI image variation resource.
-// It is also used for importing resources by ID.
-func resourceOpenAIImageVariationRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// OpenAI doesn't provide an API to read image variations by ID
-	// So we just return nil to maintain the current state
-	return nil
+func (r *ImageVariationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data ImageVariationResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// resourceOpenAIImageVariationDelete handles the deletion logic for an OpenAI image variation.
-// Note that this is a no-op as OpenAI doesn't provide API endpoints to delete image variations.
-// The resource is simply removed from Terraform state.
-func resourceOpenAIImageVariationDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Set empty ID to indicate the resource no longer exists
-	d.SetId("")
-	return nil
+func (r *ImageVariationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 }
 
-// resourceOpenAIImageVariationImportState handles the import of an image variation resource
-// It only sets the ID and created timestamp, allowing other values to come from configuration
-func resourceOpenAIImageVariationImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
-	parts := strings.Split(d.Id(), ",")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("must provide parameters for import: id,image=...,model=..., etc.")
-	}
+func (r *ImageVariationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+}
 
-	d.SetId(parts[0])
-
-	for _, param := range parts[1:] {
-		paramParts := strings.SplitN(param, "=", 2)
-		if len(paramParts) != 2 {
-			return nil, fmt.Errorf("invalid parameter format: %s", param)
-		}
-		key, value := paramParts[0], paramParts[1]
-
-		switch key {
-		case "image", "model", "response_format", "size", "user":
-			if err := d.Set(key, value); err != nil {
-				return nil, fmt.Errorf("error setting %s: %v", key, err)
-			}
-		case "n", "created":
-			intValue, err := strconv.Atoi(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid integer value for %s: %v", key, err)
-			}
-			if err := d.Set(key, intValue); err != nil {
-				return nil, fmt.Errorf("error setting %s: %v", key, err)
-			}
-		default:
-			return nil, fmt.Errorf("unknown parameter: %s", key)
-		}
-	}
-
-	return []*schema.ResourceData{d}, nil
+func (r *ImageVariationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

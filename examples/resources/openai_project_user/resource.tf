@@ -1,12 +1,10 @@
 # First, create a project
 resource "openai_project" "development" {
-  name        = "Development Environment"
-  description = "Project for development and testing"
+  name = "Development Environment"
 }
 
 resource "openai_project" "production" {
-  name        = "Production API"
-  description = "Production API project with critical services"
+  name = "Production API"
 }
 
 # IMPORTANT: Replace these user_id values with actual user IDs from your organization

@@ -3,12 +3,12 @@
 page_title: "openai_batches Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of batch jobs.
 ---
 
 # openai_batches (Data Source)
 
-
+Use this data source to retrieve a list of batch jobs.
 
 
 
@@ -21,8 +21,8 @@ description: |-
 
 ### Read-Only
 
-- `batches` (List of Object) (see [below for nested schema](#nestedatt--batches))
-- `id` (String) The ID of this resource.
+- `batches` (Attributes List) List of batch jobs. (see [below for nested schema](#nestedatt--batches))
+- `id` (String) The ID of this resource
 
 <a id="nestedatt--batches"></a>
 ### Nested Schema for `batches`

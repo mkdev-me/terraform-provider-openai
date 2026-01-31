@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file_batch Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages a file batch in an OpenAI Vector Store.
 ---
 
 # openai_vector_store_file_batch (Resource)
 
-
+Manages a file batch in an OpenAI Vector Store.
 
 ## Example Usage
 
@@ -68,8 +68,8 @@ resource "openai_vector_store_file_batch" "documentation_batch" {
 
   # Optional: Default chunking strategy for all files
   chunking_strategy {
-    type = "fixed"
-    size = 600
+    type                  = "static"
+    max_chunk_size_tokens = 600
   }
 }
 
@@ -153,8 +153,8 @@ resource "openai_vector_store_file_batch" "research_batch" {
 
   # Academic papers need larger chunks for context
   chunking_strategy {
-    type = "fixed"
-    size = 1000
+    type                  = "static"
+    max_chunk_size_tokens = 1000
   }
 }
 
@@ -169,29 +169,41 @@ output "documentation_batch_status" {
 
 ### Required
 
-- `file_ids` (List of String) The list of file IDs to add to the vector store.
-- `vector_store_id` (String) The ID of the vector store to add the files to.
+- `file_ids` (List of String) A list of file IDs to add to the vector store.
+- `vector_store_id` (String) The ID of the vector store to add the batch to.
 
 ### Optional
 
-- `attributes` (Map of String) Set of key-value pairs that can be attached to an object. Values can be strings, booleans, or numbers.
-- `chunking_strategy` (Block List, Max: 1) The chunking strategy used to chunk the files. (see [below for nested schema](#nestedblock--chunking_strategy))
+- `chunking_strategy` (Block, Optional) The chunking strategy used to chunk the files. (see [below for nested schema](#nestedblock--chunking_strategy))
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp for when the files were added to the vector store.
-- `id` (String) The ID of the vector store file batch operation.
-- `object` (String) The object type (always 'vector_store.file.batch').
-- `status` (String) The current status of the file batch operation.
+- `created_at` (Number)
+- `file_counts` (Attributes) (see [below for nested schema](#nestedatt--file_counts))
+- `id` (String) The identifier of the vector store file batch.
+- `object` (String)
+- `status` (String)
 
 <a id="nestedblock--chunking_strategy"></a>
 ### Nested Schema for `chunking_strategy`
 
 Required:
 
-- `type` (String) The type of chunking strategy (auto, fixed, or semantic).
+- `type` (String)
 
 Optional:
 
-- `max_tokens` (Number) The maximum tokens per chunk for semantic chunking strategy.
-- `size` (Number) The size in characters for fixed chunking strategy.
+- `chunk_overlap_tokens` (Number) The number of tokens that overlap between chunks. The default is 400. The maximum is half of max_chunk_size_tokens.
+- `max_chunk_size_tokens` (Number) The maximum number of tokens in each chunk. The default is 800. The minimum is 100 and the maximum is 4096.
+
+
+<a id="nestedatt--file_counts"></a>
+### Nested Schema for `file_counts`
+
+Read-Only:
+
+- `cancelled` (Number)
+- `completed` (Number)
+- `failed` (Number)
+- `in_progress` (Number)
+- `total` (Number)

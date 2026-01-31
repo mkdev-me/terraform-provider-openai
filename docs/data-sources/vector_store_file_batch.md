@@ -3,12 +3,12 @@
 page_title: "openai_vector_store_file_batch Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Data source for retrieving details of a vector store file batch.
 ---
 
 # openai_vector_store_file_batch (Data Source)
 
-
+Data source for retrieving details of a vector store file batch.
 
 
 
@@ -17,15 +17,15 @@ description: |-
 
 ### Required
 
-- `batch_id` (String) The ID of the file batch to retrieve details for.
-- `vector_store_id` (String) The ID of the vector store.
+- `batch_id` (String)
+- `vector_store_id` (String)
 
 ### Read-Only
 
-- `batch_type` (String) The type of the batch.
-- `created_at` (Number) The timestamp when the file batch was created.
-- `file_ids` (List of String) The list of file IDs in the batch.
-- `id` (String) The ID of the file batch.
-- `object` (String) The object type (always 'vector_store.file_batch').
-- `purpose` (String) The purpose of the file batch.
-- `status` (String) The status of the file batch.
+- `batch_type` (String)
+- `created_at` (Number)
+- `file_ids` (List of String)
+- `id` (String) The ID of this resource.
+- `object` (String)
+- `purpose` (String)
+- `status` (String)

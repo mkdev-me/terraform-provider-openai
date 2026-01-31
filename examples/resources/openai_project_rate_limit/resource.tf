@@ -4,8 +4,8 @@
 
 # First, let's reference a project (or create one)
 resource "openai_project" "production" {
-  name        = "production-app"
-  description = "Production environment project"
+  name = "production-app"
+
 }
 
 # Set rate limits for GPT-4 model in the project

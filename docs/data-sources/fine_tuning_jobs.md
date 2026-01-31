@@ -3,12 +3,12 @@
 page_title: "openai_fine_tuning_jobs Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of fine-tuning jobs.
 ---
 
 # openai_fine_tuning_jobs (Data Source)
 
-
+Use this data source to retrieve a list of fine-tuning jobs.
 
 ## Example Usage
 
@@ -30,15 +30,14 @@ output "total_jobs" {
 
 ### Optional
 
-- `after` (String) Identifier for the last job from the previous pagination request
-- `limit` (Number) Number of fine-tuning jobs to retrieve (default: 20)
-- `metadata` (Map of String) Optional metadata filter in the format {key: value}
+- `after` (String)
+- `limit` (Number)
+- `metadata` (Map of String)
 
 ### Read-Only
 
-- `has_more` (Boolean) Whether there are more fine-tuning jobs to retrieve
-- `id` (String) The ID of this resource.
-- `jobs` (List of Object) (see [below for nested schema](#nestedatt--jobs))
+- `has_more` (Boolean)
+- `jobs` (Attributes List) (see [below for nested schema](#nestedatt--jobs))
 
 <a id="nestedatt--jobs"></a>
 ### Nested Schema for `jobs`
@@ -46,10 +45,8 @@ output "total_jobs" {
 Read-Only:
 
 - `created_at` (Number)
-- `error` (Map of String)
 - `fine_tuned_model` (String)
 - `finished_at` (Number)
-- `hyperparameters` (Map of String)
 - `id` (String)
 - `model` (String)
 - `object` (String)

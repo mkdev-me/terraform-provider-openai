@@ -3,12 +3,12 @@
 page_title: "openai_file Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The file resource allows users to upload, read, and delete files through the OpenAI API.
 ---
 
 # openai_file (Resource)
 
-
+The file resource allows users to upload, read, and delete files through the OpenAI API.
 
 ## Example Usage
 
@@ -29,15 +29,15 @@ output "file_id" {
 ### Required
 
 - `file` (String) Path to the file to upload. Required for creation, ignored during import.
+- `purpose` (String) The purpose of the file. Can be 'fine-tune', 'assistants', 'vision', or 'batch'. Required for creation, computed for import.
 
 ### Optional
 
 - `project_id` (String) The project ID to associate this file with (for Terraform reference only, not sent to OpenAI API)
-- `purpose` (String) The purpose of the file. Can be 'fine-tune', 'assistants', 'vision', or 'batch'. Required for creation, computed for import.
 
 ### Read-Only
 
 - `bytes` (Number) The size of the file in bytes
 - `created_at` (Number) The timestamp for when the file was created
 - `filename` (String) The name of the file
-- `id` (String) The identifier of the file
+- `id` (String) The identifier of the file.

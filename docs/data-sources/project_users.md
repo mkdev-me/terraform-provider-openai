@@ -3,12 +3,12 @@
 page_title: "openai_project_users Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of all users in a specific OpenAI project.
 ---
 
 # openai_project_users (Data Source)
 
-
+Use this data source to retrieve a list of all users in a specific OpenAI project.
 
 ## Example Usage
 
@@ -35,23 +35,23 @@ output "total_project_users" {
 
 ### Required
 
-- `project_id` (String) The ID of the project to retrieve users from
+- `project_id` (String) The ID of the project to retrieve users from.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `member_ids` (List of String) List of user IDs with member role in the project (non-sensitive)
-- `owner_ids` (List of String) List of user IDs with owner role in the project (non-sensitive)
-- `user_count` (Number) Number of users in the project (non-sensitive)
-- `user_ids` (List of String) List of user IDs in the project (non-sensitive)
-- `users` (List of Object) List of users in the project (see [below for nested schema](#nestedatt--users))
+- `member_ids` (List of String) List of user IDs with member role.
+- `owner_ids` (List of String) List of user IDs with owner role.
+- `user_count` (Number) Number of users in the project.
+- `user_ids` (List of String) List of user IDs in the project.
+- `users` (Attributes List) List of users in the project. (see [below for nested schema](#nestedatt--users))
 
 <a id="nestedatt--users"></a>
 ### Nested Schema for `users`
 
 Read-Only:
 
-- `added_at` (Number)
-- `email` (String)
-- `id` (String)
-- `role` (String)
+- `added_at` (Number) Timestamp when the user was added to the project.
+- `email` (String) The email address of the user.
+- `id` (String) The ID of the user.
+- `role` (String) The role of the user (owner or member).

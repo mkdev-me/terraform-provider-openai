@@ -3,12 +3,12 @@
 page_title: "openai_project_user Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific user in an OpenAI project.
 ---
 
 # openai_project_user (Data Source)
 
-
+Use this data source to retrieve information about a specific user in an OpenAI project.
 
 
 
@@ -17,15 +17,15 @@ description: |-
 
 ### Required
 
-- `project_id` (String) The ID of the project to retrieve the user from
+- `project_id` (String) The ID of the project to retrieve the user from.
 
 ### Optional
 
-- `email` (String) The email address of the user to retrieve
-- `user_id` (String) The ID of the user to retrieve
+- `email` (String) The email address of the user to retrieve.
+- `user_id` (String) The ID of the user to retrieve.
 
 ### Read-Only
 
-- `added_at` (Number) Timestamp when the user was added to the project
-- `id` (String) The ID of this resource.
-- `role` (String) The role of the user in the project (owner or member)
+- `added_at` (Number) Timestamp when the user was added to the project.
+- `id` (String) The ID of the resource (composite of project_id:user_id).
+- `role` (String) The role of the user in the project (owner or member).

@@ -17,9 +17,9 @@ func TestAccResourceOpenAIProjectServiceAccount_basic(t *testing.T) {
 	serviceAccountName := "tf-acc-test-service-account"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectServiceAccountDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectServiceAccountDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceOpenAIProjectServiceAccountBasic(projectName, serviceAccountName),
@@ -48,9 +48,9 @@ func TestAccResourceOpenAIProjectServiceAccount_withAPIKey(t *testing.T) {
 	apiKeyName := "tf-acc-test-api-key"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectServiceAccountDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectServiceAccountDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceOpenAIProjectServiceAccountWithAPIKey(projectName, serviceAccountName, apiKeyName),
@@ -76,9 +76,9 @@ func TestAccResourceOpenAIProjectServiceAccount_moduleUsage(t *testing.T) {
 	serviceAccountName := "tf-acc-test-module-service-account"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectServiceAccountDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectServiceAccountDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceOpenAIProjectServiceAccountModuleUsage(projectName, serviceAccountName),

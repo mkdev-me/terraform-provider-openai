@@ -3,12 +3,12 @@
 page_title: "openai_project_service_account Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI project service account.
 ---
 
 # openai_project_service_account (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI project service account.
 
 
 
@@ -17,24 +17,13 @@ description: |-
 
 ### Required
 
-- `project_id` (String) The ID of the project to which the service account belongs
-- `service_account_id` (String) The ID of the service account to retrieve
-
-### Optional
-
-- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `project_id` (String) The ID of the project to which the service account belongs.
+- `service_account_id` (String) The ID of the service account to retrieve.
 
 ### Read-Only
 
-- `api_key_id` (String) The ID of the API key associated with the service account
-- `created_at` (Number) The timestamp (in Unix time) when the service account was created
-- `id` (String) The ID of this resource.
-- `name` (String) The name of the service account
-- `role` (String) The role of the service account
-
-<a id="nestedblock--timeouts"></a>
-### Nested Schema for `timeouts`
-
-Optional:
-
-- `read` (String)
+- `api_key_id` (String) The ID of the API key associated with the service account.
+- `created_at` (Number) The timestamp (in Unix time) when the service account was created.
+- `id` (String) The ID of the resource (composite of project_id:service_account_id).
+- `name` (String) The name of the service account.
+- `role` (String) The role of the service account.

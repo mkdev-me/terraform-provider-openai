@@ -3,12 +3,12 @@
 page_title: "openai_chat_completion_messages Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve messages from a chat completion.
 ---
 
 # openai_chat_completion_messages (Data Source)
 
-
+Use this data source to retrieve messages from a chat completion.
 
 
 
@@ -17,21 +17,21 @@ description: |-
 
 ### Required
 
-- `completion_id` (String) The ID of the chat completion to retrieve messages from (format: chat_xxx)
+- `completion_id` (String)
 
 ### Optional
 
-- `after` (String) Identifier for the last message from the previous pagination request
-- `limit` (Number) Number of messages to retrieve (defaults to 20, max 100)
-- `order` (String) Sort order for messages by timestamp. Use 'asc' for ascending order or 'desc' for descending order. Defaults to 'asc'.
+- `after` (String)
+- `limit` (Number)
+- `order` (String)
 
 ### Read-Only
 
-- `first_id` (String) The ID of the first message in the response
-- `has_more` (Boolean) Whether there are more messages to retrieve
+- `first_id` (String)
+- `has_more` (Boolean)
 - `id` (String) The ID of this resource.
-- `last_id` (String) The ID of the last message in the response
-- `messages` (List of Object) The list of messages from the chat completion (see [below for nested schema](#nestedatt--messages))
+- `last_id` (String)
+- `messages` (Attributes List) (see [below for nested schema](#nestedatt--messages))
 
 <a id="nestedatt--messages"></a>
 ### Nested Schema for `messages`
@@ -39,11 +39,11 @@ description: |-
 Read-Only:
 
 - `content` (String)
-- `function_call` (List of Object) (see [below for nested schema](#nestedobjatt--messages--function_call))
+- `function_call` (Attributes List) (see [below for nested schema](#nestedatt--messages--function_call))
 - `name` (String)
 - `role` (String)
 
-<a id="nestedobjatt--messages--function_call"></a>
+<a id="nestedatt--messages--function_call"></a>
 ### Nested Schema for `messages.function_call`
 
 Read-Only:

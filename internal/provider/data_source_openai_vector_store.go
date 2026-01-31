@@ -4,213 +4,244 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func dataSourceOpenAIVectorStore() *schema.Resource {
-	return &schema.Resource{
-		ReadContext: dataSourceOpenAIVectorStoreRead,
-		Schema: map[string]*schema.Schema{
-			"id": {
-				Type:        schema.TypeString,
+var _ datasource.DataSource = &VectorStoreDataSource{}
+
+func NewVectorStoreDataSource() datasource.DataSource {
+	return &VectorStoreDataSource{}
+}
+
+type VectorStoreDataSource struct {
+	client *OpenAIClient
+}
+
+type VectorStoreDataSourceModel struct {
+	ID           types.String                  `tfsdk:"id"`
+	Object       types.String                  `tfsdk:"object"`
+	CreatedAt    types.Int64                   `tfsdk:"created_at"`
+	Name         types.String                  `tfsdk:"name"`
+	UsageBytes   types.Int64                   `tfsdk:"usage_bytes"`
+	Status       types.String                  `tfsdk:"status"`
+	FileCounts   *VectorStoreFileCountsModel   `tfsdk:"file_counts"`
+	ExpiresAfter *VectorStoreExpiresAfterModel `tfsdk:"expires_after"`
+	ExpiresAt    types.Int64                   `tfsdk:"expires_at"`
+	LastActiveAt types.Int64                   `tfsdk:"last_active_at"`
+	Metadata     types.Map                     `tfsdk:"metadata"`
+}
+
+type VectorStoreFileCountsModel struct {
+	InProgress types.Int64 `tfsdk:"in_progress"`
+	Completed  types.Int64 `tfsdk:"completed"`
+	Failed     types.Int64 `tfsdk:"failed"`
+	Cancelled  types.Int64 `tfsdk:"cancelled"`
+	Total      types.Int64 `tfsdk:"total"`
+}
+
+type VectorStoreExpiresAfterModel struct {
+	Anchor types.String `tfsdk:"anchor"`
+	Days   types.Int64  `tfsdk:"days"`
+}
+
+func (d *VectorStoreDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_vector_store"
+}
+
+func (d *VectorStoreDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		Description: "Use this data source to retrieve information about a specific OpenAI vector store.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The ID of the vector store.",
 				Required:    true,
-				Description: "The ID of the vector store to retrieve.",
 			},
-			"name": {
-				Type:        schema.TypeString,
+			"object": schema.StringAttribute{
+				Description: "The object type, which is always 'vector_store'.",
 				Computed:    true,
+			},
+			"created_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the vector store was created.",
+				Computed:    true,
+			},
+			"name": schema.StringAttribute{
 				Description: "The name of the vector store.",
-			},
-			"created_at": {
-				Type:        schema.TypeInt,
 				Computed:    true,
-				Description: "The timestamp for when the vector store was created.",
 			},
-			"file_count": {
-				Type:        schema.TypeInt,
+			"usage_bytes": schema.Int64Attribute{
+				Description: "The total number of bytes used by the files in the vector store.",
 				Computed:    true,
-				Description: "The number of files in the vector store.",
 			},
-			"object": {
-				Type:        schema.TypeString,
+			"status": schema.StringAttribute{
+				Description: "The status of the vector store, which can be 'expired', 'in_progress', or 'completed'.",
 				Computed:    true,
-				Description: "The object type (always 'vector_store').",
 			},
-			"status": {
-				Type:        schema.TypeString,
+			"file_counts": schema.SingleNestedAttribute{
+				Description: "Counts of files in various states within the vector store.",
 				Computed:    true,
-				Description: "The current status of the vector store.",
-			},
-			"metadata": {
-				Type:        schema.TypeMap,
-				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Set of key-value pairs attached to the vector store.",
-			},
-			"file_ids": {
-				Type:        schema.TypeList,
-				Computed:    true,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "The list of file IDs in the vector store.",
-			},
-			"expires_after": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"days": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Number of days after which the vector store should expire.",
-						},
-						"anchor": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The anchor time for the expiration.",
-						},
+				Attributes: map[string]schema.Attribute{
+					"in_progress": schema.Int64Attribute{
+						Description: "Number of files in progress.",
+						Computed:    true,
+					},
+					"completed": schema.Int64Attribute{
+						Description: "Number of files completed.",
+						Computed:    true,
+					},
+					"failed": schema.Int64Attribute{
+						Description: "Number of files failed.",
+						Computed:    true,
+					},
+					"cancelled": schema.Int64Attribute{
+						Description: "Number of files cancelled.",
+						Computed:    true,
+					},
+					"total": schema.Int64Attribute{
+						Description: "Total number of files.",
+						Computed:    true,
 					},
 				},
-				Description: "The expiration policy for the vector store.",
 			},
-			"chunking_strategy": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"type": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The type of chunking strategy.",
-						},
+			"expires_after": schema.SingleNestedAttribute{
+				Description: "The expiration policy for a vector store.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"anchor": schema.StringAttribute{
+						Description: "Anchor timestamp type for the expiration policy.",
+						Computed:    true,
+					},
+					"days": schema.Int64Attribute{
+						Description: "The number of days after the anchor time that the vector store will expire.",
+						Computed:    true,
 					},
 				},
-				Description: "The chunking strategy used for the files in the store.",
+			},
+			"expires_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the vector store will expire.",
+				Computed:    true,
+			},
+			"last_active_at": schema.Int64Attribute{
+				Description: "The Unix timestamp (in seconds) for when the vector store was last active.",
+				Computed:    true,
+			},
+			"metadata": schema.MapAttribute{
+				Description: "Set of key-value pairs that can be attached to an object.",
+				ElementType: types.StringType,
+				Computed:    true,
 			},
 		},
 	}
 }
 
-func dataSourceOpenAIVectorStoreRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client, err := GetOpenAIClient(m)
+func (d *VectorStoreDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*OpenAIClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Data Source Configure Type",
+			fmt.Sprintf("Expected *OpenAIClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+}
+
+func (d *VectorStoreDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data VectorStoreDataSourceModel
+
+	// Read Terraform configuration data into the model
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	vectorStoreID := data.ID.ValueString()
+	path := fmt.Sprintf("vector_stores/%s", vectorStoreID)
+
+	apiClient := d.client.OpenAIClient
+
+	respBody, err := apiClient.DoRequest(http.MethodGet, path, nil)
 	if err != nil {
-		return diag.FromErr(err)
+		resp.Diagnostics.AddError(
+			"Error Reading Vector Store",
+			fmt.Sprintf("Could not read vector store with ID %s: %s", vectorStoreID, err.Error()),
+		)
+		return
 	}
 
-	vectorStoreID := d.Get("id").(string)
-
-	// Prepare request URL
-	url := fmt.Sprintf("/v1/vector_stores/%s", vectorStoreID)
-
-	// Make API request using DoRequest
-	responseBytes, err := client.DoRequest("GET", url, nil)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("error reading vector store %s: %s", vectorStoreID, err))
+	var vsResponse VectorStoreResponse
+	if err := json.Unmarshal(respBody, &vsResponse); err != nil {
+		resp.Diagnostics.AddError(
+			"Error Parsing Vector Store Response",
+			fmt.Sprintf("Could not parse response for vector store %s: %s", vectorStoreID, err.Error()),
+		)
+		return
 	}
 
-	// Parse response
-	var vectorStore map[string]interface{}
-	if err := json.Unmarshal(responseBytes, &vectorStore); err != nil {
-		return diag.FromErr(fmt.Errorf("error parsing response: %s", err))
+	data.ID = types.StringValue(vsResponse.ID)
+	data.Object = types.StringValue(vsResponse.Object)
+	data.CreatedAt = types.Int64Value(vsResponse.CreatedAt)
+	data.Name = types.StringValue(vsResponse.Name)
+	data.UsageBytes = types.Int64Value(vsResponse.UsageBytes)
+	data.Status = types.StringValue(vsResponse.Status)
+
+	if vsResponse.ExpiresAt != nil {
+		data.ExpiresAt = types.Int64Value(*vsResponse.ExpiresAt)
+	} else {
+		data.ExpiresAt = types.Int64Null()
 	}
 
-	// Set ID
-	d.SetId(vectorStoreID)
-
-	// Set basic attributes
-	if err := d.Set("name", vectorStore["name"]); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
+	if vsResponse.LastActiveAt != nil {
+		data.LastActiveAt = types.Int64Value(*vsResponse.LastActiveAt)
+	} else {
+		data.LastActiveAt = types.Int64Null()
 	}
 
-	if err := d.Set("object", vectorStore["object"]); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting object: %s", err))
-	}
-
-	if err := d.Set("status", vectorStore["status"]); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting status: %s", err))
-	}
-
-	// Set numeric attributes
-	if createdAt, ok := vectorStore["created_at"].(float64); ok {
-		if err := d.Set("created_at", int(createdAt)); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting created_at: %s", err))
+	// Map File Counts
+	if vsResponse.FileCounts != nil {
+		data.FileCounts = &VectorStoreFileCountsModel{
+			InProgress: types.Int64Value(int64(vsResponse.FileCounts.InProgress)),
+			Completed:  types.Int64Value(int64(vsResponse.FileCounts.Completed)),
+			Failed:     types.Int64Value(int64(vsResponse.FileCounts.Failed)),
+			Cancelled:  types.Int64Value(int64(vsResponse.FileCounts.Cancelled)),
+			Total:      types.Int64Value(int64(vsResponse.FileCounts.Total)),
 		}
+	} else {
+		data.FileCounts = nil
 	}
 
-	if fileCount, ok := vectorStore["file_count"].(float64); ok {
-		if err := d.Set("file_count", int(fileCount)); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting file_count: %s", err))
+	// Map Expires After
+	if vsResponse.ExpiresAfter != nil {
+		data.ExpiresAfter = &VectorStoreExpiresAfterModel{
+			Anchor: types.StringValue(vsResponse.ExpiresAfter.Anchor),
+			Days:   types.Int64Value(int64(vsResponse.ExpiresAfter.Days)),
 		}
+	} else {
+		data.ExpiresAfter = nil
 	}
 
-	// Set metadata
-	if metadata, ok := vectorStore["metadata"].(map[string]interface{}); ok {
-		metadataMap := make(map[string]string)
-		for key, value := range metadata {
-			if strValue, ok := value.(string); ok {
-				metadataMap[key] = strValue
-			}
+	// Map Metadata
+	if len(vsResponse.Metadata) > 0 {
+		metadataVals := make(map[string]attr.Value)
+		for k, v := range vsResponse.Metadata {
+			metadataVals[k] = types.StringValue(fmt.Sprintf("%v", v))
 		}
-		if err := d.Set("metadata", metadataMap); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting metadata: %s", err))
-		}
+		data.Metadata, _ = types.MapValue(types.StringType, metadataVals)
+	} else {
+		data.Metadata = types.MapNull(types.StringType)
 	}
 
-	// Set file_ids
-	if fileIDs, ok := vectorStore["file_ids"].([]interface{}); ok {
-		ids := make([]string, 0, len(fileIDs))
-		for _, id := range fileIDs {
-			if strID, ok := id.(string); ok {
-				ids = append(ids, strID)
-			}
-		}
-		if err := d.Set("file_ids", ids); err != nil {
-			return diag.FromErr(fmt.Errorf("error setting file_ids: %s", err))
-		}
-	}
-
-	// Set expires_after
-	if expiresAfter, ok := vectorStore["expires_after"].(map[string]interface{}); ok {
-		expiresAfterList := []map[string]interface{}{}
-
-		expiresAfterMap := map[string]interface{}{}
-
-		if days, ok := expiresAfter["days"].(float64); ok {
-			expiresAfterMap["days"] = int(days)
-		}
-
-		if anchor, ok := expiresAfter["anchor"].(string); ok {
-			expiresAfterMap["anchor"] = anchor
-		}
-
-		if len(expiresAfterMap) > 0 {
-			expiresAfterList = append(expiresAfterList, expiresAfterMap)
-
-			if err := d.Set("expires_after", expiresAfterList); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting expires_after: %s", err))
-			}
-		}
-	}
-
-	// Set chunking_strategy
-	if chunkingStrategy, ok := vectorStore["chunking_strategy"].(map[string]interface{}); ok {
-		chunkingStrategyList := []map[string]interface{}{}
-
-		chunkingStrategyMap := map[string]interface{}{}
-
-		if strategyType, ok := chunkingStrategy["type"].(string); ok {
-			chunkingStrategyMap["type"] = strategyType
-		}
-
-		if len(chunkingStrategyMap) > 0 {
-			chunkingStrategyList = append(chunkingStrategyList, chunkingStrategyMap)
-
-			if err := d.Set("chunking_strategy", chunkingStrategyList); err != nil {
-				return diag.FromErr(fmt.Errorf("error setting chunking_strategy: %s", err))
-			}
-		}
-	}
-
-	return diag.Diagnostics{}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

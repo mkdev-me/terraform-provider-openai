@@ -3,12 +3,12 @@
 page_title: "openai_model Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  The model data source allows you to retrieve information about a specific OpenAI model.
 ---
 
 # openai_model (Data Source)
 
-
+The model data source allows you to retrieve information about a specific OpenAI model.
 
 ## Example Usage
 
@@ -31,11 +31,11 @@ output "model_details" {
 
 ### Required
 
-- `model_id` (String) The ID of the model to retrieve information for
+- `model_id` (String) The ID of the model to retrieve information for.
 
 ### Read-Only
 
-- `created` (Number) The timestamp for when the model was created
-- `id` (String) The ID of this resource.
-- `object` (String) The object type, which is always 'model'
-- `owned_by` (String) The organization that owns the model
+- `created` (Number) The timestamp for when the model was created.
+- `id` (String) The ID of the model.
+- `object` (String) The object type, which is always 'model'.
+- `owned_by` (String) The organization that owns the model.

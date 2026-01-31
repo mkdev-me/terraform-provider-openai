@@ -3,12 +3,12 @@
 page_title: "openai_batch Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve information about a specific OpenAI batch job.
 ---
 
 # openai_batch (Data Source)
 
-
+Use this data source to retrieve information about a specific OpenAI batch job.
 
 ## Example Usage
 
@@ -41,10 +41,10 @@ output "batch_status" {
 - `completion_window` (String) The time window specified for batch completion
 - `created_at` (Number) The timestamp when the batch job was created
 - `endpoint` (String) The endpoint used for the batch request (e.g., '/v1/chat/completions')
-- `error` (String) Information about errors that occurred during processing
+- `error` (String) Information about errors that occurred during processing (JSON string)
 - `error_file_id` (String) The ID of the error file (if available)
 - `expires_at` (Number) The timestamp when the batch job expires
-- `id` (String) The ID of this resource.
+- `id` (String) The ID of the batch job
 - `in_progress_at` (Number) The timestamp when the batch job began processing
 - `input_file_id` (String) The ID of the input file used for the batch
 - `metadata` (Map of String) Custom metadata attached to the batch job

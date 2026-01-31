@@ -3,12 +3,12 @@
 page_title: "openai_invites Data Source - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Use this data source to retrieve a list of all pending invitations in an OpenAI organization.
 ---
 
 # openai_invites (Data Source)
 
-
+Use this data source to retrieve a list of all pending invitations in an OpenAI organization.
 
 ## Example Usage
 
@@ -29,25 +29,25 @@ output "total_invites" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `invites` (List of Object) List of pending invitations (see [below for nested schema](#nestedatt--invites))
+- `invites` (Attributes List) List of pending invitations. (see [below for nested schema](#nestedatt--invites))
 
 <a id="nestedatt--invites"></a>
 ### Nested Schema for `invites`
 
 Read-Only:
 
-- `created_at` (String)
-- `email` (String)
-- `expires_at` (String)
-- `id` (String)
-- `projects` (List of Object) (see [below for nested schema](#nestedobjatt--invites--projects))
-- `role` (String)
-- `status` (String)
+- `created_at` (String) Timestamp when the invitation was created.
+- `email` (String) The email address of the invited user.
+- `expires_at` (String) Timestamp when the invitation expires.
+- `id` (String) The ID of the invitation.
+- `projects` (Attributes List) Projects assigned to the invited user. (see [below for nested schema](#nestedatt--invites--projects))
+- `role` (String) The role assigned to the invited user.
+- `status` (String) The status of the invitation.
 
-<a id="nestedobjatt--invites--projects"></a>
+<a id="nestedatt--invites--projects"></a>
 ### Nested Schema for `invites.projects`
 
 Read-Only:
 
-- `id` (String)
-- `role` (String)
+- `id` (String) The ID of the project.
+- `role` (String) The role assigned to the user within the project.

@@ -33,7 +33,6 @@ output "response" {
 | Module | Description | Key Features |
 |--------|-------------|--------------|
 | [chat_completion](./chat_completion/) | Generate conversational responses | Message history, function calling, streaming |
-| [assistants](./assistants/) | Create AI assistants | Custom instructions, tools, file knowledge |
 | [embeddings](./embeddings/) | Generate text embeddings | Semantic search, clustering support |
 | [fine_tuning](./fine_tuning/) | Train custom models | Hyperparameter control, checkpoint management |
 | [model_response](./model_response/) | Generate model responses | Token tracking, usage statistics |
@@ -77,9 +76,6 @@ output "response" {
 
 | Module | Description | Key Features |
 |--------|-------------|--------------|
-| [threads](./threads/) | Conversation threads | Message history, context management |
-| [messages](./messages/) | Thread messages | Attachments, metadata |
-| [run](./run/) | Assistant execution | Tool execution, status tracking |
 | [model](./model/) | Model information | Get model details, capabilities |
 
 ## Module Patterns

@@ -3,12 +3,12 @@
 page_title: "openai_admin_api_key Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  
+  Manages an OpenAI Admin API Key.
 ---
 
 # openai_admin_api_key (Resource)
 
-
+Manages an OpenAI Admin API Key.
 
 ## Example Usage
 
@@ -52,19 +52,19 @@ output "admin_key_id" {
 
 ### Required
 
-- `name` (String) The name of the API key
+- `name` (String) The name of the API key.
 
 ### Optional
 
-- `expires_at` (Number) Unix timestamp when the API key should expire (optional)
-- `scopes` (List of String) Scopes to assign to the API key (e.g., 'api.management.read', 'api.management.write')
+- `expires_at` (Number) Unix timestamp when the API key should expire.
+- `scopes` (List of String) Scopes to assign to the API key.
 
 ### Read-Only
 
-- `api_key_value` (String, Sensitive) The actual API key value (only available upon creation)
-- `created_at` (String) Timestamp when the API key was created
-- `id` (String) The ID of this resource.
-- `object` (String) The object type
+- `api_key_value` (String, Sensitive) The value of the API key (only available upon creation).
+- `created_at` (Number) The timestamp (in Unix time) when the API key was created.
+- `id` (String) The identifier of the API Key.
+- `object` (String) The object type.
 
 ## Import
 
