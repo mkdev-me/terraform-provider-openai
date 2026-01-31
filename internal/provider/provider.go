@@ -236,12 +236,6 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 	return []func() resource.Resource{
 		NewFileResource,
 		NewChatCompletionResource,
-		NewAssistantResource,
-		NewAssistantFileResource,
-		NewThreadResource,
-		NewMessageResource, // openai_message
-		NewRunResource,     // openai_run
-		NewThreadRunResource,
 		NewVectorStoreResource,
 		NewVectorStoreFileResource,
 		NewVectorStoreFileBatchResource,
@@ -275,14 +269,6 @@ func (p *FrameworkProvider) DataSources(ctx context.Context) []func() datasource
 		NewModelsDataSource,
 		NewFileDataSource,
 		NewFilesDataSource,
-		NewAssistantDataSource,
-		NewAssistantsDataSource,
-		NewThreadDataSource,
-		NewMessageDataSource,
-		NewMessagesDataSource,
-		NewRunDataSource,
-		NewRunsDataSource,
-		NewThreadRunDataSource,
 		NewVectorStoreDataSource,
 		NewVectorStoresDataSource,
 		// Batch 9: Projects & Org

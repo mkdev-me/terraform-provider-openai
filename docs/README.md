@@ -33,7 +33,6 @@ If you're new to the OpenAI Terraform Provider, start here:
 
 ### By Feature
 - **Chat & Completions**: See [chat_completion](resources/chat_completion.md), [completion](resources/completion.md)
-- **Assistants**: See [assistant](resources/assistant.md), [thread](resources/thread.md), [run](resources/run.md)
 - **Fine-Tuning**: See [fine_tuning_job](resources/fine_tuning_job.md), [Fine-Tuning Guide](openai_fine_tuning_resources.md)
 - **Files & Storage**: See [file](resources/file.md), [vector_store](resources/vector_store.md)
 - **Images**: See [image_generation](resources/image_generation.md), [image_edit](resources/image_edit.md)
