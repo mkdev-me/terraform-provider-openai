@@ -183,7 +183,7 @@ func (d *ProjectAPIKeyDataSource) Read(ctx context.Context, req datasource.ReadR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ProjectAPKeysDataSource
+// NewProjectAPIKeysDataSource defines the data source implementation.
 func NewProjectAPIKeysDataSource() datasource.DataSource {
 	return &ProjectAPIKeysDataSource{}
 }

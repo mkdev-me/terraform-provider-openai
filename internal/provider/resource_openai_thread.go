@@ -254,10 +254,10 @@ func (r *ThreadResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// Tool Resources
-	if data.ToolResources != nil && len(data.ToolResources) > 0 {
+	if len(data.ToolResources) > 0 {
 		trModel := data.ToolResources[0]
 		tr := &ToolResources{}
-		if trModel.FileSearch != nil && len(trModel.FileSearch) > 0 {
+		if len(trModel.FileSearch) > 0 {
 			fsModel := trModel.FileSearch[0]
 			ids := make([]string, 0, len(fsModel.VectorStoreIDs))
 			for _, id := range fsModel.VectorStoreIDs {
@@ -265,7 +265,7 @@ func (r *ThreadResource) Create(ctx context.Context, req resource.CreateRequest,
 			}
 			tr.FileSearch = &FileSearchResources{VectorStoreIDs: ids}
 		}
-		if trModel.CodeInterpreter != nil && len(trModel.CodeInterpreter) > 0 {
+		if len(trModel.CodeInterpreter) > 0 {
 			ciModel := trModel.CodeInterpreter[0]
 			ids := make([]string, 0, len(ciModel.FileIDs))
 			for _, id := range ciModel.FileIDs {

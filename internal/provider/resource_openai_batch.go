@@ -269,9 +269,7 @@ func (r *BatchResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Normalize endpoint for state (remove /v1)
 	ep := batchResp.Endpoint
-	if strings.HasPrefix(ep, "/v1") {
-		ep = strings.TrimPrefix(ep, "/v1")
-	}
+	ep = strings.TrimPrefix(ep, "/v1")
 	data.Endpoint = types.StringValue(ep)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -354,9 +352,7 @@ func (r *BatchResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 
 	ep := batchResp.Endpoint
-	if strings.HasPrefix(ep, "/v1") {
-		ep = strings.TrimPrefix(ep, "/v1")
-	}
+	ep = strings.TrimPrefix(ep, "/v1")
 	data.Endpoint = types.StringValue(ep)
 
 	// Metadata

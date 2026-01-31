@@ -145,15 +145,6 @@ func (d *ProjectDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	// Safe bet: Manually make the HTTP request if we need a specific key that might differ from the provider's main key.
 	apiURL := d.client.OpenAIClient.APIURL
 	reqURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(apiURL, "/"), strings.TrimPrefix(path, "/"))
-	if strings.Contains(apiURL, "/v1") && strings.HasPrefix(path, "organization") {
-		// apiURL: https://api.openai.com/v1
-		// path: organization/projects/...
-		// result: https://api.openai.com/v1/organization/projects/... (Correct)
-	} else if !strings.Contains(apiURL, "/v1") && strings.HasPrefix(path, "/v1") {
-		// apiURL: https://api.openai.com
-		// path: /v1/organization/projects/...
-		// result: https://api.openai.com/v1/organization/projects/... (Correct)
-	}
 
 	httpRequest, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
