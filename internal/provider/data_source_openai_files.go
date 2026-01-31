@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -114,11 +113,6 @@ func (d *FilesDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	}
 
 	url := "files"
-	if !strings.HasSuffix(d.client.OpenAIClient.APIURL, "/v1") && !strings.Contains(d.client.OpenAIClient.APIURL, "/v1") {
-		// client usually handles base path relative to APIURL.
-		// If APIURL is "https://api.openai.com/v1", path "files" -> "https://api.openai.com/v1/files".
-		// This logic in client needs to be trusted.
-	}
 
 	// Query params
 	if !data.Purpose.IsNull() {

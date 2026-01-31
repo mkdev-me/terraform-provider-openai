@@ -270,7 +270,6 @@ func (d *ChatCompletionDataSource) Read(ctx context.Context, req datasource.Read
 	}
 	data.Usage, _ = types.MapValueFrom(ctx, types.Int64Type, usage)
 
-	choicesList = []attr.Value{}
 	for _, choice := range localComp.Choices {
 		msgAttrs := map[string]attr.Value{
 			"role":          types.StringValue(choice.Message.Role),

@@ -144,9 +144,6 @@ func (d *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		// Actually best to form: base + path
 		var fullURL string
 		if strings.Contains(apiURL, "/v1") {
-			fullURL = fmt.Sprintf("%s/organization/projects", strings.TrimSuffix(apiURL, "/v1"))
-			// Wait, if apiURL ends in /v1, and we want /v1/organization/projects
-			// reusing apiURL (e.g. https://api.openai.com/v1) -> https://api.openai.com/v1/organization/projects
 			fullURL = fmt.Sprintf("%s/organization/projects", strings.TrimSuffix(apiURL, "/"))
 		} else {
 			fullURL = fmt.Sprintf("%s/v1/organization/projects", strings.TrimSuffix(apiURL, "/"))

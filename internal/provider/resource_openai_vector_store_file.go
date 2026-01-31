@@ -254,12 +254,6 @@ func (r *VectorStoreFileResource) Read(ctx context.Context, req resource.ReadReq
 		}
 	}
 
-	if vsFileResp.ChunkingStrategy != nil {
-		// Populate chunking strategy computed values if returned?
-		// Usually not deeply returned in simple get?
-		// We'll leave it as is from config or check if we need to set it.
-	}
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
