@@ -15,9 +15,9 @@ func TestAccResourceOpenAIProject_basic(t *testing.T) {
 	projectName := "tf-acc-test-project"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceOpenAIProjectBasic(projectName),
@@ -44,9 +44,9 @@ func TestAccResourceOpenAIProject_update(t *testing.T) {
 	projectNameUpdated := "tf-acc-test-project-updated"
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories,
-		CheckDestroy:      testAccCheckOpenAIProjectDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceOpenAIProjectBasic(projectName),

@@ -269,10 +269,6 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewModerationResource,
 		NewRateLimitResource,
 		NewFineTunedModelResource,
-		NewModelResponseResource,
-		NewUploadResource,
-		NewUploadPartResource,
-		NewUploadCompleteResource,
 	}
 }
 
@@ -325,9 +321,7 @@ func (p *FrameworkProvider) DataSources(ctx context.Context) []func() datasource
 		NewChatCompletionDataSource,
 		NewChatCompletionsDataSource,
 		NewChatCompletionMessagesDataSource,
-		NewModelResponseDataSource,
-		NewModelResponsesDataSource,
-		NewModelResponseInputItemsDataSource,
+
 		// Batch 9: Vector Store Utils
 		NewVectorStoreFileDataSource,
 		NewVectorStoreFileBatchDataSource,
