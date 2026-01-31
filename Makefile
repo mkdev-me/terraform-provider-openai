@@ -7,13 +7,13 @@ REGISTRY_HOSTNAME=registry.terraform.io
 NAMESPACE=mkdev-me
 NAME=openai
 BINARY=terraform-provider-${NAME}
-VERSION=2.0.0
+VERSION?=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0-dev")
 OS_ARCH=darwin_arm64
 
 default: install
 
 build:
-	go build -o ${BINARY}
+	go build -ldflags "-X main.version=${VERSION}" -o ${BINARY}
 
 release:
 	mkdir -p ./bin

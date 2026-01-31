@@ -17,7 +17,7 @@ import (
 var (
 	// these will be set by the goreleaser configuration
 	// to appropriate values for the compiled binary.
-	version string = "2.0.0"
+	version string = "0.0.0-dev"
 
 	// goreleaser can also tag the specific commit that release was built on.
 	// commit  string = ""
@@ -27,7 +27,15 @@ func main() {
 	var debug bool
 
 	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
+
+	var printVersion bool
+	flag.BoolVar(&printVersion, "version", false, "print provider version")
 	flag.Parse()
+
+	if printVersion {
+		log.Println(version)
+		return
+	}
 
 	opts := providerserver.ServeOpts{
 		Address: "registry.terraform.io/mkdev-me/openai",
