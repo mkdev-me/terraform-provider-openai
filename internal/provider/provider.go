@@ -263,12 +263,9 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewImageVariationResource,
 		// Batch 7
 		NewModelResource,
-		NewCompletionResource,
-		NewEditResource,
 		NewEmbeddingResource,
 		NewModerationResource,
 		NewRateLimitResource,
-		NewFineTunedModelResource,
 	}
 }
 

@@ -104,7 +104,7 @@ output "fine_tuning_job_id" {
 - `metadata` (Map of String) Metadata.
 - `method` (Attributes) (see [below for nested schema](#nestedatt--method))
 - `seed` (Number) The seed used for the fine-tuning job.
-- `suffix` (String) A string of up to 40 characters that will be added to your fine-tuned model name.
+- `suffix` (String, Deprecated) A string of up to 40 characters that will be added to your fine-tuned model name.
 - `validation_file` (String) The ID of the validation file.
 
 ### Read-Only

@@ -129,6 +129,7 @@ func (r *FineTuningJobResource) Schema(ctx context.Context, req resource.SchemaR
 			"suffix": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "A string of up to 40 characters that will be added to your fine-tuned model name.",
+				DeprecationMessage:  "This field is deprecated. Use the suffix parameter in the method.supervised.hyperparameters object instead, or rely on auto-generated names.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},

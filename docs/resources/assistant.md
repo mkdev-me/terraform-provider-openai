@@ -76,7 +76,7 @@ output "assistant_id" {
 ### Optional
 
 - `description` (String) The description of the assistant.
-- `file_ids` (List of String) A list of file IDs attached to this assistant.
+- `file_ids` (List of String, Deprecated) A list of file IDs attached to this assistant. Deprecated: Use tool_resources instead.
 - `instructions` (String) The system instructions that the assistant uses.
 - `metadata` (Map of String) Metadata for the assistant.
 - `name` (String) The name of the assistant.
@@ -118,7 +118,7 @@ Optional:
 
 Required:
 
-- `type` (String) The type of tool being defined: code_interpreter, retrieval, function, or file_search.
+- `type` (String) The type of tool being defined: code_interpreter, file_search, or function. 'retrieval' is deprecated.
 
 Optional:
 

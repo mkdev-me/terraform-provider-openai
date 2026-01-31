@@ -90,7 +90,7 @@ func (r *AssistantResource) Schema(ctx context.Context, req resource.SchemaReque
 					Attributes: map[string]schema.Attribute{
 						"type": schema.StringAttribute{
 							Required:            true,
-							MarkdownDescription: "The type of tool being defined: code_interpreter, retrieval, function, or file_search.",
+							MarkdownDescription: "The type of tool being defined: code_interpreter, file_search, or function. 'retrieval' is deprecated.",
 						},
 
 						"function": schema.ListNestedAttribute{
@@ -151,7 +151,8 @@ func (r *AssistantResource) Schema(ctx context.Context, req resource.SchemaReque
 			"file_ids": schema.ListAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "A list of file IDs attached to this assistant.",
+				MarkdownDescription: "A list of file IDs attached to this assistant. Deprecated: Use tool_resources instead.",
+				DeprecationMessage:  "This field is deprecated in Assistants V2. Use tool_resources instead for file search and code interpreter files.",
 			},
 			"metadata": schema.MapAttribute{
 				Optional:            true,

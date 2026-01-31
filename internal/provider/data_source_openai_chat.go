@@ -75,7 +75,8 @@ func (d *ChatCompletionDataSource) Schema(ctx context.Context, req datasource.Sc
 									"content": schema.StringAttribute{Computed: true},
 									"name":    schema.StringAttribute{Computed: true},
 									"function_call": schema.ListNestedAttribute{
-										Computed: true,
+										Computed:           true,
+										DeprecationMessage: "This field is deprecated. Use tool_calls instead.",
 										NestedObject: schema.NestedAttributeObject{
 											Attributes: map[string]schema.Attribute{
 												"name":      schema.StringAttribute{Computed: true},

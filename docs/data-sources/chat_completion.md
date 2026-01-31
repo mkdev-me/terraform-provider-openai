@@ -43,7 +43,7 @@ Read-Only:
 Read-Only:
 
 - `content` (String)
-- `function_call` (Attributes List) (see [below for nested schema](#nestedatt--choices--message--function_call))
+- `function_call` (Attributes List, Deprecated) (see [below for nested schema](#nestedatt--choices--message--function_call))
 - `name` (String)
 - `role` (String)
 - `tool_calls` (Attributes List) (see [below for nested schema](#nestedatt--choices--message--tool_calls))
