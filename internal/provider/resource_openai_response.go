@@ -1,12 +1,9 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -18,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 var _ resource.Resource = &ResponseResource{}
@@ -269,14 +267,14 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	apiReqData := CreateResponseRequest{
+	apiReqData := client.CreateResponseRequest{
 		Model: data.Model.ValueString(),
 		Input: data.Input.ValueString(),
 		Store: true,
 	}
 
 	if !data.ReasoningEffort.IsNull() {
-		apiReqData.Reasoning = &ReasoningConfig{
+		apiReqData.Reasoning = &client.ReasoningConfig{
 			Effort: data.ReasoningEffort.ValueString(),
 		}
 	}
@@ -319,18 +317,18 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 	if !data.Tools.IsNull() {
 		var tools []ResponseToolModel
 		data.Tools.ElementsAs(ctx, &tools, false)
-		toolsReq := []ToolConfig{}
+		toolsReq := []client.ToolConfig{}
 		for _, t := range tools {
-			var fReq *FunctionConfig
+			var fReq *client.FunctionConfig
 			// Check if Function Name is set to determine if function block exists
 			if !t.Function.Name.IsNull() {
-				fReq = &FunctionConfig{
+				fReq = &client.FunctionConfig{
 					Name:        t.Function.Name.ValueString(),
 					Description: t.Function.Description.ValueString(),
 					Parameters:  json.RawMessage(t.Function.Parameters.ValueString()),
 				}
 			}
-			toolsReq = append(toolsReq, ToolConfig{
+			toolsReq = append(toolsReq, client.ToolConfig{
 				Type:     t.Type.ValueString(),
 				Function: fReq,
 			})
@@ -350,7 +348,7 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 		rfVal := data.ResponseFormat.ValueString()
 		// If input is simple string (not JSON), wrap it in {"type": "..."}
 		if !strings.HasPrefix(strings.TrimSpace(rfVal), "{") {
-			apiReqData.Text = &TextConfig{Format: map[string]interface{}{"type": rfVal}}
+			apiReqData.Text = &client.TextConfig{Format: map[string]interface{}{"type": rfVal}}
 		} else {
 			// If it is JSON (e.g. for json_schema), pass as RawMessage ?
 			// Wait, Format is interface{}. RawMessage needs to be unmarshalled or passed as object.
@@ -358,10 +356,10 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 			// For simplicity: If it parses as JSON, use it. Else wrap it.
 			var js map[string]interface{}
 			if err := json.Unmarshal([]byte(rfVal), &js); err == nil {
-				apiReqData.Text = &TextConfig{Format: js}
+				apiReqData.Text = &client.TextConfig{Format: js}
 			} else {
 				// Fallback to type wrapper
-				apiReqData.Text = &TextConfig{Format: map[string]interface{}{"type": rfVal}}
+				apiReqData.Text = &client.TextConfig{Format: map[string]interface{}{"type": rfVal}}
 			}
 		}
 	}
@@ -379,7 +377,7 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	if data.Prompt != nil {
-		pConf := PromptConfig{
+		pConf := client.PromptConfig{
 			ID: data.Prompt.ID.ValueString(),
 		}
 		if !data.Prompt.Version.IsNull() {
@@ -398,61 +396,28 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 		apiReqData.Include = inc
 	}
 
-	reqBody, err := json.Marshal(apiReqData)
+	// Call the API using client
+	respData, err := r.client.CreateResponse(apiReqData)
 	if err != nil {
-		resp.Diagnostics.AddError("Error serializing request", err.Error())
+		resp.Diagnostics.AddError("Error creating response", err.Error())
 		return
 	}
 
-	url := fmt.Sprintf("%s/responses", r.client.OpenAIClient.APIURL)
-	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-
-	apiReq.Header.Set("Content-Type", "application/json")
-	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
-	if r.client.OpenAIClient.OrganizationID != "" {
-		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
-	}
-
-	apiResp, err := http.DefaultClient.Do(apiReq)
-	if err != nil {
-		resp.Diagnostics.AddError("Error making request", err.Error())
-		return
-	}
-	defer apiResp.Body.Close()
-
-	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
-		respBodyBytes, _ := io.ReadAll(apiResp.Body)
-		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
-		return
-	}
-
-	var apiRespData ResponseResponse
-	respBodyBytes, _ := io.ReadAll(apiResp.Body)
-	if err := json.Unmarshal(respBodyBytes, &apiRespData); err != nil {
-		resp.Diagnostics.AddError("Error parsing response", err.Error())
-		return
-	}
-
-	data.ID = types.StringValue(apiRespData.ID)
-	data.CreatedAt = types.Int64Value(apiRespData.CreatedAt)
-
-	outputItems := r.mapAPIOutputToModel(apiRespData.Output)
+	// Update state
+	data.ID = types.StringValue(respData.ID)
+	data.CreatedAt = types.Int64Value(respData.CreatedAt)
 	outputList, diags := types.ListValueFrom(ctx, types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"type":    types.StringType,
 			"content": types.StringType,
 		},
-	}, outputItems)
+	}, r.mapAPIOutputToModel(respData.Output))
 	resp.Diagnostics.Append(diags...)
 	data.Output = outputList
 
 	// Populate convenience 'content' field
 	var allContent string
-	for _, item := range outputItems {
+	for _, item := range r.mapAPIOutputToModel(respData.Output) {
 		allContent += item.Content.ValueString()
 	}
 	data.Content = types.StringValue(allContent)
@@ -467,59 +432,30 @@ func (r *ResponseResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	url := fmt.Sprintf("%s/responses/%s", r.client.OpenAIClient.APIURL, data.ID.ValueString())
-	apiReq, err := http.NewRequest("GET", url, nil)
+	respData, err := r.client.RetrieveResponse(data.ID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
+		if strings.Contains(err.Error(), "404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError("Error reading response", err.Error())
 		return
 	}
 
-	apiReq.Header.Set("Content-Type", "application/json")
-	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
-	if r.client.OpenAIClient.OrganizationID != "" {
-		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
-	}
+	data.CreatedAt = types.Int64Value(respData.CreatedAt)
 
-	apiResp, err := http.DefaultClient.Do(apiReq)
-	if err != nil {
-		resp.Diagnostics.AddError("Error making request", err.Error())
-		return
-	}
-	defer apiResp.Body.Close()
-
-	if apiResp.StatusCode == http.StatusNotFound {
-		resp.State.RemoveResource(ctx)
-		return
-	}
-
-	if apiResp.StatusCode != http.StatusOK {
-		respBodyBytes, _ := io.ReadAll(apiResp.Body)
-		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
-		return
-	}
-
-	var apiRespData ResponseResponse
-	respBodyBytes, _ := io.ReadAll(apiResp.Body)
-	if err := json.Unmarshal(respBodyBytes, &apiRespData); err != nil {
-		resp.Diagnostics.AddError("Error parsing response", err.Error())
-		return
-	}
-
-	data.CreatedAt = types.Int64Value(apiRespData.CreatedAt)
-
-	outputItems := r.mapAPIOutputToModel(apiRespData.Output)
 	outputList, diags := types.ListValueFrom(ctx, types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"type":    types.StringType,
 			"content": types.StringType,
 		},
-	}, outputItems)
+	}, r.mapAPIOutputToModel(respData.Output))
 	resp.Diagnostics.Append(diags...)
 	data.Output = outputList
 
 	// Populate convenience 'content' field
 	var allContent string
-	for _, item := range outputItems {
+	for _, item := range r.mapAPIOutputToModel(respData.Output) {
 		allContent += item.Content.ValueString()
 	}
 	data.Content = types.StringValue(allContent)
@@ -539,76 +475,12 @@ func (r *ResponseResource) Delete(ctx context.Context, req resource.DeleteReques
 }
 
 // API structs (reused from previous attempt but kept here for self-containment)
-type CreateResponseRequest struct {
-	Model              string                 `json:"model"`
-	Input              string                 `json:"input"`
-	Store              bool                   `json:"store"`
-	Reasoning          *ReasoningConfig       `json:"reasoning,omitempty"`
-	Metadata           map[string]interface{} `json:"metadata,omitempty"`
-	Temperature        *float64               `json:"temperature,omitempty"`
-	TopP               *float64               `json:"top_p,omitempty"`
-	TopLogprobs        *int64                 `json:"top_logprobs,omitempty"`
-	MaxOutputTokens    *int64                 `json:"max_output_tokens,omitempty"`
-	MaxToolCalls       *int64                 `json:"max_tool_calls,omitempty"`
-	ParallelToolCalls  *bool                  `json:"parallel_tool_calls,omitempty"`
-	Truncation         *string                `json:"truncation,omitempty"`
-	Tools              []ToolConfig           `json:"tools,omitempty"`
-	ToolChoice         interface{}            `json:"tool_choice,omitempty"`
-	Text               *TextConfig            `json:"text,omitempty"`
-	Instructions       *string                `json:"instructions,omitempty"`
-	PreviousResponseID *string                `json:"previous_response_id,omitempty"`
-	Include            []string               `json:"include,omitempty"`
-	Prompt             *PromptConfig          `json:"prompt,omitempty"`
-	Conversation       *string                `json:"conversation,omitempty"` // ID only
-}
-
-type TextConfig struct {
-	Format interface{} `json:"format,omitempty"`
-}
-
-type PromptConfig struct {
-	ID        string          `json:"id"`
-	Version   *string         `json:"version,omitempty"`
-	Variables json.RawMessage `json:"variables,omitempty"`
-}
-
-type ToolConfig struct {
-	Type     string          `json:"type"`
-	Function *FunctionConfig `json:"function,omitempty"`
-}
-
-type FunctionConfig struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters"`
-}
-
-type ReasoningConfig struct {
-	Effort string `json:"effort,omitempty"`
-}
-
-type ResponseResponse struct {
-	ID        string          `json:"id"`
-	CreatedAt int64           `json:"created_at"`
-	Output    []APIOutputItem `json:"output"`
-}
-
-type APIOutputItem struct {
-	Type    string            `json:"type"`
-	Content interface{}       `json:"content"`
-	Message *APIOutputMessage `json:"message,omitempty"`
-}
-
-type APIOutputMessage struct {
-	Content interface{} `json:"content"`
-}
-
 type ResponseOutputModel struct {
 	Type    types.String `tfsdk:"type"`
 	Content types.String `tfsdk:"content"`
 }
 
-func (r *ResponseResource) mapAPIOutputToModel(items []APIOutputItem) []ResponseOutputModel {
+func (r *ResponseResource) mapAPIOutputToModel(items []client.APIOutputItem) []ResponseOutputModel {
 	var models []ResponseOutputModel
 	for _, item := range items {
 		contentStr := ""

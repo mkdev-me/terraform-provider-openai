@@ -2969,3 +2969,104 @@ func (c *OpenAIClient) TestNetworkConnectivity() error {
 	fmt.Printf("[NETWORK-TEST] HTTP HEAD request successful. Status code: %d\n", resp.StatusCode)
 	return nil
 }
+
+// ------------------------------------------------------------------------------------------------
+// Response API Support
+// ------------------------------------------------------------------------------------------------
+
+// CreateResponseRequest represents the request body for creating a response
+type CreateResponseRequest struct {
+	Model              string                 `json:"model"`
+	Input              string                 `json:"input"`
+	Store              bool                   `json:"store"`
+	Reasoning          *ReasoningConfig       `json:"reasoning,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	Temperature        *float64               `json:"temperature,omitempty"`
+	TopP               *float64               `json:"top_p,omitempty"`
+	TopLogprobs        *int64                 `json:"top_logprobs,omitempty"`
+	MaxOutputTokens    *int64                 `json:"max_output_tokens,omitempty"`
+	MaxToolCalls       *int64                 `json:"max_tool_calls,omitempty"`
+	ParallelToolCalls  *bool                  `json:"parallel_tool_calls,omitempty"`
+	Truncation         *string                `json:"truncation,omitempty"`
+	Tools              []ToolConfig           `json:"tools,omitempty"`
+	ToolChoice         interface{}            `json:"tool_choice,omitempty"`
+	Text               *TextConfig            `json:"text,omitempty"`
+	Instructions       *string                `json:"instructions,omitempty"`
+	PreviousResponseID *string                `json:"previous_response_id,omitempty"`
+	Include            []string               `json:"include,omitempty"`
+	Prompt             *PromptConfig          `json:"prompt,omitempty"`
+	Conversation       *string                `json:"conversation,omitempty"` // ID only
+}
+
+type TextConfig struct {
+	Format interface{} `json:"format,omitempty"`
+}
+
+type PromptConfig struct {
+	ID        string          `json:"id"`
+	Version   *string         `json:"version,omitempty"`
+	Variables json.RawMessage `json:"variables,omitempty"`
+}
+
+type ToolConfig struct {
+	Type     string          `json:"type"`
+	Function *FunctionConfig `json:"function,omitempty"`
+}
+
+type FunctionConfig struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters"`
+}
+
+type ReasoningConfig struct {
+	Effort string `json:"effort,omitempty"`
+}
+
+type ResponseResponse struct {
+	ID        string          `json:"id"`
+	CreatedAt int64           `json:"created_at"`
+	Output    []APIOutputItem `json:"output"`
+}
+
+type APIOutputItem struct {
+	Type    string            `json:"type"`
+	Content interface{}       `json:"content"`
+	Message *APIOutputMessage `json:"message,omitempty"`
+}
+
+type APIOutputMessage struct {
+	Content interface{} `json:"content"`
+}
+
+// CreateResponse calls the /v1/responses API to generate a response
+func (c *OpenAIClient) CreateResponse(req CreateResponseRequest) (*ResponseResponse, error) {
+	url := "/v1/responses"
+	respBody, err := c.DoRequest("POST", url, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ResponseResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("error parsing response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// RetrieveResponse calls the GET /v1/responses/{id} API
+func (c *OpenAIClient) RetrieveResponse(id string) (*ResponseResponse, error) {
+	url := fmt.Sprintf("/v1/responses/%s", id)
+	respBody, err := c.DoRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ResponseResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("error parsing response: %w", err)
+	}
+
+	return &resp, nil
+}
