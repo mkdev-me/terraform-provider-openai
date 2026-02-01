@@ -7,7 +7,6 @@ resource "openai_response" "full_example" {
   # conversation_id = "conv_12345" # Optional: To continue a conversation
 
   # Tuning
-  temperature       = 0.7
   top_p             = 1.0
   max_output_tokens = 100
   truncation        = "auto"
