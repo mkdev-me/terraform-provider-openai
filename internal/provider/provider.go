@@ -259,6 +259,7 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewModelResource,
 		NewEmbeddingResource,
 		NewModerationResource,
+		NewResponseResource,
 		NewRateLimitResource,
 	}
 }
