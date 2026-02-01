@@ -164,3 +164,9 @@ website/node_modules
 *.iml
 website/vendor
 tfplan
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.beads/
+.logs/
