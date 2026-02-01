@@ -6,11 +6,11 @@ description: |-
   Generates a response using the OpenAI Responses API.
 ---
 
+# openai_response (Resource)
+
 Generates a response using the OpenAI Responses API.
 
 ## Example Usage
-
-### Simple Example
 
 ```terraform
 resource "openai_response" "full_example" {
