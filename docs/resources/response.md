@@ -6,26 +6,11 @@ description: |-
   Generates a response using the OpenAI Responses API.
 ---
 
-# openai_response (Resource)
-
 Generates a response using the OpenAI Responses API.
 
 ## Example Usage
 
 ### Simple Example
-
-```terraform
-resource "openai_response" "example" {
-  model = "gpt-4o"
-  input = "Hello! Are you working?"
-}
-
-output "response_output" {
-  value = openai_response.example.content
-}
-```
-
-### Comprehensive Example
 
 ```terraform
 resource "openai_response" "full_example" {
@@ -85,7 +70,7 @@ resource "openai_response" "full_example" {
 }
 
 output "full_example_output" {
-  value = openai_response.full_example.output
+  value = openai_response.full_example.content
 }
 ```
 
