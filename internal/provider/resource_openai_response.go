@@ -36,30 +36,29 @@ func (r *ResponseResource) Metadata(ctx context.Context, req resource.MetadataRe
 }
 
 type ResponseResourceModel struct {
-	Model             types.String  `tfsdk:"model"`
-	Input             types.String  `tfsdk:"input"`
-	ID                types.String  `tfsdk:"id"`
-	CreatedAt         types.Int64   `tfsdk:"created_at"`
-	Output            types.List    `tfsdk:"output"`
-	ReasoningEffort   types.String  `tfsdk:"reasoning_effort"`
-	Metadata          types.Map     `tfsdk:"metadata"`
-	Temperature       types.Float64 `tfsdk:"temperature"`
-	TopP              types.Float64 `tfsdk:"top_p"`
-	TopLogprobs       types.Int64   `tfsdk:"top_logprobs"`
-	MaxOutputTokens   types.Int64   `tfsdk:"max_output_tokens"`
-	MaxToolCalls      types.Int64   `tfsdk:"max_tool_calls"`
-	ParallelToolCalls types.Bool    `tfsdk:"parallel_tool_calls"`
-	Truncation        types.String  `tfsdk:"truncation"`
-	Tools             types.List    `tfsdk:"tools"`
-	ToolChoice        types.String  `tfsdk:"tool_choice"`
-	ResponseFormat    types.String  `tfsdk:"response_format"`
-	// Removed LogitBias, Modalities as they are not in Spec
-	Instructions       types.String `tfsdk:"instructions"`
-	PreviousResponseID types.String `tfsdk:"previous_response_id"`
-	Include            types.List   `tfsdk:"include"`
-	Prompt             *PromptModel `tfsdk:"prompt"`
-	ConversationID     types.String `tfsdk:"conversation_id"`
-	Content            types.String `tfsdk:"content"`
+	Model              types.String  `tfsdk:"model"`
+	Input              types.String  `tfsdk:"input"`
+	ID                 types.String  `tfsdk:"id"`
+	CreatedAt          types.Int64   `tfsdk:"created_at"`
+	Output             types.List    `tfsdk:"output"`
+	ReasoningEffort    types.String  `tfsdk:"reasoning_effort"`
+	Metadata           types.Map     `tfsdk:"metadata"`
+	Temperature        types.Float64 `tfsdk:"temperature"`
+	TopP               types.Float64 `tfsdk:"top_p"`
+	TopLogprobs        types.Int64   `tfsdk:"top_logprobs"`
+	MaxOutputTokens    types.Int64   `tfsdk:"max_output_tokens"`
+	MaxToolCalls       types.Int64   `tfsdk:"max_tool_calls"`
+	ParallelToolCalls  types.Bool    `tfsdk:"parallel_tool_calls"`
+	Truncation         types.String  `tfsdk:"truncation"`
+	Tools              types.List    `tfsdk:"tools"`
+	ToolChoice         types.String  `tfsdk:"tool_choice"`
+	ResponseFormat     types.String  `tfsdk:"response_format"`
+	Instructions       types.String  `tfsdk:"instructions"`
+	PreviousResponseID types.String  `tfsdk:"previous_response_id"`
+	Include            types.List    `tfsdk:"include"`
+	Prompt             *PromptModel  `tfsdk:"prompt"`
+	ConversationID     types.String  `tfsdk:"conversation_id"`
+	Content            types.String  `tfsdk:"content"`
 }
 
 type PromptModel struct {
@@ -212,16 +211,6 @@ func (r *ResponseResource) Schema(ctx context.Context, req resource.SchemaReques
 				MarkdownDescription: "Specifies the format that the model must output. Compatible with `json_object`, `json_schema`, `text`.",
 				Optional:            true,
 			},
-			// "logit_bias": schema.MapAttribute{
-			// 	MarkdownDescription: "Modify the likelihood of specified tokens appearing in the completion.",
-			// 	Optional:            true,
-			// 	ElementType:         types.Int64Type,
-			// },
-			// "modalities": schema.ListAttribute{
-			// 	MarkdownDescription: "The set of modalities the model used to respond. If there are multiple modalities, the model will pick one. Valid values: `text`, `audio`.",
-			// 	Optional:            true,
-			// 	ElementType:         types.StringType,
-			// },
 			"instructions": schema.StringAttribute{
 				MarkdownDescription: "A system (or developer) message inserted into the model's context.",
 				Optional:            true,
@@ -376,8 +365,6 @@ func (r *ResponseResource) Create(ctx context.Context, req resource.CreateReques
 			}
 		}
 	}
-
-	// LogitBias and Modalities removed
 
 	if !data.Instructions.IsNull() {
 		apiReqData.Instructions = data.Instructions.ValueStringPointer()
