@@ -18,7 +18,7 @@ jobs:
           cache: true
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '1.12.*'
+          terraform_version: '1.14.*'
           terraform_wrapper: false
       - run: go mod download
       - run: make build
@@ -36,8 +36,8 @@ jobs:
       matrix:
         terraform:
           - ''
-          - '1.10.*'
-          - '1.11.*'
+          - '1.13.*'
+          - '1.14.*'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
