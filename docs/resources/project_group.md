@@ -15,11 +15,11 @@ Manages a group's access to an OpenAI Project. Groups are collections of users t
 ```terraform
 # First, create a project
 resource "openai_project" "development" {
-  name = "Development Environment"
+  name = var.dev_project_name
 }
 
 resource "openai_project" "production" {
-  name = "Production API"
+  name = var.prod_project_name
 }
 
 # IMPORTANT: Replace these group_id values with actual group IDs from your organization
