@@ -100,3 +100,62 @@ type ProjectGroupCreateRequest struct {
 	GroupID string `json:"group_id"`
 	Role    string `json:"role"`
 }
+
+// GroupResponseFramework represents the API response for an organization group.
+type GroupResponseFramework struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	CreatedAt     int64  `json:"created_at"`
+	IsSCIMManaged bool   `json:"is_scim_managed"`
+}
+
+// GroupListResponse represents the list response for organization groups.
+type GroupListResponse struct {
+	Object  string                   `json:"object"`
+	Data    []GroupResponseFramework `json:"data"`
+	HasMore bool                     `json:"has_more"`
+	Next    *string                  `json:"next"`
+}
+
+// GroupCreateRequest represents the request to create a group.
+type GroupCreateRequest struct {
+	Name string `json:"name"`
+}
+
+// GroupUpdateRequest represents the request to update a group.
+type GroupUpdateRequest struct {
+	Name string `json:"name"`
+}
+
+// GroupDeletedResponse represents the response when deleting a group.
+type GroupDeletedResponse struct {
+	Object  string `json:"object"`
+	ID      string `json:"id"`
+	Deleted bool   `json:"deleted"`
+}
+
+// GroupUserAssignment represents a user assignment to a group.
+type GroupUserAssignment struct {
+	Object  string `json:"object"`
+	UserID  string `json:"user_id"`
+	GroupID string `json:"group_id"`
+}
+
+// GroupUserDeletedResponse represents the response when removing a user from a group.
+type GroupUserDeletedResponse struct {
+	Object  string `json:"object"`
+	Deleted bool   `json:"deleted"`
+}
+
+// GroupUserListResponse represents the list response for group users.
+type GroupUserListResponse struct {
+	Object  string                              `json:"object"`
+	Data    []OrganizationUserResponseFramework `json:"data"`
+	HasMore bool                                `json:"has_more"`
+	Next    *string                             `json:"next"`
+}
+
+// GroupUserCreateRequest represents the request to add a user to a group.
+type GroupUserCreateRequest struct {
+	UserID string `json:"user_id"`
+}
