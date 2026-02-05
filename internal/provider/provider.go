@@ -245,6 +245,7 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewInviteResource,
 		NewProjectResource,
 		NewProjectUserResource,
+		NewProjectGroupResource,
 		NewOrganizationUserResource,
 		NewAdminAPIKeyResource,
 		// Batch 6
@@ -281,6 +282,8 @@ func (p *FrameworkProvider) DataSources(ctx context.Context) []func() datasource
 		NewProjectServiceAccountsDataSource,
 		NewProjectUserDataSource,
 		NewProjectUsersDataSource,
+		NewProjectGroupDataSource,
+		NewProjectGroupsDataSource,
 		NewOrganizationUserDataSource,
 		NewOrganizationUsersDataSource,
 		NewAdminAPIKeyDataSource,

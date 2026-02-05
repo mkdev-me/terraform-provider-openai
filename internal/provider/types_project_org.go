@@ -75,3 +75,28 @@ type AdminAPIKeyCreateRequest struct {
 	Name   string   `json:"name"`
 	Scopes []string `json:"scopes,omitempty"`
 }
+
+// ProjectGroupResponseFramework represents the API response for a project group.
+type ProjectGroupResponseFramework struct {
+	Object    string `json:"object"`
+	ProjectID string `json:"project_id"`
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name"`
+	Role      string `json:"role"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// ProjectGroupListResponse represents the list response for project groups.
+type ProjectGroupListResponse struct {
+	Object  string                          `json:"object"`
+	Data    []ProjectGroupResponseFramework `json:"data"`
+	FirstID string                          `json:"first_id"`
+	LastID  string                          `json:"last_id"`
+	HasMore bool                            `json:"has_more"`
+}
+
+// ProjectGroupCreateRequest represents the request to add a group to a project.
+type ProjectGroupCreateRequest struct {
+	GroupID string `json:"group_id"`
+	Role    string `json:"role"`
+}
