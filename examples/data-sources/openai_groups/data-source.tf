@@ -15,10 +15,10 @@ output "all_group_ids" {
 output "group_details" {
   value = [
     for group in data.openai_groups.all.groups : {
-      id            = group.id
-      name          = group.name
-      is_scim       = group.is_scim_managed
-      created_at    = group.created_at
+      id         = group.id
+      name       = group.name
+      is_scim    = group.is_scim_managed
+      created_at = group.created_at
     }
   ]
 }
