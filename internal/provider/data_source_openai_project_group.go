@@ -136,7 +136,11 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 
 	// Loop until found or done
 	for foundGroup == nil {
-		parsedURL, _ := url.Parse(reqURL)
+		parsedURL, err := url.Parse(reqURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
+		}
 		q := parsedURL.Query()
 		q.Set("limit", "100")
 		if cursor != "" {
@@ -162,18 +166,20 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
 		}
-		defer httpResp.Body.Close()
 
 		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
 			return
 		}
 
 		var listResp ProjectGroupListResponse
 		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("Error decoding response", err.Error())
 			return
 		}
+		httpResp.Body.Close()
 
 		for i := range listResp.Data {
 			group := listResp.Data[i]
@@ -362,7 +368,11 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	cursor := ""
 	for {
-		parsedURL, _ := url.Parse(reqURL)
+		parsedURL, err := url.Parse(reqURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
+		}
 		q := parsedURL.Query()
 		q.Set("limit", "100")
 		if cursor != "" {
@@ -387,18 +397,20 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
 		}
-		defer httpResp.Body.Close()
 
 		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
 			return
 		}
 
 		var listResp ProjectGroupListResponse
 		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("Error decoding response", err.Error())
 			return
 		}
+		httpResp.Body.Close()
 
 		for _, g := range listResp.Data {
 			groupModel := ProjectGroupResultModel{
