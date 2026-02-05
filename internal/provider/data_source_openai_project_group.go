@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -160,7 +161,7 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
 		}
 
-		httpClient := &http.Client{}
+		httpClient := &http.Client{Timeout: 30 * time.Second}
 		httpResp, err := httpClient.Do(httpRequest)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
@@ -391,7 +392,7 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
 		}
 
-		httpClient := &http.Client{}
+		httpClient := &http.Client{Timeout: 30 * time.Second}
 		httpResp, err := httpClient.Do(httpRequest)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
