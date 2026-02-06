@@ -3,12 +3,12 @@
 page_title: "openai_project_group Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  Manages a group's access to an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
+  Manages a group's membership in an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
 ---
 
 # openai_project_group (Resource)
 
-Manages a group's access to an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
+Manages a group's membership in an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
 
 ## Example Usage
 
@@ -22,36 +22,24 @@ resource "openai_project" "production" {
   name = var.prod_project_name
 }
 
-# IMPORTANT: Replace these group_id values with actual group IDs from your organization
+# IMPORTANT: Replace these group_id and role_id values with actual IDs from your organization
 # Groups are synced from your identity provider via SCIM
-# You can find group IDs using the openai_project_groups data source or OpenAI dashboard
+# You can find group IDs using the openai_groups data source or OpenAI dashboard
+# You can find role IDs using the openai_project_roles data source
 
 # Add groups to the development project
-# Commented out until valid group IDs are provided
+# Commented out until valid group IDs and role IDs are provided
 #
 # resource "openai_project_group" "dev_team" {
 #   project_id = openai_project.development.id
-#   group_id   = "group-123abc"  # Replace with actual group ID from your IdP
-#   role       = "owner"
+#   group_id   = "group_01J1F8ABCDXYZ"  # Replace with actual group ID from your IdP
+#   role_id    = "role_01J1F8PROJ"      # Replace with actual role ID
 # }
 #
 # resource "openai_project_group" "engineering" {
 #   project_id = openai_project.development.id
-#   group_id   = "group-456def"  # Replace with actual group ID from your IdP
-#   role       = "member"
-# }
-#
-# # Add groups to the production project with more restricted access
-# resource "openai_project_group" "prod_admins" {
-#   project_id = openai_project.production.id
-#   group_id   = "group-123abc"  # Same group can be in multiple projects
-#   role       = "owner"
-# }
-#
-# resource "openai_project_group" "prod_viewers" {
-#   project_id = openai_project.production.id
-#   group_id   = "group-789ghi"  # Replace with actual group ID
-#   role       = "member"
+#   group_id   = "group_01J1F8DEFGHI"  # Replace with actual group ID from your IdP
+#   role_id    = "role_01J1F8PROJ"     # Replace with actual role ID
 # }
 
 # Output group details (commented out since group resources are commented)
@@ -64,20 +52,6 @@ resource "openai_project" "production" {
 # output "dev_team_added_at" {
 #   value       = openai_project_group.dev_team.created_at
 #   description = "When the development team group was added"
-# }
-#
-# output "project_group_summary" {
-#   value = {
-#     development = {
-#       owner_groups  = [openai_project_group.dev_team.group_id]
-#       member_groups = [openai_project_group.engineering.group_id]
-#     }
-#     production = {
-#       owner_groups  = [openai_project_group.prod_admins.group_id]
-#       member_groups = [openai_project_group.prod_viewers.group_id]
-#     }
-#   }
-#   description = "Summary of groups in each project"
 # }
 
 # Output development project ID
@@ -93,10 +67,10 @@ output "development_project_id" {
 
 - `group_id` (String) The ID of the group to add to the project.
 - `project_id` (String) The ID of the project.
-- `role` (String) The role of the group in the project (e.g., 'owner' or 'member').
+- `role_id` (String) The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). This is write-only and used when adding the group to the project.
 
 ### Read-Only
 
-- `created_at` (Number) The timestamp when the group was added to the project.
+- `created_at` (Number) The Unix timestamp (in seconds) when the group was added to the project.
 - `group_name` (String) The display name of the group.
 - `id` (String) The identifier of the project group (project_id:group_id).

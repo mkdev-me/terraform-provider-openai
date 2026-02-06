@@ -31,7 +31,6 @@ type ProjectGroupDataSourceModel struct {
 	GroupID   types.String `tfsdk:"group_id"`
 	GroupName types.String `tfsdk:"group_name"`
 	ID        types.String `tfsdk:"id"`
-	Role      types.String `tfsdk:"role"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
@@ -41,7 +40,7 @@ func (d *ProjectGroupDataSource) Metadata(ctx context.Context, req datasource.Me
 
 func (d *ProjectGroupDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this data source to retrieve information about a specific group in an OpenAI project.",
+		Description: "Use this data source to retrieve information about a specific group in an OpenAI project. Use the openai_project_group_roles data source to get role assignments.",
 		Attributes: map[string]schema.Attribute{
 			"project_id": schema.StringAttribute{
 				Description: "The ID of the project to retrieve the group from.",
@@ -60,12 +59,8 @@ func (d *ProjectGroupDataSource) Schema(ctx context.Context, req datasource.Sche
 				Description: "The ID of the resource (composite of project_id:group_id).",
 				Computed:    true,
 			},
-			"role": schema.StringAttribute{
-				Description: "The role of the group in the project (e.g., 'owner' or 'member').",
-				Computed:    true,
-			},
 			"created_at": schema.Int64Attribute{
-				Description: "Timestamp when the group was added to the project.",
+				Description: "The Unix timestamp (in seconds) when the group was added to the project.",
 				Computed:    true,
 			},
 		},
@@ -219,7 +214,6 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.ID = types.StringValue(fmt.Sprintf("%s:%s", projectID, foundGroup.GroupID))
 	data.GroupID = types.StringValue(foundGroup.GroupID)
 	data.GroupName = types.StringValue(foundGroup.GroupName)
-	data.Role = types.StringValue(foundGroup.Role)
 	data.CreatedAt = types.Int64Value(foundGroup.CreatedAt)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -240,15 +234,12 @@ type ProjectGroupsDataSourceModel struct {
 	Groups     []ProjectGroupResultModel `tfsdk:"groups"`
 	GroupIDs   []types.String            `tfsdk:"group_ids"`
 	GroupCount types.Int64               `tfsdk:"group_count"`
-	OwnerIDs   []types.String            `tfsdk:"owner_ids"`
-	MemberIDs  []types.String            `tfsdk:"member_ids"`
 	ID         types.String              `tfsdk:"id"`
 }
 
 type ProjectGroupResultModel struct {
 	GroupID   types.String `tfsdk:"group_id"`
 	GroupName types.String `tfsdk:"group_name"`
-	Role      types.String `tfsdk:"role"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
@@ -258,7 +249,7 @@ func (d *ProjectGroupsDataSource) Metadata(ctx context.Context, req datasource.M
 
 func (d *ProjectGroupsDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Use this data source to retrieve a list of all groups in a specific OpenAI project.",
+		Description: "Use this data source to retrieve a list of all groups in a specific OpenAI project. Use the openai_project_group_roles data source to get role assignments.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "The ID of this resource.",
@@ -281,12 +272,8 @@ func (d *ProjectGroupsDataSource) Schema(ctx context.Context, req datasource.Sch
 							Description: "The display name of the group.",
 							Computed:    true,
 						},
-						"role": schema.StringAttribute{
-							Description: "The role of the group (e.g., 'owner' or 'member').",
-							Computed:    true,
-						},
 						"created_at": schema.Int64Attribute{
-							Description: "Timestamp when the group was added to the project.",
+							Description: "The Unix timestamp (in seconds) when the group was added to the project.",
 							Computed:    true,
 						},
 					},
@@ -300,16 +287,6 @@ func (d *ProjectGroupsDataSource) Schema(ctx context.Context, req datasource.Sch
 			"group_count": schema.Int64Attribute{
 				Description: "Number of groups in the project.",
 				Computed:    true,
-			},
-			"owner_ids": schema.ListAttribute{
-				Description: "List of group IDs with owner role.",
-				Computed:    true,
-				ElementType: types.StringType,
-			},
-			"member_ids": schema.ListAttribute{
-				Description: "List of group IDs with member role.",
-				Computed:    true,
-				ElementType: types.StringType,
 			},
 		},
 	}
@@ -364,8 +341,6 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	var allGroups []ProjectGroupResultModel
 	var groupIDs []string
-	var ownerIDs []string
-	var memberIDs []string
 
 	cursor := ""
 	for {
@@ -417,17 +392,10 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 			groupModel := ProjectGroupResultModel{
 				GroupID:   types.StringValue(g.GroupID),
 				GroupName: types.StringValue(g.GroupName),
-				Role:      types.StringValue(g.Role),
 				CreatedAt: types.Int64Value(g.CreatedAt),
 			}
 			allGroups = append(allGroups, groupModel)
 			groupIDs = append(groupIDs, g.GroupID)
-
-			if g.Role == "owner" {
-				ownerIDs = append(ownerIDs, g.GroupID)
-			} else if g.Role == "member" {
-				memberIDs = append(memberIDs, g.GroupID)
-			}
 		}
 
 		if !listResp.HasMore || listResp.LastID == "" {
@@ -443,16 +411,6 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 	data.GroupIDs = make([]types.String, len(groupIDs))
 	for i, v := range groupIDs {
 		data.GroupIDs[i] = types.StringValue(v)
-	}
-
-	data.OwnerIDs = make([]types.String, len(ownerIDs))
-	for i, v := range ownerIDs {
-		data.OwnerIDs[i] = types.StringValue(v)
-	}
-
-	data.MemberIDs = make([]types.String, len(memberIDs))
-	for i, v := range memberIDs {
-		data.MemberIDs[i] = types.StringValue(v)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

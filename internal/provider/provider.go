@@ -286,6 +286,8 @@ func (p *FrameworkProvider) DataSources(ctx context.Context) []func() datasource
 		NewProjectUsersDataSource,
 		NewProjectGroupDataSource,
 		NewProjectGroupsDataSource,
+		NewProjectRolesDataSource,
+		NewProjectGroupRolesDataSource,
 		NewGroupDataSource,
 		NewGroupsDataSource,
 		NewGroupUserDataSource,

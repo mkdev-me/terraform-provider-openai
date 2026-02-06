@@ -39,13 +39,13 @@ type ProjectGroupResourceModel struct {
 	ProjectID types.String `tfsdk:"project_id"`
 	GroupID   types.String `tfsdk:"group_id"`
 	GroupName types.String `tfsdk:"group_name"`
-	Role      types.String `tfsdk:"role"`
+	RoleID    types.String `tfsdk:"role_id"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
 func (r *ProjectGroupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a group's access to an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.",
+		MarkdownDescription: "Manages a group's membership in an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -73,16 +73,17 @@ func (r *ProjectGroupResource) Schema(ctx context.Context, req resource.SchemaRe
 				Computed:            true,
 				MarkdownDescription: "The display name of the group.",
 			},
-			"role": schema.StringAttribute{
+			"role_id": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The role of the group in the project (e.g., 'owner' or 'member').",
+				MarkdownDescription: "The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). This is write-only and used when adding the group to the project.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"created_at": schema.Int64Attribute{
 				Computed:            true,
-				MarkdownDescription: "The timestamp when the group was added to the project.",
+				MarkdownDescription: "The Unix timestamp (in seconds) when the group was added to the project.",
 			},
 		},
 	}
@@ -111,7 +112,7 @@ func (r *ProjectGroupResource) Create(ctx context.Context, req resource.CreateRe
 	// POST /organization/projects/{project_id}/groups
 	reqMap := map[string]interface{}{
 		"group_id": data.GroupID.ValueString(),
-		"role":     data.Role.ValueString(),
+		"role":     data.RoleID.ValueString(),
 	}
 
 	reqBody, err := json.Marshal(reqMap)
@@ -289,18 +290,18 @@ func (r *ProjectGroupResource) Read(ctx context.Context, req resource.ReadReques
 	data.ProjectID = types.StringValue(projectID)
 	data.GroupID = types.StringValue(foundGroup.GroupID)
 	data.GroupName = types.StringValue(foundGroup.GroupName)
-	data.Role = types.StringValue(foundGroup.Role)
 	data.CreatedAt = types.Int64Value(foundGroup.CreatedAt)
+	// Note: role_id is write-only and not returned by the API, so we preserve the state value
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *ProjectGroupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// No update endpoint exists for project groups.
-	// Role changes require delete+recreate, which is handled by RequiresReplace on the role attribute.
+	// Changes require delete+recreate, which is handled by RequiresReplace on the attributes.
 	resp.Diagnostics.AddError(
 		"Update not supported",
-		"The OpenAI API does not support updating project group assignments. To change the role, the group must be removed and re-added.",
+		"The OpenAI API does not support updating project group assignments. The group must be removed and re-added.",
 	)
 }
 

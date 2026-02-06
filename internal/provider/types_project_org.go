@@ -82,7 +82,6 @@ type ProjectGroupResponseFramework struct {
 	ProjectID string `json:"project_id"`
 	GroupID   string `json:"group_id"`
 	GroupName string `json:"group_name"`
-	Role      string `json:"role"`
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -158,4 +157,46 @@ type GroupUserListResponse struct {
 // GroupUserCreateRequest represents the request to add a user to a group.
 type GroupUserCreateRequest struct {
 	UserID string `json:"user_id"`
+}
+
+// RoleResponseFramework represents the API response for a role.
+type RoleResponseFramework struct {
+	Object         string   `json:"object"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Description    *string  `json:"description"`
+	Permissions    []string `json:"permissions"`
+	ResourceType   string   `json:"resource_type"`
+	PredefinedRole bool     `json:"predefined_role"`
+}
+
+// RoleListResponse represents the list response for roles.
+type RoleListResponse struct {
+	Object  string                  `json:"object"`
+	Data    []RoleResponseFramework `json:"data"`
+	HasMore bool                    `json:"has_more"`
+	Next    *string                 `json:"next"`
+}
+
+// GroupRoleAssignment represents a role assigned to a group.
+type GroupRoleAssignment struct {
+	Object   string                `json:"object"`
+	ID       string                `json:"id"`
+	Role     RoleResponseFramework `json:"role"`
+	Group    GroupInfo             `json:"group"`
+	Metadata map[string]string     `json:"metadata"`
+}
+
+// GroupInfo represents basic group information in role assignments.
+type GroupInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// GroupRoleAssignmentListResponse represents the list response for group role assignments.
+type GroupRoleAssignmentListResponse struct {
+	Object  string                `json:"object"`
+	Data    []GroupRoleAssignment `json:"data"`
+	HasMore bool                  `json:"has_more"`
+	Next    *string               `json:"next"`
 }

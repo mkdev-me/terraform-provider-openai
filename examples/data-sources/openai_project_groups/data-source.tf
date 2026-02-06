@@ -1,6 +1,6 @@
 # List all groups in a specific project
 data "openai_project_groups" "production_groups" {
-  project_id = "proj-abc123"
+  project_id = "proj_abc123"
 }
 
 # Output total project group count
@@ -13,24 +13,15 @@ output "all_group_ids" {
   value = data.openai_project_groups.production_groups.group_ids
 }
 
-# Output groups with owner role
-output "owner_group_ids" {
-  value = data.openai_project_groups.production_groups.owner_ids
-}
-
-# Output groups with member role
-output "member_group_ids" {
-  value = data.openai_project_groups.production_groups.member_ids
-}
-
 # Output detailed group information
 output "group_details" {
   value = [
     for group in data.openai_project_groups.production_groups.groups : {
       id         = group.group_id
       name       = group.group_name
-      role       = group.role
       created_at = group.created_at
     }
   ]
 }
+
+# To get role assignments for each group, use the openai_project_group_roles data source
