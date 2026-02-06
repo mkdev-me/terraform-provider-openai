@@ -28,17 +28,9 @@ output "role_count" {
   value = data.openai_project_roles.all.role_count
 }
 
-# Output detailed role information
-output "role_details" {
-  value = [
-    for role in data.openai_project_roles.all.roles : {
-      id             = role.role_id
-      name           = role.name
-      description    = role.description
-      permissions    = role.permissions
-      predefined     = role.predefined_role
-    }
-  ]
+# Output role names
+output "role_names" {
+  value = [for role in data.openai_project_roles.all.roles : role.name]
 }
 ```
 

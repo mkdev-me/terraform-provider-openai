@@ -9,15 +9,7 @@ output "assigned_role_ids" {
   value = data.openai_project_group_roles.engineering_roles.role_ids
 }
 
-# Output detailed role assignment information
-output "role_assignments" {
-  value = [
-    for assignment in data.openai_project_group_roles.engineering_roles.role_assignments : {
-      assignment_id = assignment.assignment_id
-      role_id       = assignment.role_id
-      role_name     = assignment.role_name
-      permissions   = assignment.permissions
-      group_name    = assignment.group_name
-    }
-  ]
+# Output role names assigned to the group
+output "assigned_role_names" {
+  value = [for a in data.openai_project_group_roles.engineering_roles.role_assignments : a.role_name]
 }
