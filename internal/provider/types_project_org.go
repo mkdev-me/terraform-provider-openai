@@ -89,9 +89,8 @@ type ProjectGroupResponseFramework struct {
 type ProjectGroupListResponse struct {
 	Object  string                          `json:"object"`
 	Data    []ProjectGroupResponseFramework `json:"data"`
-	FirstID string                          `json:"first_id"`
-	LastID  string                          `json:"last_id"`
 	HasMore bool                            `json:"has_more"`
+	Next    *string                         `json:"next"`
 }
 
 // ProjectGroupCreateRequest represents the request to add a group to a project.

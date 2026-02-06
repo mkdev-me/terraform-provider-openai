@@ -143,17 +143,16 @@ func (d *ProjectRolesDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	apiURL := d.client.OpenAIClient.APIURL
-	suffix := fmt.Sprintf("/projects/%s/roles", projectID)
+	suffix := fmt.Sprintf("/organization/projects/%s/roles", projectID)
 
-	var reqURL string
-	if strings.Contains(apiURL, "/v1") {
-		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1" + suffix
-	} else {
-		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1" + suffix
-	}
+	// Safely construct URL by trimming both /v1 and trailing /
+	baseURL := strings.TrimSuffix(apiURL, "/v1")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	reqURL := baseURL + "/v1" + suffix
 
-	var allRoles []ProjectRoleResultModel
-	var roleIDs []string
+	// Initialize slices to empty to avoid nil (which becomes null in state)
+	allRoles := make([]ProjectRoleResultModel, 0)
+	roleIDs := make([]string, 0)
 
 	cursor := ""
 	httpClient := &http.Client{Timeout: 30 * time.Second}

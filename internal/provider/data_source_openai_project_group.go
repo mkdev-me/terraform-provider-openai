@@ -120,12 +120,10 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 	apiURL := d.client.OpenAIClient.APIURL
 	suffix := fmt.Sprintf("/organization/projects/%s/groups", projectID)
 
-	var reqURL string
-	if strings.Contains(apiURL, "/v1") {
-		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1" + suffix
-	} else {
-		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1" + suffix
-	}
+	// Safely construct URL by trimming both /v1 and trailing /
+	baseURL := strings.TrimSuffix(apiURL, "/v1")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	reqURL := baseURL + "/v1" + suffix
 
 	var foundGroup *ProjectGroupResponseFramework
 	cursor := ""
@@ -179,13 +177,18 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 
 		for i := range listResp.Data {
 			group := listResp.Data[i]
-			if groupID != "" && group.GroupID == groupID {
-				foundGroup = &group
-				break
-			}
-			if groupName != "" && strings.EqualFold(group.GroupName, groupName) {
-				foundGroup = &group
-				break
+			// If groupID is provided, only match by ID (don't fall back to name)
+			if groupID != "" {
+				if group.GroupID == groupID {
+					foundGroup = &group
+					break
+				}
+			} else if groupName != "" {
+				// Only search by name if groupID was not provided
+				if strings.EqualFold(group.GroupName, groupName) {
+					foundGroup = &group
+					break
+				}
 			}
 		}
 
@@ -193,10 +196,10 @@ func (d *ProjectGroupDataSource) Read(ctx context.Context, req datasource.ReadRe
 			break
 		}
 
-		if !listResp.HasMore || listResp.LastID == "" {
+		if !listResp.HasMore || listResp.Next == nil {
 			break
 		}
-		cursor = listResp.LastID
+		cursor = *listResp.Next
 	}
 
 	if foundGroup == nil {
@@ -332,15 +335,14 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 	apiURL := d.client.OpenAIClient.APIURL
 	suffix := fmt.Sprintf("/organization/projects/%s/groups", projectID)
 
-	var reqURL string
-	if strings.Contains(apiURL, "/v1") {
-		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1" + suffix
-	} else {
-		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1" + suffix
-	}
+	// Safely construct URL by trimming both /v1 and trailing /
+	baseURL := strings.TrimSuffix(apiURL, "/v1")
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	reqURL := baseURL + "/v1" + suffix
 
-	var allGroups []ProjectGroupResultModel
-	var groupIDs []string
+	// Initialize slices to empty to avoid nil (which becomes null in state)
+	allGroups := make([]ProjectGroupResultModel, 0)
+	groupIDs := make([]string, 0)
 
 	cursor := ""
 	for {
@@ -398,10 +400,10 @@ func (d *ProjectGroupsDataSource) Read(ctx context.Context, req datasource.ReadR
 			groupIDs = append(groupIDs, g.GroupID)
 		}
 
-		if !listResp.HasMore || listResp.LastID == "" {
+		if !listResp.HasMore || listResp.Next == nil {
 			break
 		}
-		cursor = listResp.LastID
+		cursor = *listResp.Next
 	}
 
 	data.ID = types.StringValue(projectID)

@@ -74,10 +74,10 @@ func (r *ProjectGroupResource) Schema(ctx context.Context, req resource.SchemaRe
 				MarkdownDescription: "The display name of the group.",
 			},
 			"role_id": schema.StringAttribute{
-				Required:            true,
-				MarkdownDescription: "The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). This is write-only and used when adding the group to the project.",
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). Required when creating. This is write-only - the API does not return this value, so it will be unknown after import.",
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
@@ -275,10 +275,10 @@ func (r *ProjectGroupResource) Read(ctx context.Context, req resource.ReadReques
 			break
 		}
 
-		if !listResp.HasMore || listResp.LastID == "" {
+		if !listResp.HasMore || listResp.Next == nil {
 			break
 		}
-		cursor = listResp.LastID
+		cursor = *listResp.Next
 	}
 
 	if foundGroup == nil {
