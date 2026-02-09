@@ -27,23 +27,23 @@ type ProjectGroupRolesDataSource struct {
 }
 
 type ProjectGroupRolesDataSourceModel struct {
-	ProjectID       types.String                       `tfsdk:"project_id"`
-	GroupID         types.String                       `tfsdk:"group_id"`
-	RoleAssignments []ProjectGroupRoleAssignmentModel  `tfsdk:"role_assignments"`
-	RoleIDs         []types.String                     `tfsdk:"role_ids"`
-	ID              types.String                       `tfsdk:"id"`
+	ProjectID       types.String                      `tfsdk:"project_id"`
+	GroupID         types.String                      `tfsdk:"group_id"`
+	RoleAssignments []ProjectGroupRoleAssignmentModel `tfsdk:"role_assignments"`
+	RoleIDs         []types.String                    `tfsdk:"role_ids"`
+	ID              types.String                      `tfsdk:"id"`
 }
 
 type ProjectGroupRoleAssignmentModel struct {
-	AssignmentID   types.String   `tfsdk:"assignment_id"`
-	RoleID         types.String   `tfsdk:"role_id"`
-	RoleName       types.String   `tfsdk:"role_name"`
-	RoleDescription types.String  `tfsdk:"role_description"`
-	Permissions    []types.String `tfsdk:"permissions"`
-	ResourceType   types.String   `tfsdk:"resource_type"`
-	PredefinedRole types.Bool     `tfsdk:"predefined_role"`
-	GroupID        types.String   `tfsdk:"group_id"`
-	GroupName      types.String   `tfsdk:"group_name"`
+	AssignmentID    types.String   `tfsdk:"assignment_id"`
+	RoleID          types.String   `tfsdk:"role_id"`
+	RoleName        types.String   `tfsdk:"role_name"`
+	RoleDescription types.String   `tfsdk:"role_description"`
+	Permissions     []types.String `tfsdk:"permissions"`
+	ResourceType    types.String   `tfsdk:"resource_type"`
+	PredefinedRole  types.Bool     `tfsdk:"predefined_role"`
+	GroupID         types.String   `tfsdk:"group_id"`
+	GroupName       types.String   `tfsdk:"group_name"`
 }
 
 func (d *ProjectGroupRolesDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -228,15 +228,15 @@ func (d *ProjectGroupRolesDataSource) Read(ctx context.Context, req datasource.R
 			}
 
 			assignmentModel := ProjectGroupRoleAssignmentModel{
-				AssignmentID:   types.StringValue(a.ID),
-				RoleID:         types.StringValue(a.Role.ID),
-				RoleName:       types.StringValue(a.Role.Name),
+				AssignmentID:    types.StringValue(a.ID),
+				RoleID:          types.StringValue(a.Role.ID),
+				RoleName:        types.StringValue(a.Role.Name),
 				RoleDescription: types.StringValue(description),
-				Permissions:    permissions,
-				ResourceType:   types.StringValue(a.Role.ResourceType),
-				PredefinedRole: types.BoolValue(a.Role.PredefinedRole),
-				GroupID:        types.StringValue(a.Group.ID),
-				GroupName:      types.StringValue(a.Group.Name),
+				Permissions:     permissions,
+				ResourceType:    types.StringValue(a.Role.ResourceType),
+				PredefinedRole:  types.BoolValue(a.Role.PredefinedRole),
+				GroupID:         types.StringValue(a.Group.ID),
+				GroupName:       types.StringValue(a.Group.Name),
 			}
 			allAssignments = append(allAssignments, assignmentModel)
 			roleIDs = append(roleIDs, a.Role.ID)
