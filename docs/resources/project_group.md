@@ -67,7 +67,10 @@ output "development_project_id" {
 
 - `group_id` (String) The ID of the group to add to the project.
 - `project_id` (String) The ID of the project.
-- `role_id` (String) The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). This is write-only and used when adding the group to the project.
+
+### Optional
+
+- `role_id` (String) The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). Required when creating. This is write-only - the API does not return this value, so it will be unknown after import.
 
 ### Read-Only
 
