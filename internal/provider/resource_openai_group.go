@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -95,9 +96,13 @@ func (r *GroupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	reqBody, _ := json.Marshal(GroupCreateRequest{
+	reqBody, err := json.Marshal(GroupCreateRequest{
 		Name: data.Name.ValueString(),
 	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error marshaling request", err.Error())
+		return
+	}
 
 	apiURL := r.client.OpenAIClient.APIURL
 	var reqURL string
@@ -123,7 +128,8 @@ func (r *GroupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	apiResp, err := http.DefaultClient.Do(apiReq)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	apiResp, err := httpClient.Do(apiReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error making request", err.Error())
 		return
@@ -131,13 +137,21 @@ func (r *GroupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	defer apiResp.Body.Close()
 
 	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusCreated {
-		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		respBodyBytes, readErr := io.ReadAll(apiResp.Body)
+		if readErr != nil {
+			resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s (could not read body)", apiResp.Status))
+			return
+		}
 		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
 		return
 	}
 
 	var groupResp GroupResponseFramework
-	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	respBodyBytes, err := io.ReadAll(apiResp.Body)
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading response body", err.Error())
+		return
+	}
 	if err := json.Unmarshal(respBodyBytes, &groupResp); err != nil {
 		resp.Diagnostics.AddError("Error parsing response", err.Error())
 		return
@@ -176,9 +190,14 @@ func (r *GroupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	var foundGroup *GroupResponseFramework
 	cursor := ""
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	for foundGroup == nil {
-		parsedURL, _ := url.Parse(baseURL)
+		parsedURL, err := url.Parse(baseURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
+		}
 		q := parsedURL.Query()
 		q.Set("limit", "100")
 		if cursor != "" {
@@ -197,23 +216,25 @@ func (r *GroupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 			apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 		}
 
-		apiResp, err := http.DefaultClient.Do(apiReq)
+		apiResp, err := httpClient.Do(apiReq)
 		if err != nil {
 			resp.Diagnostics.AddError("Error making request", err.Error())
 			return
 		}
-		defer apiResp.Body.Close()
 
 		if apiResp.StatusCode != http.StatusOK {
+			apiResp.Body.Close()
 			resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
 			return
 		}
 
 		var listResp GroupListResponse
 		if err := json.NewDecoder(apiResp.Body).Decode(&listResp); err != nil {
+			apiResp.Body.Close()
 			resp.Diagnostics.AddError("Error parsing response", err.Error())
 			return
 		}
+		apiResp.Body.Close()
 
 		for i := range listResp.Data {
 			group := listResp.Data[i]
@@ -259,9 +280,13 @@ func (r *GroupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	groupID := data.ID.ValueString()
 
-	reqBody, _ := json.Marshal(GroupUpdateRequest{
+	reqBody, err := json.Marshal(GroupUpdateRequest{
 		Name: data.Name.ValueString(),
 	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error marshaling request", err.Error())
+		return
+	}
 
 	apiURL := r.client.OpenAIClient.APIURL
 	var reqURL string
@@ -287,7 +312,8 @@ func (r *GroupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	apiResp, err := http.DefaultClient.Do(apiReq)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	apiResp, err := httpClient.Do(apiReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Error making request", err.Error())
 		return
@@ -295,13 +321,21 @@ func (r *GroupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	defer apiResp.Body.Close()
 
 	if apiResp.StatusCode != http.StatusOK {
-		respBodyBytes, _ := io.ReadAll(apiResp.Body)
+		respBodyBytes, readErr := io.ReadAll(apiResp.Body)
+		if readErr != nil {
+			resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s (could not read body)", apiResp.Status))
+			return
+		}
 		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
 		return
 	}
 
 	var groupResp GroupResponseFramework
-	respBodyBytes, _ := io.ReadAll(apiResp.Body)
+	respBodyBytes, err := io.ReadAll(apiResp.Body)
+	if err != nil {
+		resp.Diagnostics.AddError("Error reading response body", err.Error())
+		return
+	}
 	if err := json.Unmarshal(respBodyBytes, &groupResp); err != nil {
 		resp.Diagnostics.AddError("Error parsing response", err.Error())
 		return
@@ -334,6 +368,7 @@ func (r *GroupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	apiReq, err := http.NewRequest("DELETE", reqURL, nil)
 	if err != nil {
+		resp.Diagnostics.AddError("Error creating request", err.Error())
 		return
 	}
 
@@ -346,7 +381,22 @@ func (r *GroupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
 	}
 
-	http.DefaultClient.Do(apiReq)
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	apiResp, err := httpClient.Do(apiReq)
+	if err != nil {
+		resp.Diagnostics.AddError("Error deleting group", err.Error())
+		return
+	}
+	defer apiResp.Body.Close()
+
+	if apiResp.StatusCode != http.StatusOK && apiResp.StatusCode != http.StatusNoContent && apiResp.StatusCode != http.StatusNotFound {
+		respBodyBytes, readErr := io.ReadAll(apiResp.Body)
+		if readErr != nil {
+			resp.Diagnostics.AddError("Error deleting group", fmt.Sprintf("API returned error: %s (could not read body)", apiResp.Status))
+			return
+		}
+		resp.Diagnostics.AddError("Error deleting group", fmt.Sprintf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes)))
+	}
 }
 
 func (r *GroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

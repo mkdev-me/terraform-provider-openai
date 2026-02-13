@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -133,9 +134,14 @@ func (d *GroupUserDataSource) Read(ctx context.Context, req datasource.ReadReque
 
 	var foundUser *OrganizationUserResponseFramework
 	cursor := ""
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	for foundUser == nil {
-		parsedURL, _ := url.Parse(reqURL)
+		parsedURL, err := url.Parse(reqURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
+		}
 		q := parsedURL.Query()
 		q.Set("limit", "100")
 		if cursor != "" {
@@ -155,24 +161,25 @@ func (d *GroupUserDataSource) Read(ctx context.Context, req datasource.ReadReque
 			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
 		}
 
-		httpClient := &http.Client{}
 		httpResp, err := httpClient.Do(httpRequest)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
 		}
-		defer httpResp.Body.Close()
 
 		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
 			return
 		}
 
 		var listResp GroupUserListResponse
 		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("Error decoding response", err.Error())
 			return
 		}
+		httpResp.Body.Close()
 
 		for i := range listResp.Data {
 			user := listResp.Data[i]
@@ -348,12 +355,17 @@ func (d *GroupUsersDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1/organization/groups/" + groupID + "/users"
 	}
 
-	var allUsers []GroupUserResultModel
-	var userIDs []string
+	allUsers := make([]GroupUserResultModel, 0)
+	userIDs := make([]string, 0)
 
 	cursor := ""
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	for {
-		parsedURL, _ := url.Parse(reqURL)
+		parsedURL, err := url.Parse(reqURL)
+		if err != nil {
+			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+			return
+		}
 		q := parsedURL.Query()
 		q.Set("limit", "100")
 		if cursor != "" {
@@ -372,24 +384,25 @@ func (d *GroupUsersDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
 		}
 
-		httpClient := &http.Client{}
 		httpResp, err := httpClient.Do(httpRequest)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
 		}
-		defer httpResp.Body.Close()
 
 		if httpResp.StatusCode != 200 {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
 			return
 		}
 
 		var listResp GroupUserListResponse
 		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
+			httpResp.Body.Close()
 			resp.Diagnostics.AddError("Error decoding response", err.Error())
 			return
 		}
+		httpResp.Body.Close()
 
 		for _, u := range listResp.Data {
 			userModel := GroupUserResultModel{

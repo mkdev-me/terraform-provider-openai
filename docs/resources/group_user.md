@@ -13,6 +13,11 @@ Manages a user's membership in an OpenAI organization group.
 ## Example Usage
 
 ```terraform
+# Create a group
+resource "openai_group" "engineering" {
+  name = "Engineering"
+}
+
 # Add a user to a group
 resource "openai_group_user" "engineer" {
   group_id = openai_group.engineering.id

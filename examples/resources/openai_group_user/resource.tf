@@ -1,3 +1,8 @@
+# Create a group
+resource "openai_group" "engineering" {
+  name = "Engineering"
+}
+
 # Add a user to a group
 resource "openai_group_user" "engineer" {
   group_id = openai_group.engineering.id
