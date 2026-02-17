@@ -35,13 +35,12 @@ func (r *GroupUserResource) Metadata(ctx context.Context, req resource.MetadataR
 }
 
 type GroupUserResourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	GroupID  types.String `tfsdk:"group_id"`
-	UserID   types.String `tfsdk:"user_id"`
-	UserName types.String `tfsdk:"user_name"`
-	Email    types.String `tfsdk:"email"`
-	Role     types.String `tfsdk:"role"`
-	AddedAt  types.Int64  `tfsdk:"added_at"`
+	ID               types.String `tfsdk:"id"`
+	GroupID          types.String `tfsdk:"group_id"`
+	UserID           types.String `tfsdk:"user_id"`
+	UserName         types.String `tfsdk:"user_name"`
+	Email            types.String `tfsdk:"email"`
+	IsServiceAccount types.Bool   `tfsdk:"is_service_account"`
 }
 
 func (r *GroupUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -78,13 +77,9 @@ func (r *GroupUserResource) Schema(ctx context.Context, req resource.SchemaReque
 				Computed:            true,
 				MarkdownDescription: "The email of the user.",
 			},
-			"role": schema.StringAttribute{
+			"is_service_account": schema.BoolAttribute{
 				Computed:            true,
-				MarkdownDescription: "The user's organization role.",
-			},
-			"added_at": schema.Int64Attribute{
-				Computed:            true,
-				MarkdownDescription: "Unix timestamp when the user was added to the organization.",
+				MarkdownDescription: "Whether the user is a service account.",
 			},
 		},
 	}
@@ -170,14 +165,13 @@ func (r *GroupUserResource) Create(ctx context.Context, req resource.CreateReque
 	if user := r.findUserInGroup(groupID, userID); user != nil {
 		data.UserName = types.StringValue(user.Name)
 		data.Email = types.StringValue(user.Email)
-		data.Role = types.StringValue(user.Role)
-		data.AddedAt = types.Int64Value(user.AddedAt)
+		data.IsServiceAccount = types.BoolValue(user.IsServiceAccount)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *GroupUserResource) findUserInGroup(groupID, userID string) *OrganizationUserResponseFramework {
+func (r *GroupUserResource) findUserInGroup(groupID, userID string) *GroupUserResponseFramework {
 	apiURL := r.client.OpenAIClient.APIURL
 	var baseURL string
 	if strings.Contains(apiURL, "/v1") {
@@ -281,7 +275,7 @@ func (r *GroupUserResource) Read(ctx context.Context, req resource.ReadRequest, 
 		apiKey = r.client.AdminAPIKey
 	}
 
-	var foundUser *OrganizationUserResponseFramework
+	var foundUser *GroupUserResponseFramework
 	cursor := ""
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
@@ -363,8 +357,7 @@ func (r *GroupUserResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	data.UserName = types.StringValue(foundUser.Name)
 	data.Email = types.StringValue(foundUser.Email)
-	data.Role = types.StringValue(foundUser.Role)
-	data.AddedAt = types.Int64Value(foundUser.AddedAt)
+	data.IsServiceAccount = types.BoolValue(foundUser.IsServiceAccount)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

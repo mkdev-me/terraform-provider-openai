@@ -27,13 +27,12 @@ type GroupUserDataSource struct {
 }
 
 type GroupUserDataSourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	GroupID  types.String `tfsdk:"group_id"`
-	UserID   types.String `tfsdk:"user_id"`
-	UserName types.String `tfsdk:"user_name"`
-	Email    types.String `tfsdk:"email"`
-	Role     types.String `tfsdk:"role"`
-	AddedAt  types.Int64  `tfsdk:"added_at"`
+	ID               types.String `tfsdk:"id"`
+	GroupID          types.String `tfsdk:"group_id"`
+	UserID           types.String `tfsdk:"user_id"`
+	UserName         types.String `tfsdk:"user_name"`
+	Email            types.String `tfsdk:"email"`
+	IsServiceAccount types.Bool   `tfsdk:"is_service_account"`
 }
 
 func (d *GroupUserDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -66,12 +65,8 @@ func (d *GroupUserDataSource) Schema(ctx context.Context, req datasource.SchemaR
 				Description: "The name of the user.",
 				Computed:    true,
 			},
-			"role": schema.StringAttribute{
-				Description: "The user's organization role.",
-				Computed:    true,
-			},
-			"added_at": schema.Int64Attribute{
-				Description: "Unix timestamp when the user was added to the organization.",
+			"is_service_account": schema.BoolAttribute{
+				Description: "Whether the user is a service account.",
 				Computed:    true,
 			},
 		},
@@ -132,7 +127,7 @@ func (d *GroupUserDataSource) Read(ctx context.Context, req datasource.ReadReque
 		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1/organization/groups/" + groupID + "/users"
 	}
 
-	var foundUser *OrganizationUserResponseFramework
+	var foundUser *GroupUserResponseFramework
 	cursor := ""
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
@@ -223,8 +218,7 @@ func (d *GroupUserDataSource) Read(ctx context.Context, req datasource.ReadReque
 	data.UserID = types.StringValue(foundUser.ID)
 	data.UserName = types.StringValue(foundUser.Name)
 	data.Email = types.StringValue(foundUser.Email)
-	data.Role = types.StringValue(foundUser.Role)
-	data.AddedAt = types.Int64Value(foundUser.AddedAt)
+	data.IsServiceAccount = types.BoolValue(foundUser.IsServiceAccount)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -248,11 +242,10 @@ type GroupUsersDataSourceModel struct {
 }
 
 type GroupUserResultModel struct {
-	UserID   types.String `tfsdk:"user_id"`
-	UserName types.String `tfsdk:"user_name"`
-	Email    types.String `tfsdk:"email"`
-	Role     types.String `tfsdk:"role"`
-	AddedAt  types.Int64  `tfsdk:"added_at"`
+	UserID           types.String `tfsdk:"user_id"`
+	UserName         types.String `tfsdk:"user_name"`
+	Email            types.String `tfsdk:"email"`
+	IsServiceAccount types.Bool   `tfsdk:"is_service_account"`
 }
 
 func (d *GroupUsersDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -288,12 +281,8 @@ func (d *GroupUsersDataSource) Schema(ctx context.Context, req datasource.Schema
 							Description: "The email of the user.",
 							Computed:    true,
 						},
-						"role": schema.StringAttribute{
-							Description: "The user's organization role.",
-							Computed:    true,
-						},
-						"added_at": schema.Int64Attribute{
-							Description: "Unix timestamp when the user was added to the organization.",
+						"is_service_account": schema.BoolAttribute{
+							Description: "Whether the user is a service account.",
 							Computed:    true,
 						},
 					},
@@ -406,11 +395,10 @@ func (d *GroupUsersDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 		for _, u := range listResp.Data {
 			userModel := GroupUserResultModel{
-				UserID:   types.StringValue(u.ID),
-				UserName: types.StringValue(u.Name),
-				Email:    types.StringValue(u.Email),
-				Role:     types.StringValue(u.Role),
-				AddedAt:  types.Int64Value(u.AddedAt),
+				UserID:           types.StringValue(u.ID),
+				UserName:         types.StringValue(u.Name),
+				Email:            types.StringValue(u.Email),
+				IsServiceAccount: types.BoolValue(u.IsServiceAccount),
 			}
 			allUsers = append(allUsers, userModel)
 			userIDs = append(userIDs, u.ID)

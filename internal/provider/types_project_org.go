@@ -60,16 +60,6 @@ type APIKeyServiceAccount struct {
 	Name string `json:"name"`
 }
 
-// ProjectCreateRequest represents the request to create a project.
-type ProjectCreateRequest struct {
-	Name string `json:"name"`
-}
-
-// ProjectUserUpdateRequest represents the request to update a project user.
-type ProjectUserUpdateRequest struct {
-	Role string `json:"role"`
-}
-
 // AdminAPIKeyCreateRequest represents the request to create an admin API key.
 type AdminAPIKeyCreateRequest struct {
 	Name   string   `json:"name"`
@@ -91,12 +81,6 @@ type ProjectGroupListResponse struct {
 	Data    []ProjectGroupResponseFramework `json:"data"`
 	HasMore bool                            `json:"has_more"`
 	Next    *string                         `json:"next"`
-}
-
-// ProjectGroupCreateRequest represents the request to add a group to a project.
-type ProjectGroupCreateRequest struct {
-	GroupID string `json:"group_id"`
-	Role    string `json:"role"`
 }
 
 // GroupResponseFramework represents the API response for an organization group.
@@ -125,32 +109,21 @@ type GroupUpdateRequest struct {
 	Name string `json:"name"`
 }
 
-// GroupDeletedResponse represents the response when deleting a group.
-type GroupDeletedResponse struct {
-	Object  string `json:"object"`
-	ID      string `json:"id"`
-	Deleted bool   `json:"deleted"`
-}
-
-// GroupUserAssignment represents a user assignment to a group.
-type GroupUserAssignment struct {
-	Object  string `json:"object"`
-	UserID  string `json:"user_id"`
-	GroupID string `json:"group_id"`
-}
-
-// GroupUserDeletedResponse represents the response when removing a user from a group.
-type GroupUserDeletedResponse struct {
-	Object  string `json:"object"`
-	Deleted bool   `json:"deleted"`
+// GroupUserResponseFramework represents the API response for a user in a group.
+type GroupUserResponseFramework struct {
+	ID               string  `json:"id"`
+	Email            string  `json:"email"`
+	Name             string  `json:"name"`
+	IsServiceAccount bool    `json:"is_service_account"`
+	Picture          *string `json:"picture"`
 }
 
 // GroupUserListResponse represents the list response for group users.
 type GroupUserListResponse struct {
-	Object  string                              `json:"object"`
-	Data    []OrganizationUserResponseFramework `json:"data"`
-	HasMore bool                                `json:"has_more"`
-	Next    *string                             `json:"next"`
+	Object  string                       `json:"object"`
+	Data    []GroupUserResponseFramework `json:"data"`
+	HasMore bool                         `json:"has_more"`
+	Next    *string                      `json:"next"`
 }
 
 // GroupUserCreateRequest represents the request to add a user to a group.
@@ -192,10 +165,37 @@ type GroupInfo struct {
 	Name string `json:"name"`
 }
 
-// GroupRoleAssignmentListResponse represents the list response for group role assignments.
-type GroupRoleAssignmentListResponse struct {
-	Object  string                `json:"object"`
-	Data    []GroupRoleAssignment `json:"data"`
-	HasMore bool                  `json:"has_more"`
-	Next    *string               `json:"next"`
+// RoleCreateRequest represents the request to create a custom role.
+type RoleCreateRequest struct {
+	RoleName    string   `json:"role_name"`
+	Permissions []string `json:"permissions"`
+	Description string   `json:"description,omitempty"`
+}
+
+// RoleUpdateRequest represents the request to update a custom role.
+type RoleUpdateRequest struct {
+	RoleName    string   `json:"role_name"`
+	Permissions []string `json:"permissions"`
+	Description string   `json:"description,omitempty"`
+}
+
+// RoleAssignRequest represents the request to assign a role.
+type RoleAssignRequest struct {
+	RoleID string `json:"role_id"`
+}
+
+// UserRoleAssignment represents a role assigned to a user.
+type UserRoleAssignment struct {
+	Object   string                `json:"object"`
+	ID       string                `json:"id"`
+	Role     RoleResponseFramework `json:"role"`
+	User     UserInfo              `json:"user"`
+	Metadata map[string]string     `json:"metadata"`
+}
+
+// UserInfo represents basic user information in role assignments.
+type UserInfo struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }

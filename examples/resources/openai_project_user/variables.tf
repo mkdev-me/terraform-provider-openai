@@ -1,7 +1,4 @@
-variable "openai_api_key" {
-  description = "OpenAI API key. If not provided, uses OPENAI_API_KEY environment variable"
+variable "user_id" {
+  description = "The ID of the user to add to the project"
   type        = string
-  sensitive   = true
-  default     = null
 }
-

@@ -55,8 +55,7 @@ output "engineer_name" {
 
 ### Read-Only
 
-- `added_at` (Number) Unix timestamp when the user was added to the organization.
 - `email` (String) The email of the user.
 - `id` (String) The identifier of the group user (group_id:user_id).
-- `role` (String) The user's organization role.
+- `is_service_account` (Boolean) Whether the user is a service account.
 - `user_name` (String) The name of the user.

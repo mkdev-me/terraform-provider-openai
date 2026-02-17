@@ -32,11 +32,10 @@ output "all_user_ids" {
 output "user_details" {
   value = [
     for user in data.openai_group_users.engineering.users : {
-      id       = user.user_id
-      name     = user.user_name
-      email    = user.email
-      role     = user.role
-      added_at = user.added_at
+      id                 = user.user_id
+      name               = user.user_name
+      email              = user.email
+      is_service_account = user.is_service_account
     }
   ]
 }
@@ -61,8 +60,7 @@ output "user_details" {
 
 Read-Only:
 
-- `added_at` (Number) Unix timestamp when the user was added to the organization.
 - `email` (String) The email of the user.
-- `role` (String) The user's organization role.
+- `is_service_account` (Boolean) Whether the user is a service account.
 - `user_id` (String) The ID of the user.
 - `user_name` (String) The name of the user.

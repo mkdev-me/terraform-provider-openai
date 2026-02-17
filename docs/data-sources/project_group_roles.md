@@ -13,20 +13,14 @@ Use this data source to retrieve a list of all roles assigned to a specific grou
 ## Example Usage
 
 ```terraform
-# List all roles assigned to a specific group within a project
-data "openai_project_group_roles" "engineering_roles" {
-  project_id = "proj_abc123"
-  group_id   = "group_01J1F8ABCDXYZ"
+# List all project role assignments for a group
+data "openai_project_group_roles" "engineering" {
+  project_id = var.project_id
+  group_id   = var.group_id
 }
 
-# Output all role IDs assigned to the group
 output "assigned_role_ids" {
-  value = data.openai_project_group_roles.engineering_roles.role_ids
-}
-
-# Output role names assigned to the group
-output "assigned_role_names" {
-  value = [for a in data.openai_project_group_roles.engineering_roles.role_assignments : a.role_name]
+  value = data.openai_project_group_roles.engineering.role_ids
 }
 ```
 
@@ -40,18 +34,15 @@ output "assigned_role_names" {
 
 ### Read-Only
 
-- `id` (String) The ID of this resource (project_id:group_id).
-- `role_assignments` (Attributes List) List of role assignments for the group. (see [below for nested schema](#nestedatt--role_assignments))
-- `role_ids` (List of String) List of role IDs assigned to the group.
+- `id` (String) The ID of this resource.
+- `role_assignments` (Attributes List) List of role assignments for the group in the project. (see [below for nested schema](#nestedatt--role_assignments))
+- `role_ids` (List of String) List of role IDs assigned to the group in the project.
 
 <a id="nestedatt--role_assignments"></a>
 ### Nested Schema for `role_assignments`
 
 Read-Only:
 
-- `assignment_id` (String) The ID of the role assignment.
-- `group_id` (String) The ID of the group.
-- `group_name` (String) The name of the group.
 - `permissions` (List of String) Permissions granted by the role.
 - `predefined_role` (Boolean) Whether the role is predefined and managed by OpenAI.
 - `resource_type` (String) Resource type the role is bound to.

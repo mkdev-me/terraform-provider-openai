@@ -3,60 +3,36 @@
 page_title: "openai_project_group Resource - terraform-provider-openai"
 subcategory: ""
 description: |-
-  Manages a group's membership in an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
+  Manages a group's membership and roles in an OpenAI Project. This resource adds a group to a project and assigns it one or more project-level roles.
 ---
 
 # openai_project_group (Resource)
 
-Manages a group's membership in an OpenAI Project. Groups are collections of users that can be synced from an identity provider via SCIM.
+Manages a group's membership and roles in an OpenAI Project. This resource adds a group to a project and assigns it one or more project-level roles.
 
 ## Example Usage
 
 ```terraform
 # First, create a project
-resource "openai_project" "development" {
-  name = var.dev_project_name
-}
-
 resource "openai_project" "production" {
-  name = var.prod_project_name
+  name = "Production API"
 }
 
-# IMPORTANT: Replace these group_id and role_id values with actual IDs from your organization
-# Groups are synced from your identity provider via SCIM
-# You can find group IDs using the openai_groups data source or OpenAI dashboard
-# You can find role IDs using the openai_project_roles data source
+# Look up project-level roles
+data "openai_project_role" "member" {
+  project_id = openai_project.production.id
+  name       = "member"
+}
 
-# Add groups to the development project
-# Commented out until valid group IDs and role IDs are provided
-#
-# resource "openai_project_group" "dev_team" {
-#   project_id = openai_project.development.id
-#   group_id   = "group_01J1F8ABCDXYZ"  # Replace with actual group ID from your IdP
-#   role_id    = "role_01J1F8PROJ"      # Replace with actual role ID
-# }
-#
-# resource "openai_project_group" "engineering" {
-#   project_id = openai_project.development.id
-#   group_id   = "group_01J1F8DEFGHI"  # Replace with actual group ID from your IdP
-#   role_id    = "role_01J1F8PROJ"     # Replace with actual role ID
-# }
+# Add a group to the project with one or more roles
+resource "openai_project_group" "engineering" {
+  project_id = openai_project.production.id
+  group_id   = var.group_id
+  role_ids   = [data.openai_project_role.member.id]
+}
 
-# Output group details (commented out since group resources are commented)
-#
-# output "dev_team_group_name" {
-#   value       = openai_project_group.dev_team.group_name
-#   description = "Name of the development team group"
-# }
-#
-# output "dev_team_added_at" {
-#   value       = openai_project_group.dev_team.created_at
-#   description = "When the development team group was added"
-# }
-
-# Output development project ID
-output "development_project_id" {
-  value = openai_project.development.id
+output "group_name" {
+  value = openai_project_group.engineering.group_name
 }
 ```
 
@@ -67,10 +43,7 @@ output "development_project_id" {
 
 - `group_id` (String) The ID of the group to add to the project.
 - `project_id` (String) The ID of the project.
-
-### Optional
-
-- `role_id` (String) The ID of the project role to grant to the group (e.g., 'role_01J1F8PROJ'). Required when creating. This is write-only - the API does not return this value, so it will be unknown after import.
+- `role_ids` (Set of String) Set of project-level role IDs to assign to the group. Must be project roles (e.g. from the `openai_project_role` data source), not organization roles. At least one role is required.
 
 ### Read-Only
 

@@ -27,23 +27,11 @@ type ProjectGroupRolesDataSource struct {
 }
 
 type ProjectGroupRolesDataSourceModel struct {
-	ProjectID       types.String                      `tfsdk:"project_id"`
-	GroupID         types.String                      `tfsdk:"group_id"`
-	RoleAssignments []ProjectGroupRoleAssignmentModel `tfsdk:"role_assignments"`
-	RoleIDs         []types.String                    `tfsdk:"role_ids"`
-	ID              types.String                      `tfsdk:"id"`
-}
-
-type ProjectGroupRoleAssignmentModel struct {
-	AssignmentID    types.String   `tfsdk:"assignment_id"`
-	RoleID          types.String   `tfsdk:"role_id"`
-	RoleName        types.String   `tfsdk:"role_name"`
-	RoleDescription types.String   `tfsdk:"role_description"`
-	Permissions     []types.String `tfsdk:"permissions"`
-	ResourceType    types.String   `tfsdk:"resource_type"`
-	PredefinedRole  types.Bool     `tfsdk:"predefined_role"`
-	GroupID         types.String   `tfsdk:"group_id"`
-	GroupName       types.String   `tfsdk:"group_name"`
+	ProjectID       types.String               `tfsdk:"project_id"`
+	GroupID         types.String               `tfsdk:"group_id"`
+	RoleAssignments []GroupRoleAssignmentModel `tfsdk:"role_assignments"`
+	RoleIDs         []types.String             `tfsdk:"role_ids"`
+	ID              types.String               `tfsdk:"id"`
 }
 
 func (d *ProjectGroupRolesDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -55,7 +43,7 @@ func (d *ProjectGroupRolesDataSource) Schema(ctx context.Context, req datasource
 		Description: "Use this data source to retrieve a list of all roles assigned to a specific group within an OpenAI project.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Description: "The ID of this resource (project_id:group_id).",
+				Description: "The ID of this resource.",
 				Computed:    true,
 			},
 			"project_id": schema.StringAttribute{
@@ -67,14 +55,10 @@ func (d *ProjectGroupRolesDataSource) Schema(ctx context.Context, req datasource
 				Required:    true,
 			},
 			"role_assignments": schema.ListNestedAttribute{
-				Description: "List of role assignments for the group.",
+				Description: "List of role assignments for the group in the project.",
 				Computed:    true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"assignment_id": schema.StringAttribute{
-							Description: "The ID of the role assignment.",
-							Computed:    true,
-						},
 						"role_id": schema.StringAttribute{
 							Description: "The ID of the role.",
 							Computed:    true,
@@ -100,19 +84,11 @@ func (d *ProjectGroupRolesDataSource) Schema(ctx context.Context, req datasource
 							Description: "Whether the role is predefined and managed by OpenAI.",
 							Computed:    true,
 						},
-						"group_id": schema.StringAttribute{
-							Description: "The ID of the group.",
-							Computed:    true,
-						},
-						"group_name": schema.StringAttribute{
-							Description: "The name of the group.",
-							Computed:    true,
-						},
 					},
 				},
 			},
 			"role_ids": schema.ListAttribute{
-				Description: "List of role IDs assigned to the group.",
+				Description: "List of role IDs assigned to the group in the project.",
 				Computed:    true,
 				ElementType: types.StringType,
 			},
@@ -153,21 +129,18 @@ func (d *ProjectGroupRolesDataSource) Read(ctx context.Context, req datasource.R
 	if adminKey == "" {
 		resp.Diagnostics.AddError(
 			"Missing Admin API Key",
-			"Admin API Key is required.",
+			"The provider must be configured with an Admin API Key (admin_key) to read project group role assignments.",
 		)
 		return
 	}
 
 	apiURL := d.client.OpenAIClient.APIURL
-	suffix := fmt.Sprintf("/organization/projects/%s/groups/%s/roles", projectID, groupID)
-
-	// Safely construct URL by trimming both /v1 and trailing /
 	baseURL := strings.TrimSuffix(apiURL, "/v1")
 	baseURL = strings.TrimSuffix(baseURL, "/")
-	reqURL := baseURL + "/v1" + suffix
+	reqURL := fmt.Sprintf("%s/v1/projects/%s/groups/%s/roles", baseURL, projectID, groupID)
 
 	// Initialize slices to empty to avoid nil (which becomes null in state)
-	allAssignments := make([]ProjectGroupRoleAssignmentModel, 0)
+	allAssignments := make([]GroupRoleAssignmentModel, 0)
 	roleIDs := make([]string, 0)
 
 	cursor := ""
@@ -208,7 +181,7 @@ func (d *ProjectGroupRolesDataSource) Read(ctx context.Context, req datasource.R
 			return
 		}
 
-		var listResp GroupRoleAssignmentListResponse
+		var listResp RoleListResponse
 		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
 			httpResp.Body.Close()
 			resp.Diagnostics.AddError("Error decoding response", err.Error())
@@ -216,30 +189,27 @@ func (d *ProjectGroupRolesDataSource) Read(ctx context.Context, req datasource.R
 		}
 		httpResp.Body.Close()
 
-		for _, a := range listResp.Data {
-			permissions := make([]types.String, len(a.Role.Permissions))
-			for i, p := range a.Role.Permissions {
+		for _, role := range listResp.Data {
+			permissions := make([]types.String, len(role.Permissions))
+			for i, p := range role.Permissions {
 				permissions[i] = types.StringValue(p)
 			}
 
 			description := ""
-			if a.Role.Description != nil {
-				description = *a.Role.Description
+			if role.Description != nil {
+				description = *role.Description
 			}
 
-			assignmentModel := ProjectGroupRoleAssignmentModel{
-				AssignmentID:    types.StringValue(a.ID),
-				RoleID:          types.StringValue(a.Role.ID),
-				RoleName:        types.StringValue(a.Role.Name),
+			assignmentModel := GroupRoleAssignmentModel{
+				RoleID:          types.StringValue(role.ID),
+				RoleName:        types.StringValue(role.Name),
 				RoleDescription: types.StringValue(description),
 				Permissions:     permissions,
-				ResourceType:    types.StringValue(a.Role.ResourceType),
-				PredefinedRole:  types.BoolValue(a.Role.PredefinedRole),
-				GroupID:         types.StringValue(a.Group.ID),
-				GroupName:       types.StringValue(a.Group.Name),
+				ResourceType:    types.StringValue(role.ResourceType),
+				PredefinedRole:  types.BoolValue(role.PredefinedRole),
 			}
 			allAssignments = append(allAssignments, assignmentModel)
-			roleIDs = append(roleIDs, a.Role.ID)
+			roleIDs = append(roleIDs, role.ID)
 		}
 
 		if !listResp.HasMore || listResp.Next == nil {
@@ -248,7 +218,7 @@ func (d *ProjectGroupRolesDataSource) Read(ctx context.Context, req datasource.R
 		cursor = *listResp.Next
 	}
 
-	data.ID = types.StringValue(fmt.Sprintf("%s:%s", projectID, groupID))
+	data.ID = types.StringValue(projectID + ":" + groupID)
 	data.RoleAssignments = allAssignments
 
 	data.RoleIDs = make([]types.String, len(roleIDs))

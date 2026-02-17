@@ -30,12 +30,8 @@ output "user_name" {
   value = data.openai_group_user.by_email.user_name
 }
 
-output "user_role" {
-  value = data.openai_group_user.by_email.role
-}
-
-output "user_added_at" {
-  value = data.openai_group_user.by_email.added_at
+output "is_service_account" {
+  value = data.openai_group_user.by_email.is_service_account
 }
 ```
 
@@ -53,7 +49,6 @@ output "user_added_at" {
 
 ### Read-Only
 
-- `added_at` (Number) Unix timestamp when the user was added to the organization.
 - `id` (String) The ID of this resource (group_id:user_id).
-- `role` (String) The user's organization role.
+- `is_service_account` (Boolean) Whether the user is a service account.
 - `user_name` (String) The name of the user.

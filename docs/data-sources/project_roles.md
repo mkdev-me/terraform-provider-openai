@@ -13,24 +13,17 @@ Use this data source to retrieve a list of all roles configured for a specific O
 ## Example Usage
 
 ```terraform
-# List all roles configured for a project
+# List all roles in a project
 data "openai_project_roles" "all" {
-  project_id = "proj_abc123"
+  project_id = var.project_id
 }
 
-# Output all role IDs
-output "all_role_ids" {
-  value = data.openai_project_roles.all.role_ids
-}
-
-# Output the count of roles
 output "role_count" {
   value = data.openai_project_roles.all.role_count
 }
 
-# Output role names
-output "role_names" {
-  value = [for role in data.openai_project_roles.all.roles : role.name]
+output "role_ids" {
+  value = data.openai_project_roles.all.role_ids
 }
 ```
 
@@ -39,7 +32,7 @@ output "role_names" {
 
 ### Required
 
-- `project_id` (String) The ID of the project to retrieve roles from.
+- `project_id` (String) The ID of the project to retrieve roles for.
 
 ### Read-Only
 

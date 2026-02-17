@@ -17,11 +17,10 @@ output "all_user_ids" {
 output "user_details" {
   value = [
     for user in data.openai_group_users.engineering.users : {
-      id       = user.user_id
-      name     = user.user_name
-      email    = user.email
-      role     = user.role
-      added_at = user.added_at
+      id                 = user.user_id
+      name               = user.user_name
+      email              = user.email
+      is_service_account = user.is_service_account
     }
   ]
 }

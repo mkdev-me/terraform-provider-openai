@@ -15,10 +15,6 @@ output "user_name" {
   value = data.openai_group_user.by_email.user_name
 }
 
-output "user_role" {
-  value = data.openai_group_user.by_email.role
-}
-
-output "user_added_at" {
-  value = data.openai_group_user.by_email.added_at
+output "is_service_account" {
+  value = data.openai_group_user.by_email.is_service_account
 }
