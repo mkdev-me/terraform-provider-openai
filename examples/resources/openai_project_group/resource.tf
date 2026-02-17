@@ -9,13 +9,13 @@ data "openai_project_role" "member" {
   name       = "member"
 }
 
-# Add a user to the project with one or more roles
-resource "openai_project_user" "developer" {
+# Add a group to the project with one or more roles
+resource "openai_project_group" "engineering" {
   project_id = openai_project.production.id
-  user_id    = var.user_id
+  group_id   = var.group_id
   role_ids   = [data.openai_project_role.member.id]
 }
 
-output "user_email" {
-  value = openai_project_user.developer.email
+output "group_name" {
+  value = openai_project_group.engineering.group_name
 }
