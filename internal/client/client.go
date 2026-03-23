@@ -141,12 +141,13 @@ func (c *OpenAIClient) SetTimeout(timeout time.Duration) {
 
 // Project represents a project in OpenAI
 type Project struct {
-	Object     string `json:"object"`
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	CreatedAt  *int64 `json:"created_at"`
-	ArchivedAt *int64 `json:"archived_at"`
-	Status     string `json:"status"`
+	Object     string  `json:"object"`
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Geography  *string `json:"geography,omitempty"`
+	CreatedAt  *int64  `json:"created_at"`
+	ArchivedAt *int64  `json:"archived_at"`
+	Status     string  `json:"status"`
 }
 
 // ProjectUser represents a user associated with a project
@@ -1061,14 +1062,16 @@ func (c *OpenAIClient) ListProjects(limit int, includeArchived bool, after strin
 	return &resp, nil
 }
 
-// CreateProject creates a new project with the given name
-func (c *OpenAIClient) CreateProject(name string) (*Project, error) {
-	// Create the request body
+// CreateProject creates a new project with the given name and optional geography.
+// Geography restricts the project to a specific region (e.g. "us", "eu").
+func (c *OpenAIClient) CreateProject(name string, geography string) (*Project, error) {
 	requestBody := map[string]interface{}{
 		"name": name,
 	}
+	if geography != "" {
+		requestBody["geography"] = geography
+	}
 
-	// Debug information
 	fmt.Printf("Creating project with name: %s\n", name)
 	fmt.Printf("Request body: %+v\n", requestBody)
 

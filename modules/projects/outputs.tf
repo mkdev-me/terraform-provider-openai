@@ -10,6 +10,11 @@ output "project_name" {
   value       = var.list_mode ? null : (var.create_project ? one(openai_project.project[*].name) : one(data.openai_project.project[*].name))
 }
 
+output "project_geography" {
+  description = "The geographic region of the project (only in single project mode)"
+  value       = var.list_mode ? null : (var.create_project ? one(openai_project.project[*].geography) : one(data.openai_project.project[*].geography))
+}
+
 output "project_status" {
   description = "The status of the project (only in single project mode)"
   value       = var.list_mode ? null : (var.create_project ? one(openai_project.project[*].status) : one(data.openai_project.project[*].status))

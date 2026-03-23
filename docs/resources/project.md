@@ -18,12 +18,18 @@ resource "openai_project" "development" {
   name = "Development Project"
 }
 
-# Create a production project
-resource "openai_project" "production" {
-  name = "Production API Services"
+# Create a production project pinned to the US region
+resource "openai_project" "production_us" {
+  name      = "Production API Services (US)"
+  geography = "US"
 }
 
-# Output the project ID
+# Create a production project pinned to the EU region
+resource "openai_project" "production_eu" {
+  name      = "Production API Services (EU)"
+  geography = "EU"
+}
+
 output "dev_project_id" {
   value       = openai_project.development.id
   description = "The ID of the development project"
@@ -36,6 +42,10 @@ output "dev_project_id" {
 ### Required
 
 - `name` (String) The name of the project.
+
+### Optional
+
+- `geography` (String) Data residency region for the project. Your organization must have access to Data residency functionality. Valid values: `US`, `EU`, `JP`, `IN`, `KR`, `CA`, `AU`, `SG`. Set at creation time and cannot be changed. Changing this value forces resource replacement.
 
 ### Read-Only
 

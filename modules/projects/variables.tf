@@ -20,6 +20,12 @@ variable "name" {
   default     = null
 }
 
+variable "geography" {
+  type        = string
+  description = "Data residency region for the project (e.g. US, EU, JP, IN, KR, CA, AU, SG). Set at creation time and cannot be changed."
+  default     = null
+}
+
 # Data source variables
 variable "project_id" {
   type        = string

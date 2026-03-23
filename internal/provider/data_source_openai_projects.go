@@ -33,6 +33,7 @@ type ProjectsDataSourceModel struct {
 type ProjectResultModel struct {
 	ID        types.String `tfsdk:"id"`
 	Name      types.String `tfsdk:"name"`
+	Geography types.String `tfsdk:"geography"`
 	Status    types.String `tfsdk:"status"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
@@ -73,6 +74,10 @@ func (d *ProjectsDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 						},
 						"name": schema.StringAttribute{
 							Description: "The name of the project.",
+							Computed:    true,
+						},
+						"geography": schema.StringAttribute{
+							Description: "The data residency region of the project (e.g. US, EU, JP).",
 							Computed:    true,
 						},
 						"status": schema.StringAttribute{
@@ -191,9 +196,14 @@ func (d *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		for _, p := range listResp.Data {
+			geo := types.StringNull()
+			if p.Geography != nil {
+				geo = types.StringValue(*p.Geography)
+			}
 			projectModel := ProjectResultModel{
 				ID:        types.StringValue(p.ID),
 				Name:      types.StringValue(p.Name),
+				Geography: geo,
 				Status:    types.StringValue(p.Status),
 				CreatedAt: types.Int64Value(p.CreatedAt),
 			}

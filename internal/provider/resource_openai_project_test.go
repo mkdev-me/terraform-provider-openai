@@ -66,6 +66,35 @@ func TestAccResourceOpenAIProject_update(t *testing.T) {
 	})
 }
 
+func TestAccResourceOpenAIProject_geography(t *testing.T) {
+	t.Skip("Skipping until properly implemented and OpenAI API credentials are configured for tests")
+
+	var projectID string
+	projectName := "tf-acc-test-project-geo"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckOpenAIProjectDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccResourceOpenAIProjectWithGeography(projectName, "US"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckOpenAIProjectExists("openai_project.test", &projectID),
+					resource.TestCheckResourceAttr("openai_project.test", "name", projectName),
+					resource.TestCheckResourceAttr("openai_project.test", "geography", "US"),
+					resource.TestCheckResourceAttrSet("openai_project.test", "created_at"),
+				),
+			},
+			{
+				ResourceName:      "openai_project.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
 func testAccCheckOpenAIProjectExists(n string, projectID *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
@@ -114,4 +143,13 @@ resource "openai_project" "test" {
   name = "%s"
 }
 `, name)
+}
+
+func testAccResourceOpenAIProjectWithGeography(name, geography string) string {
+	return fmt.Sprintf(`
+resource "openai_project" "test" {
+  name      = "%s"
+  geography = "%s"
+}
+`, name, geography)
 }
