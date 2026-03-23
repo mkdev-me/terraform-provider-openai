@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- `geography` attribute on `openai_project` resource to pin projects to a specific region (e.g. `US`, `EU`). Changing geography forces resource replacement.
+- `geography` attribute exposed on `openai_project` and `openai_projects` data sources.
+- Input validation restricting geography to supported values (`US`, `EU`, `JP`, `IN`, `KR`, `CA`, `AU`, `SG`).
+
 ## [1.1.0] - 2025-06-27
 ### Added
 - Timeout configuration support for provider operations (#21)

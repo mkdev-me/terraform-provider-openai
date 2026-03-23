@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
@@ -18,10 +20,12 @@ import (
 var _ resource.Resource = &ProjectResource{}
 var _ resource.ResourceWithImportState = &ProjectResource{}
 
+// ProjectResource implements the openai_project managed resource.
 type ProjectResource struct {
 	client *client.OpenAIClient
 }
 
+// NewProjectResource returns a new instance of the openai_project resource.
 func NewProjectResource() resource.Resource {
 	return &ProjectResource{}
 }
@@ -30,9 +34,11 @@ func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_project"
 }
 
+// ProjectResourceModel maps the openai_project schema to Go types.
 type ProjectResourceModel struct {
 	ID         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`
+	Geography  types.String `tfsdk:"geography"`
 	Status     types.String `tfsdk:"status"`
 	CreatedAt  types.String `tfsdk:"created_at"`
 	ArchivedAt types.String `tfsdk:"archived_at"`
@@ -53,6 +59,18 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the project.",
+			},
+			"geography": schema.StringAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Data residency region for the project. Your organization must have access to Data residency functionality. Valid values: `US`, `EU`, `JP`, `IN`, `KR`, `CA`, `AU`, `SG`. Set at creation time and cannot be changed.",
+				Validators: []validator.String{
+					stringvalidator.OneOf("US", "EU", "JP", "IN", "KR", "CA", "AU", "SG"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
@@ -97,7 +115,12 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	project, err := r.client.CreateProject(data.Name.ValueString())
+	geography := ""
+	if !data.Geography.IsNull() && !data.Geography.IsUnknown() {
+		geography = data.Geography.ValueString()
+	}
+
+	project, err := r.client.CreateProject(data.Name.ValueString(), geography)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating project", err.Error())
 		return
@@ -106,6 +129,12 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	data.ID = types.StringValue(project.ID)
 	data.Name = types.StringValue(project.Name)
 	data.Status = types.StringValue(project.Status)
+
+	if project.Geography != nil {
+		data.Geography = types.StringValue(*project.Geography)
+	} else {
+		data.Geography = types.StringNull()
+	}
 
 	if project.CreatedAt != nil {
 		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
@@ -164,6 +193,12 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	data.Name = types.StringValue(project.Name)
 	data.Status = types.StringValue(project.Status)
 
+	if project.Geography != nil {
+		data.Geography = types.StringValue(*project.Geography)
+	} else {
+		data.Geography = types.StringNull()
+	}
+
 	if project.CreatedAt != nil {
 		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
 	}
@@ -192,6 +227,12 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	data.Name = types.StringValue(project.Name)
 	data.Status = types.StringValue(project.Status)
+
+	if project.Geography != nil {
+		data.Geography = types.StringValue(*project.Geography)
+	} else {
+		data.Geography = types.StringNull()
+	}
 
 	if project.CreatedAt != nil {
 		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))

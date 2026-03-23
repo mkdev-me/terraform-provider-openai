@@ -14,19 +14,23 @@ import (
 
 var _ datasource.DataSource = &ProjectDataSource{}
 
+// NewProjectDataSource returns a new instance of the openai_project data source.
 func NewProjectDataSource() datasource.DataSource {
 	return &ProjectDataSource{}
 }
 
+// ProjectDataSource implements the openai_project data source.
 type ProjectDataSource struct {
 	client *OpenAIClient
 }
 
+// ProjectDataSourceModel maps the openai_project data source schema to Go types.
 type ProjectDataSourceModel struct {
 	ProjectID types.String `tfsdk:"project_id"`
 	AdminKey  types.String `tfsdk:"admin_key"`
 	ID        types.String `tfsdk:"id"`
 	Name      types.String `tfsdk:"name"`
+	Geography types.String `tfsdk:"geography"`
 	Status    types.String `tfsdk:"status"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
@@ -54,6 +58,10 @@ func (d *ProjectDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 			},
 			"name": schema.StringAttribute{
 				Description: "The name of the project.",
+				Computed:    true,
+			},
+			"geography": schema.StringAttribute{
+				Description: "The data residency region of the project (e.g. US, EU, JP).",
 				Computed:    true,
 			},
 			"status": schema.StringAttribute{
@@ -187,6 +195,12 @@ func (d *ProjectDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	data.Name = types.StringValue(project.Name)
 	data.Status = types.StringValue(project.Status)
 	data.CreatedAt = types.Int64Value(project.CreatedAt)
+
+	if project.Geography != nil {
+		data.Geography = types.StringValue(*project.Geography)
+	} else {
+		data.Geography = types.StringNull()
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

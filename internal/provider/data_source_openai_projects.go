@@ -16,27 +16,33 @@ import (
 
 var _ datasource.DataSource = &ProjectsDataSource{}
 
+// NewProjectsDataSource returns a new instance of the openai_projects data source.
 func NewProjectsDataSource() datasource.DataSource {
 	return &ProjectsDataSource{}
 }
 
+// ProjectsDataSource implements the openai_projects data source.
 type ProjectsDataSource struct {
 	client *OpenAIClient
 }
 
+// ProjectsDataSourceModel maps the openai_projects data source schema to Go types.
 type ProjectsDataSourceModel struct {
 	AdminKey types.String         `tfsdk:"admin_key"`
 	Projects []ProjectResultModel `tfsdk:"projects"`
 	ID       types.String         `tfsdk:"id"` // Dummy ID
 }
 
+// ProjectResultModel represents a single project in the openai_projects list.
 type ProjectResultModel struct {
 	ID        types.String `tfsdk:"id"`
 	Name      types.String `tfsdk:"name"`
+	Geography types.String `tfsdk:"geography"`
 	Status    types.String `tfsdk:"status"`
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
+// ProjectsListResponseFramework represents the paginated list response from the projects API.
 type ProjectsListResponseFramework struct {
 	Object  string                     `json:"object"`
 	Data    []ProjectResponseFramework `json:"data"`
@@ -73,6 +79,10 @@ func (d *ProjectsDataSource) Schema(ctx context.Context, req datasource.SchemaRe
 						},
 						"name": schema.StringAttribute{
 							Description: "The name of the project.",
+							Computed:    true,
+						},
+						"geography": schema.StringAttribute{
+							Description: "The data residency region of the project (e.g. US, EU, JP).",
 							Computed:    true,
 						},
 						"status": schema.StringAttribute{
@@ -191,9 +201,14 @@ func (d *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		for _, p := range listResp.Data {
+			geo := types.StringNull()
+			if p.Geography != nil {
+				geo = types.StringValue(*p.Geography)
+			}
 			projectModel := ProjectResultModel{
 				ID:        types.StringValue(p.ID),
 				Name:      types.StringValue(p.Name),
+				Geography: geo,
 				Status:    types.StringValue(p.Status),
 				CreatedAt: types.Int64Value(p.CreatedAt),
 			}

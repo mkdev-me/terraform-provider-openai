@@ -10,8 +10,9 @@ terraform {
 
 # Create an OpenAI project
 resource "openai_project" "project" {
-  provider = openai
-  name     = var.name
+  provider  = openai
+  name      = var.name
+  geography = var.geography
 }
 
 # Outputs from the actual project resource
@@ -23,6 +24,11 @@ output "id" {
 output "name" {
   description = "The name of the OpenAI project"
   value       = openai_project.project.name
+}
+
+output "geography" {
+  description = "The geographic region of the OpenAI project"
+  value       = openai_project.project.geography
 }
 
 output "created_at" {

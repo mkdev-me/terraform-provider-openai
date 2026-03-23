@@ -2,12 +2,13 @@ package provider
 
 // ProjectResponseFramework represents the API response for an OpenAI project.
 type ProjectResponseFramework struct {
-	ID         string `json:"id"`
-	Object     string `json:"object"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	CreatedAt  int64  `json:"created_at"`
-	ArchivedAt *int64 `json:"archived_at,omitempty"`
+	ID         string  `json:"id"`
+	Object     string  `json:"object"`
+	Name       string  `json:"name"`
+	Geography  *string `json:"geography,omitempty"`
+	Status     string  `json:"status"`
+	CreatedAt  int64   `json:"created_at"`
+	ArchivedAt *int64  `json:"archived_at,omitempty"`
 }
 
 // ProjectUserResponseFramework represents the API response for a project user.

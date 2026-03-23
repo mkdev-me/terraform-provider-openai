@@ -46,6 +46,7 @@ locals {
 ### Read-Only
 
 - `created_at` (Number) The Unix timestamp (in seconds) for when the project was created.
+- `geography` (String) The data residency region of the project (e.g. `US`, `EU`, `JP`, `IN`, `KR`, `CA`, `AU`, `SG`).
 - `id` (String) The ID of the project.
 - `name` (String) The name of the project.
 - `status` (String) The status of the project.
