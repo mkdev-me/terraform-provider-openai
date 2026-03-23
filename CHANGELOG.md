@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- `geography` attribute on `openai_project` resource to pin projects to a specific region (e.g. `us`, `eu`). Changing geography forces resource replacement.
+- `geography` attribute on `openai_project` resource to pin projects to a specific region (e.g. `US`, `EU`). Changing geography forces resource replacement.
 - `geography` attribute exposed on `openai_project` and `openai_projects` data sources.
 - Input validation restricting geography to supported values (`US`, `EU`, `JP`, `IN`, `KR`, `CA`, `AU`, `SG`).
 

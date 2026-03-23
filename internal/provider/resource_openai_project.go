@@ -20,10 +20,12 @@ import (
 var _ resource.Resource = &ProjectResource{}
 var _ resource.ResourceWithImportState = &ProjectResource{}
 
+// ProjectResource implements the openai_project managed resource.
 type ProjectResource struct {
 	client *client.OpenAIClient
 }
 
+// NewProjectResource returns a new instance of the openai_project resource.
 func NewProjectResource() resource.Resource {
 	return &ProjectResource{}
 }
@@ -32,6 +34,7 @@ func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataReq
 	resp.TypeName = req.ProviderTypeName + "_project"
 }
 
+// ProjectResourceModel maps the openai_project schema to Go types.
 type ProjectResourceModel struct {
 	ID         types.String `tfsdk:"id"`
 	Name       types.String `tfsdk:"name"`

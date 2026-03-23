@@ -1063,7 +1063,7 @@ func (c *OpenAIClient) ListProjects(limit int, includeArchived bool, after strin
 }
 
 // CreateProject creates a new project with the given name and optional geography.
-// Geography restricts the project to a specific region (e.g. "us", "eu").
+// Geography restricts the project to a specific region (e.g. "US", "EU").
 func (c *OpenAIClient) CreateProject(name string, geography string) (*Project, error) {
 	requestBody := map[string]interface{}{
 		"name": name,

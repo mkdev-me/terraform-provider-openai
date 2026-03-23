@@ -16,20 +16,24 @@ import (
 
 var _ datasource.DataSource = &ProjectsDataSource{}
 
+// NewProjectsDataSource returns a new instance of the openai_projects data source.
 func NewProjectsDataSource() datasource.DataSource {
 	return &ProjectsDataSource{}
 }
 
+// ProjectsDataSource implements the openai_projects data source.
 type ProjectsDataSource struct {
 	client *OpenAIClient
 }
 
+// ProjectsDataSourceModel maps the openai_projects data source schema to Go types.
 type ProjectsDataSourceModel struct {
 	AdminKey types.String         `tfsdk:"admin_key"`
 	Projects []ProjectResultModel `tfsdk:"projects"`
 	ID       types.String         `tfsdk:"id"` // Dummy ID
 }
 
+// ProjectResultModel represents a single project in the openai_projects list.
 type ProjectResultModel struct {
 	ID        types.String `tfsdk:"id"`
 	Name      types.String `tfsdk:"name"`
@@ -38,6 +42,7 @@ type ProjectResultModel struct {
 	CreatedAt types.Int64  `tfsdk:"created_at"`
 }
 
+// ProjectsListResponseFramework represents the paginated list response from the projects API.
 type ProjectsListResponseFramework struct {
 	Object  string                     `json:"object"`
 	Data    []ProjectResponseFramework `json:"data"`
