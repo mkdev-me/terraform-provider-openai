@@ -23,6 +23,7 @@ import (
 
 var _ resource.Resource = &ProjectUserResource{}
 var _ resource.ResourceWithImportState = &ProjectUserResource{}
+var _ resource.ResourceWithUpgradeState = &ProjectUserResource{}
 
 type ProjectUserResource struct {
 	client *OpenAIClient
@@ -47,6 +48,7 @@ type ProjectUserResourceModel struct {
 
 func (r *ProjectUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Version:             1,
 		MarkdownDescription: "Manages a user's membership and roles in an OpenAI Project. This resource adds a user to a project and assigns them one or more project-level roles.",
 
 		Attributes: map[string]schema.Attribute{
@@ -511,4 +513,73 @@ func (r *ProjectUserResource) Delete(ctx context.Context, req resource.DeleteReq
 
 func (r *ProjectUserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// UpgradeState migrates state from prior schema versions.
+//
+// v0 → v1: the `role` attribute (string, role *name* like "member" or "owner")
+// is replaced with `role_ids` (set of role *IDs*). The upgrader looks up the
+// matching role ID via the admin API and writes it into role_ids.
+func (r *ProjectUserResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: &schema.Schema{
+				Attributes: map[string]schema.Attribute{
+					"id":         schema.StringAttribute{Computed: true},
+					"project_id": schema.StringAttribute{Required: true},
+					"user_id":    schema.StringAttribute{Required: true},
+					"role":       schema.StringAttribute{Required: true},
+					"email":      schema.StringAttribute{Computed: true},
+					"added_at":   schema.Int64Attribute{Computed: true},
+				},
+			},
+			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+				type priorModel struct {
+					ID        types.String `tfsdk:"id"`
+					ProjectID types.String `tfsdk:"project_id"`
+					UserID    types.String `tfsdk:"user_id"`
+					Role      types.String `tfsdk:"role"`
+					Email     types.String `tfsdk:"email"`
+					AddedAt   types.Int64  `tfsdk:"added_at"`
+				}
+
+				var prior priorModel
+				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				projectID := prior.ProjectID.ValueString()
+				roleName := prior.Role.ValueString()
+
+				if roleName == "" {
+					resp.Diagnostics.AddError(
+						"State upgrade failed",
+						fmt.Sprintf("openai_project_user %s: prior state has empty role name", prior.ID.ValueString()),
+					)
+					return
+				}
+
+				roleID, err := lookupProjectRoleIDByName(ctx, r.client, projectID, roleName)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"State upgrade failed",
+						fmt.Sprintf("openai_project_user %s: cannot resolve role %q to ID in project %s: %s", prior.ID.ValueString(), roleName, projectID, err),
+					)
+					return
+				}
+
+				upgraded := ProjectUserResourceModel{
+					ID:        prior.ID,
+					ProjectID: prior.ProjectID,
+					UserID:    prior.UserID,
+					RoleIDs:   roleIDsToSet([]string{roleID}),
+					Email:     prior.Email,
+					AddedAt:   prior.AddedAt,
+				}
+
+				resp.Diagnostics.Append(resp.State.Set(ctx, &upgraded)...)
+			},
+		},
+	}
 }

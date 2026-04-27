@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- State upgraders for `openai_project_user` and `openai_project_group` to migrate
+  state stored under the v2.0.0 schemas to the v2.1.0+ `role_ids` schema. Users
+  upgrading from 2.0.0 no longer need manual `terraform state rm` / `import`:
+  - `openai_project_user`: prior `role` (name) is resolved to its role ID via
+    the admin API and written into `role_ids`.
+  - `openai_project_group`: prior `role_id` (string) is wrapped into `role_ids`
+    (no API call needed; the value was already an ID).
+
 ## [1.1.0] - 2025-06-27
 ### Added
 - Timeout configuration support for provider operations (#21)
