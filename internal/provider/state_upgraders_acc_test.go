@@ -255,7 +255,9 @@ func (s *mockOpenAIServer) handleUsers(w http.ResponseWriter, r *http.Request, p
 			UserID string `json:"user_id"`
 			Role   string `json:"role"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.t.Logf("mock: decode %s %s body: %v", r.Method, r.URL.Path, err)
+		}
 		key := s.userKey(projectID, body.UserID)
 		u, ok := s.users[key]
 		if !ok {
@@ -314,7 +316,9 @@ func (s *mockOpenAIServer) handleUserByID(w http.ResponseWriter, r *http.Request
 		var body struct {
 			Role string `json:"role"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.t.Logf("mock: decode %s %s body: %v", r.Method, r.URL.Path, err)
+		}
 		if id := canonicalRoleID(body.Role); id != "" {
 			u.Roles = map[string]bool{id: true}
 		}
@@ -350,7 +354,9 @@ func (s *mockOpenAIServer) handleUserRoles(w http.ResponseWriter, r *http.Reques
 		var body struct {
 			RoleID string `json:"role_id"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.t.Logf("mock: decode %s %s body: %v", r.Method, r.URL.Path, err)
+		}
 		u.Roles[body.RoleID] = true
 		writeJSON(w, http.StatusOK, map[string]interface{}{"id": body.RoleID})
 		return
@@ -382,7 +388,9 @@ func (s *mockOpenAIServer) handleGroups(w http.ResponseWriter, r *http.Request, 
 			GroupID string `json:"group_id"`
 			Role    string `json:"role"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.t.Logf("mock: decode %s %s body: %v", r.Method, r.URL.Path, err)
+		}
 		key := s.groupKey(projectID, body.GroupID)
 		g, ok := s.groups[key]
 		if !ok {
@@ -454,7 +462,9 @@ func (s *mockOpenAIServer) handleGroupRoles(w http.ResponseWriter, r *http.Reque
 		var body struct {
 			RoleID string `json:"role_id"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.t.Logf("mock: decode %s %s body: %v", r.Method, r.URL.Path, err)
+		}
 		g.Roles[body.RoleID] = true
 		writeJSON(w, http.StatusOK, map[string]interface{}{"id": body.RoleID})
 	default:

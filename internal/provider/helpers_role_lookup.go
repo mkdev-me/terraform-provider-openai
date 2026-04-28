@@ -31,6 +31,16 @@ func resetRoleCacheForTest() {
 	roleCache = map[string]map[string]string{}
 }
 
+// projectClientHTTP returns the provider's configured *http.Client when
+// available so that proxy/transport settings on the OpenAIClient are honoured.
+// Falls back to a sensible default if the client wasn't initialised with one.
+func projectClientHTTP(c *OpenAIClient) *http.Client {
+	if c != nil && c.OpenAIClient != nil && c.OpenAIClient.HTTPClient != nil {
+		return c.OpenAIClient.HTTPClient
+	}
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
 // lookupProjectRoleIDByName resolves a project role name (e.g. "member", "owner")
 // to its role ID by listing the project's roles via the admin API.
 //
@@ -48,25 +58,24 @@ func lookupProjectRoleIDByName(ctx context.Context, c *OpenAIClient, projectID, 
 
 	nameKey := strings.ToLower(roleName)
 
+	// The lock is held across the API call so that concurrent migrations of
+	// resources in the same project resolve to a single list-roles request:
+	// later goroutines block briefly, then hit the populated cache.
 	roleCacheMu.Lock()
+	defer roleCacheMu.Unlock()
+
 	if cached, ok := roleCache[projectID]; ok {
 		if id, ok := cached[nameKey]; ok {
-			roleCacheMu.Unlock()
 			return id, nil
 		}
-		roleCacheMu.Unlock()
 		return "", fmt.Errorf("no role with name %q found in project %s", roleName, projectID)
 	}
-	roleCacheMu.Unlock()
 
 	rolesByName, err := listProjectRoles(ctx, c, projectID)
 	if err != nil {
 		return "", err
 	}
-
-	roleCacheMu.Lock()
 	roleCache[projectID] = rolesByName
-	roleCacheMu.Unlock()
 
 	if id, ok := rolesByName[nameKey]; ok {
 		return id, nil
@@ -78,7 +87,7 @@ func lookupProjectRoleIDByName(ctx context.Context, c *OpenAIClient, projectID, 
 // a lowercased-name → role-ID map. Pagination is followed to completion.
 func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (map[string]string, error) {
 	rolesURL := adminBaseURL(c) + "/v1/projects/" + projectID + "/roles"
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := projectClientHTTP(c)
 	cursor := ""
 	out := map[string]string{}
 
