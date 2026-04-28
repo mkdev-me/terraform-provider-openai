@@ -35,21 +35,6 @@ func configuredProjectUserResource(t *testing.T, c *OpenAIClient) *ProjectUserRe
 	return r
 }
 
-func configuredProjectGroupResource(t *testing.T, c *OpenAIClient) *ProjectGroupResource {
-	t.Helper()
-	r := &ProjectGroupResource{}
-	configureReq := resource.ConfigureRequest{ProviderData: c}
-	configureResp := resource.ConfigureResponse{}
-	r.Configure(context.Background(), configureReq, &configureResp)
-	if configureResp.Diagnostics.HasError() {
-		t.Fatalf("Configure produced diagnostics: %v", configureResp.Diagnostics)
-	}
-	if r.client == nil {
-		t.Fatal("client is nil after Configure")
-	}
-	return r
-}
-
 // currentSchema invokes the resource's Schema method to retrieve the current
 // (target) schema used to initialize the response State.
 func currentSchema(t *testing.T, r resource.Resource) rschema.Schema {
@@ -304,69 +289,6 @@ func TestProjectUserUpgradeState_CacheCollapsesAcrossResources(t *testing.T) {
 
 	if calls != 1 {
 		t.Fatalf("expected 1 API call thanks to cache, got %d", calls)
-	}
-}
-
-// ---------- project_group upgrader tests ----------
-
-func TestProjectGroupUpgradeState_V0ToV1(t *testing.T) {
-	r := configuredProjectGroupResource(t, newTestOpenAIClient("http://127.0.0.1:1")) // no HTTP needed
-	upgraders := r.UpgradeState(context.Background())
-	currentSch := currentSchema(t, r)
-
-	resp := runUpgrader(t, upgraders, 0, currentSch, map[string]tftypes.Value{
-		"id":         tftypes.NewValue(tftypes.String, "proj_a:grp_b"),
-		"project_id": tftypes.NewValue(tftypes.String, "proj_a"),
-		"group_id":   tftypes.NewValue(tftypes.String, "grp_b"),
-		"group_name": tftypes.NewValue(tftypes.String, "Babbel - X"),
-		"role_id":    tftypes.NewValue(tftypes.String, "role_member_id"),
-		"created_at": tftypes.NewValue(tftypes.Number, 1700000000),
-	})
-
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("upgrader produced errors: %v", resp.Diagnostics)
-	}
-
-	var got ProjectGroupResourceModel
-	if d := resp.State.Get(context.Background(), &got); d.HasError() {
-		t.Fatalf("could not read upgraded state: %v", d)
-	}
-
-	if got.ProjectID.ValueString() != "proj_a" {
-		t.Errorf("ProjectID: got %q, want %q", got.ProjectID.ValueString(), "proj_a")
-	}
-	if got.GroupID.ValueString() != "grp_b" {
-		t.Errorf("GroupID: got %q, want %q", got.GroupID.ValueString(), "grp_b")
-	}
-	if got.GroupName.ValueString() != "Babbel - X" {
-		t.Errorf("GroupName: got %q, want %q", got.GroupName.ValueString(), "Babbel - X")
-	}
-	if got.CreatedAt.ValueInt64() != 1700000000 {
-		t.Errorf("CreatedAt: got %d, want %d", got.CreatedAt.ValueInt64(), 1700000000)
-	}
-
-	roleIDs := roleIDsFromSet(got.RoleIDs)
-	if len(roleIDs) != 1 || roleIDs[0] != "role_member_id" {
-		t.Errorf("RoleIDs: got %v, want [role_member_id]", roleIDs)
-	}
-}
-
-func TestProjectGroupUpgradeState_EmptyRoleID(t *testing.T) {
-	r := configuredProjectGroupResource(t, newTestOpenAIClient("http://127.0.0.1:1"))
-	upgraders := r.UpgradeState(context.Background())
-	currentSch := currentSchema(t, r)
-
-	resp := runUpgrader(t, upgraders, 0, currentSch, map[string]tftypes.Value{
-		"id":         tftypes.NewValue(tftypes.String, "proj_a:grp_b"),
-		"project_id": tftypes.NewValue(tftypes.String, "proj_a"),
-		"group_id":   tftypes.NewValue(tftypes.String, "grp_b"),
-		"group_name": tftypes.NewValue(tftypes.String, "Babbel - X"),
-		"role_id":    tftypes.NewValue(tftypes.String, ""),
-		"created_at": tftypes.NewValue(tftypes.Number, 1700000000),
-	})
-
-	if !resp.Diagnostics.HasError() {
-		t.Fatal("expected upgrader to fail on empty role_id")
 	}
 }
 

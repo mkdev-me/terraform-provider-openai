@@ -24,7 +24,6 @@ import (
 
 var _ resource.Resource = &ProjectGroupResource{}
 var _ resource.ResourceWithImportState = &ProjectGroupResource{}
-var _ resource.ResourceWithUpgradeState = &ProjectGroupResource{}
 
 type ProjectGroupResource struct {
 	client *OpenAIClient
@@ -49,7 +48,6 @@ type ProjectGroupResourceModel struct {
 
 func (r *ProjectGroupResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Version:             1,
 		MarkdownDescription: "Manages a group's membership and roles in an OpenAI Project. This resource adds a group to a project and assigns it one or more project-level roles.",
 
 		Attributes: map[string]schema.Attribute{
@@ -614,62 +612,4 @@ func (r *ProjectGroupResource) Delete(ctx context.Context, req resource.DeleteRe
 
 func (r *ProjectGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-// UpgradeState migrates state from prior schema versions.
-//
-// v0 → v1: the `role_id` attribute (single string) is replaced with `role_ids`
-// (set of strings). The prior value already held a role ID, so the upgrader
-// just wraps it in a set.
-func (r *ProjectGroupResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
-	return map[int64]resource.StateUpgrader{
-		0: {
-			PriorSchema: &schema.Schema{
-				Attributes: map[string]schema.Attribute{
-					"id":         schema.StringAttribute{Computed: true},
-					"project_id": schema.StringAttribute{Required: true},
-					"group_id":   schema.StringAttribute{Required: true},
-					"group_name": schema.StringAttribute{Computed: true},
-					"role_id":    schema.StringAttribute{Required: true},
-					"created_at": schema.Int64Attribute{Computed: true},
-				},
-			},
-			StateUpgrader: func(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
-				type priorModel struct {
-					ID        types.String `tfsdk:"id"`
-					ProjectID types.String `tfsdk:"project_id"`
-					GroupID   types.String `tfsdk:"group_id"`
-					GroupName types.String `tfsdk:"group_name"`
-					RoleID    types.String `tfsdk:"role_id"`
-					CreatedAt types.Int64  `tfsdk:"created_at"`
-				}
-
-				var prior priorModel
-				resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				roleID := prior.RoleID.ValueString()
-				if roleID == "" {
-					resp.Diagnostics.AddError(
-						"State upgrade failed",
-						fmt.Sprintf("openai_project_group %s: prior state has empty role_id", prior.ID.ValueString()),
-					)
-					return
-				}
-
-				upgraded := ProjectGroupResourceModel{
-					ID:        prior.ID,
-					ProjectID: prior.ProjectID,
-					GroupID:   prior.GroupID,
-					GroupName: prior.GroupName,
-					RoleIDs:   roleIDsToSet([]string{roleID}),
-					CreatedAt: prior.CreatedAt,
-				}
-
-				resp.Diagnostics.Append(resp.State.Set(ctx, &upgraded)...)
-			},
-		},
-	}
 }
