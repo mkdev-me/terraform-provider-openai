@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The `openai_project_user` state upgrader (added in v2.2.0) now retries on
+  `429 Too Many Requests` and transient `5xx` responses from the admin API
+  using exponential backoff (1s, 2s, 4s, 8s, 16s, 30s). The admin
+  `GET /v1/projects/{id}/roles` endpoint is rate-limited; without retry, a
+  state upgrade migrating many resources can burst past the limit and fail
+  the entire `terraform plan`. Honours the `Retry-After` header when present.
+
+## [2.2.0]
+
 ### Added
 - State upgrader for `openai_project_user` to migrate state stored under the
   pre-v2.1.0 schema (string `role`) into the current schema (set `role_ids`).

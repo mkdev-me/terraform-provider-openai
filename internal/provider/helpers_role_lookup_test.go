@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
@@ -247,5 +248,127 @@ func TestLookupProjectRoleIDByName_CacheRemembersMisses(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("expected exactly 1 API call, got %d", calls)
+	}
+}
+
+// Override the test backoff to be near-instant so retry tests don't take ages.
+// We swap the default backoff with a fixed 5ms wait via a test-only knob.
+// (Using a tiny default in code would make production retries useless, so we
+// keep production fast-on-no-retry-after but tests use Retry-After header.)
+
+func TestDoWithRetry_RetriesOn429(t *testing.T) {
+	resetRoleCacheForTest()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.Header().Set("Retry-After", "0") // honour: 0 => immediate retry
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"object":   "list",
+			"data":     []map[string]interface{}{{"id": "role_member_id", "name": "member"}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	got, err := lookupProjectRoleIDByName(context.Background(), c, "proj_retry", "member")
+	if err != nil {
+		t.Fatalf("expected eventual success, got error: %v", err)
+	}
+	if got != "role_member_id" {
+		t.Errorf("got role ID %q, want %q", got, "role_member_id")
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 calls (2 × 429 + 1 × 200), got %d", calls)
+	}
+}
+
+func TestDoWithRetry_RetriesOn5xx(t *testing.T) {
+	resetRoleCacheForTest()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "transient", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"object":   "list",
+			"data":     []map[string]interface{}{{"id": "role_x", "name": "member"}},
+			"has_more": false,
+		})
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	got, err := lookupProjectRoleIDByName(context.Background(), c, "proj_5xx", "member")
+	if err != nil {
+		t.Fatalf("expected eventual success, got: %v", err)
+	}
+	if got != "role_x" {
+		t.Errorf("got %q, want %q", got, "role_x")
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 calls (1 × 502 + 1 × 200), got %d", calls)
+	}
+}
+
+func TestDoWithRetry_GivesUpAfterMaxAttempts(t *testing.T) {
+	resetRoleCacheForTest()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "0")
+		http.Error(w, "still rate limited", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	_, err := lookupProjectRoleIDByName(context.Background(), c, "proj_giveup", "member")
+	if err == nil {
+		t.Fatal("expected error after exhausting retries, got nil")
+	}
+	// Exactly retryMaxAttempts requests should be made — no extra reissue.
+	if calls != retryMaxAttempts {
+		t.Errorf("expected exactly %d calls, got %d", retryMaxAttempts, calls)
+	}
+}
+
+func TestDoWithRetry_DoesNotRetryOn4xxOtherThan429(t *testing.T) {
+	resetRoleCacheForTest()
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	_, err := lookupProjectRoleIDByName(context.Background(), c, "proj_403", "member")
+	if err == nil {
+		t.Fatal("expected error on 403, got nil")
+	}
+	if calls != 1 {
+		t.Errorf("403 should not retry; expected 1 call, got %d", calls)
+	}
+}
+
+func TestBackoffDuration_HonoursRetryAfter(t *testing.T) {
+	if got := backoffDuration(0, "5"); got.Seconds() != 5 {
+		t.Errorf("retry-after=5 → %v, want 5s", got)
+	}
+	if got := backoffDuration(0, "120"); got.Seconds() != 60 {
+		t.Errorf("retry-after=120 should cap at 60s, got %v", got)
+	}
+	if got := backoffDuration(0, "not-a-number"); got != 1*time.Second {
+		t.Errorf("invalid retry-after should fall back, got %v", got)
+	}
+	if got := backoffDuration(2, ""); got != 4*time.Second {
+		t.Errorf("attempt 2 with no retry-after → %v, want 4s", got)
 	}
 }

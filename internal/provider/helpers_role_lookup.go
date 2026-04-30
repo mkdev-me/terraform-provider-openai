@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +87,11 @@ func lookupProjectRoleIDByName(ctx context.Context, c *OpenAIClient, projectID, 
 
 // listProjectRoles fetches all roles defined in a project and returns them as
 // a lowercased-name → role-ID map. Pagination is followed to completion.
+//
+// Retries on 429 (Too Many Requests) and 5xx with exponential backoff. The
+// admin API enforces a low rate limit (~60 RPM) and a state upgrade migrating
+// many resources can burst past it; without retry the upgrader fails the
+// entire plan.
 func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (map[string]string, error) {
 	rolesURL := adminBaseURL(c) + "/v1/projects/" + projectID + "/roles"
 	httpClient := projectClientHTTP(c)
@@ -103,16 +110,9 @@ func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (m
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", parsedURL.String(), nil)
+		resp, err := doWithRetry(ctx, httpClient, c, parsedURL.String())
 		if err != nil {
-			return nil, fmt.Errorf("error creating roles request: %w", err)
-		}
-		setAdminAuthHeaders(c, req)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("error executing roles request: %w", err)
+			return nil, err
 		}
 
 		if resp.StatusCode != http.StatusOK {
@@ -143,4 +143,114 @@ func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (m
 	}
 
 	return out, nil
+}
+
+// retryStatusCodes are HTTP status codes that should trigger a retry with
+// exponential backoff (rate limiting and transient server errors).
+var retryStatusCodes = map[int]bool{
+	http.StatusTooManyRequests:     true, // 429
+	http.StatusInternalServerError: true, // 500
+	http.StatusBadGateway:          true, // 502
+	http.StatusServiceUnavailable:  true, // 503
+	http.StatusGatewayTimeout:      true, // 504
+}
+
+// retryMaxAttempts is the maximum number of attempts (including the first)
+// the retry helper makes before giving up.
+const retryMaxAttempts = 6
+
+// doWithRetry performs a GET against urlStr with exponential backoff on 429
+// (rate limiting) and transient 5xx responses.
+//
+// The OpenAI admin API enforces a low rate limit on /v1/projects/{id}/roles
+// (a state-upgrade migrating many resources can burst past it during a single
+// `terraform plan`). Without retry the upgrader fails the entire plan.
+//
+// Honours the `Retry-After` header when present (seconds), otherwise falls
+// back to a capped exponential schedule (1s, 2s, 4s, 8s, 16s, 30s).
+func doWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, urlStr string) (*http.Response, error) {
+	var lastErr error
+
+	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %w", err)
+		}
+		setAdminAuthHeaders(c, req)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt == retryMaxAttempts-1 || !sleepWithBackoff(ctx, attempt, "") {
+				return nil, fmt.Errorf("transport error after %d attempts: %w", attempt+1, err)
+			}
+			continue
+		}
+
+		if !retryStatusCodes[resp.StatusCode] {
+			return resp, nil
+		}
+
+		// Final attempt: hand the (still-retryable) response back to the caller
+		// untouched so the body remains readable for diagnostics.
+		if attempt == retryMaxAttempts-1 {
+			return resp, nil
+		}
+
+		// Going to retry: drain and close so the connection can be reused.
+		retryAfter := resp.Header.Get("Retry-After")
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+
+		if !sleepWithBackoff(ctx, attempt, retryAfter) {
+			return nil, fmt.Errorf("retry aborted: %w", ctx.Err())
+		}
+	}
+
+	return nil, lastErr
+}
+
+// sleepWithBackoff waits before the next retry attempt. Returns false if the
+// context was cancelled while waiting.
+func sleepWithBackoff(ctx context.Context, attempt int, retryAfter string) bool {
+	d := backoffDuration(attempt, retryAfter)
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// backoffDuration returns the wait time for a given attempt index. If
+// retryAfter (the value of the `Retry-After` header) is a non-negative integer
+// number of seconds, that value wins (capped at 60s; 0 means "retry now").
+// Otherwise we use 1, 2, 4, 8, 16, 30s.
+func backoffDuration(attempt int, retryAfter string) time.Duration {
+	if retryAfter != "" {
+		if secs, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && secs >= 0 {
+			capped := secs
+			if capped > 60 {
+				capped = 60
+			}
+			return time.Duration(capped) * time.Second
+		}
+	}
+	switch attempt {
+	case 0:
+		return 1 * time.Second
+	case 1:
+		return 2 * time.Second
+	case 2:
+		return 4 * time.Second
+	case 3:
+		return 8 * time.Second
+	case 4:
+		return 16 * time.Second
+	default:
+		return 30 * time.Second
+	}
 }
