@@ -192,21 +192,16 @@ func doWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, 
 			return resp, nil
 		}
 
+		// Final attempt: hand the (still-retryable) response back to the caller
+		// untouched so the body remains readable for diagnostics.
+		if attempt == retryMaxAttempts-1 {
+			return resp, nil
+		}
+
+		// Going to retry: drain and close so the connection can be reused.
 		retryAfter := resp.Header.Get("Retry-After")
-		// Drain and close so the connection can be reused for the next attempt.
 		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
-
-		if attempt == retryMaxAttempts-1 {
-			// Final attempt: re-issue once more so caller has a fresh response with body.
-			req2, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
-			if err != nil {
-				return nil, fmt.Errorf("error creating final request: %w", err)
-			}
-			setAdminAuthHeaders(c, req2)
-			req2.Header.Set("Content-Type", "application/json")
-			return httpClient.Do(req2)
-		}
 
 		if !sleepWithBackoff(ctx, attempt, retryAfter) {
 			return nil, fmt.Errorf("retry aborted: %w", ctx.Err())

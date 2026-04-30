@@ -333,11 +333,9 @@ func TestDoWithRetry_GivesUpAfterMaxAttempts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after exhausting retries, got nil")
 	}
-	// retryMaxAttempts = 6, plus the final re-issue inside doWithRetry, then
-	// listProjectRoles surfaces the non-OK response as an error. We expect
-	// at least retryMaxAttempts attempts to have been made.
-	if calls < retryMaxAttempts {
-		t.Errorf("expected at least %d calls, got %d", retryMaxAttempts, calls)
+	// Exactly retryMaxAttempts requests should be made — no extra reissue.
+	if calls != retryMaxAttempts {
+		t.Errorf("expected exactly %d calls, got %d", retryMaxAttempts, calls)
 	}
 }
 
