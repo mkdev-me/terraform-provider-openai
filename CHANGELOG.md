@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The `openai_project_role` data source (singular and plural) now retries on
+  `429 Too Many Requests` and transient `5xx` responses from the admin API,
+  using the same exponential backoff helper that the state upgrader uses
+  (introduced in v2.2.1). Without retry, a `terraform plan` declaring many
+  `data "openai_project_role"` lookups against the same admin API can burst
+  past the rate limit and fail the entire plan with `Status: 429 Too Many
+  Requests`.
+
+## [2.2.1]
+
+### Fixed
 - The `openai_project_user` state upgrader (added in v2.2.0) now retries on
   `429 Too Many Requests` and transient `5xx` responses from the admin API
   using exponential backoff (1s, 2s, 4s, 8s, 16s, 30s). The admin
