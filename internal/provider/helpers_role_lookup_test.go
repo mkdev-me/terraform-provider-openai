@@ -359,16 +359,30 @@ func TestDoWithRetry_DoesNotRetryOn4xxOtherThan429(t *testing.T) {
 }
 
 func TestBackoffDuration_HonoursRetryAfter(t *testing.T) {
+	// Retry-After header values are honoured exactly (no jitter applied).
 	if got := backoffDuration(0, "5"); got.Seconds() != 5 {
 		t.Errorf("retry-after=5 → %v, want 5s", got)
 	}
 	if got := backoffDuration(0, "120"); got.Seconds() != 60 {
 		t.Errorf("retry-after=120 should cap at 60s, got %v", got)
 	}
-	if got := backoffDuration(0, "not-a-number"); got != 1*time.Second {
-		t.Errorf("invalid retry-after should fall back, got %v", got)
+	// Fallback path uses jittered exponential backoff: actual sleep is in
+	// [base/2, base] for base values 1, 2, 4, 8, 16, 30s.
+	for _, tc := range []struct {
+		attempt int
+		base    time.Duration
+	}{
+		{0, 1 * time.Second},
+		{2, 4 * time.Second},
+		{5, 30 * time.Second},
+	} {
+		got := backoffDuration(tc.attempt, "")
+		if got < tc.base/2 || got > tc.base {
+			t.Errorf("attempt %d → %v, want in [%v, %v]", tc.attempt, got, tc.base/2, tc.base)
+		}
 	}
-	if got := backoffDuration(2, ""); got != 4*time.Second {
-		t.Errorf("attempt 2 with no retry-after → %v, want 4s", got)
+	got := backoffDuration(0, "not-a-number")
+	if got < 500*time.Millisecond || got > 1*time.Second {
+		t.Errorf("invalid retry-after should fall back to attempt 0 jitter range [500ms, 1s], got %v", got)
 	}
 }

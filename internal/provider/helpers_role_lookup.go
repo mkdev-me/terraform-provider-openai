@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -162,17 +164,37 @@ const retryMaxAttempts = 6
 // doWithRetry performs a GET against urlStr with exponential backoff on 429
 // (rate limiting) and transient 5xx responses.
 //
-// The OpenAI admin API enforces a low rate limit on /v1/projects/{id}/roles
-// (a state-upgrade migrating many resources can burst past it during a single
-// `terraform plan`). Without retry the upgrader fails the entire plan.
+// Thin wrapper for backward compatibility. New code should use
+// doRequestWithRetry directly.
+func doWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, urlStr string) (*http.Response, error) {
+	return doRequestWithRetry(ctx, httpClient, c, "GET", urlStr, nil)
+}
+
+// doRequestWithRetry performs an HTTP request (any method, optional body) with
+// exponential backoff and jitter on 429 (rate limiting) and transient 5xx
+// responses.
+//
+// The OpenAI admin API enforces a low rate limit (~60 RPM org-wide); a
+// terraform plan or apply touching many project users/groups can burst past
+// it. Without retry the operation fails the entire run.
+//
+// `body` is the optional JSON request body — pass nil for GET/DELETE. The
+// body bytes are buffered and a fresh reader is created per attempt, so
+// retries replay the request faithfully.
 //
 // Honours the `Retry-After` header when present (seconds), otherwise falls
-// back to a capped exponential schedule (1s, 2s, 4s, 8s, 16s, 30s).
-func doWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, urlStr string) (*http.Response, error) {
+// back to a capped exponential schedule with full jitter (base values
+// 1s, 2s, 4s, 8s, 16s, 30s — actual sleep is uniformly random in [base/2,
+// base] to avoid thundering-herd when many concurrent retries fire).
+func doRequestWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, method, urlStr string, body []byte) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+		var bodyReader io.Reader
+		if body != nil {
+			bodyReader = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, urlStr, bodyReader)
 		if err != nil {
 			return nil, fmt.Errorf("error creating request: %w", err)
 		}
@@ -228,7 +250,10 @@ func sleepWithBackoff(ctx context.Context, attempt int, retryAfter string) bool 
 // backoffDuration returns the wait time for a given attempt index. If
 // retryAfter (the value of the `Retry-After` header) is a non-negative integer
 // number of seconds, that value wins (capped at 60s; 0 means "retry now").
-// Otherwise we use 1, 2, 4, 8, 16, 30s.
+// Otherwise we use a capped exponential schedule with "decorrelated" jitter:
+// the actual sleep is uniformly random in [base/2, base] for base values 1,
+// 2, 4, 8, 16, 30s. The jitter avoids thundering-herd when N concurrent
+// requests all 429 at once and would otherwise retry on the same schedule.
 func backoffDuration(attempt int, retryAfter string) time.Duration {
 	if retryAfter != "" {
 		if secs, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && secs >= 0 {
@@ -239,18 +264,21 @@ func backoffDuration(attempt int, retryAfter string) time.Duration {
 			return time.Duration(capped) * time.Second
 		}
 	}
+	var base time.Duration
 	switch attempt {
 	case 0:
-		return 1 * time.Second
+		base = 1 * time.Second
 	case 1:
-		return 2 * time.Second
+		base = 2 * time.Second
 	case 2:
-		return 4 * time.Second
+		base = 4 * time.Second
 	case 3:
-		return 8 * time.Second
+		base = 8 * time.Second
 	case 4:
-		return 16 * time.Second
+		base = 16 * time.Second
 	default:
-		return 30 * time.Second
+		base = 30 * time.Second
 	}
+	half := base / 2
+	return half + time.Duration(rand.Int63n(int64(half)+1))
 }
