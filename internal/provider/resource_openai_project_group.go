@@ -162,67 +162,73 @@ func (r *ProjectGroupResource) Create(ctx context.Context, req resource.CreateRe
 	defer httpResp.Body.Close()
 
 	respBody, _ := io.ReadAll(httpResp.Body)
-	if httpResp.StatusCode != http.StatusOK && httpResp.StatusCode != http.StatusCreated {
-		// If group already exists in project, that's fine — we'll manage roles below
-		if !strings.Contains(string(respBody), "already exists in project") {
-			resp.Diagnostics.AddError("API error adding group to project", fmt.Sprintf("%s - %s", httpResp.Status, string(respBody)))
-			return
-		}
-	}
 
-	// Read group details from the project (works whether we just added or already existed)
+	// Happy path: POST 200/201 returns the created project-group object
+	// directly. Use it without an extra paginated list call (which during
+	// concurrent applies hammers the admin API and 429s).
 	var groupResp ProjectGroupResponseFramework
-	groupsURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/groups"
-	cursor := ""
-	for {
-		parsedURL, err := url.Parse(groupsURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
+	switch {
+	case httpResp.StatusCode == http.StatusOK || httpResp.StatusCode == http.StatusCreated:
+		if err := json.Unmarshal(respBody, &groupResp); err != nil || groupResp.GroupID == "" {
+			resp.Diagnostics.AddError("Error parsing add-group response", fmt.Sprintf("%s - %s", err, string(respBody)))
 			return
 		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
+	case strings.Contains(string(respBody), "already exists in project"):
+		// Idempotent path: group was already attached. List-and-find to
+		// recover the existing object.
+		groupsURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/groups"
+		cursor := ""
+		for {
+			parsedURL, perr := url.Parse(groupsURL)
+			if perr != nil {
+				resp.Diagnostics.AddError("Error parsing URL", perr.Error())
+				return
+			}
+			q := parsedURL.Query()
+			q.Set("limit", "100")
+			if cursor != "" {
+				q.Set("after", cursor)
+			}
+			parsedURL.RawQuery = q.Encode()
 
-		listResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error listing project groups", err.Error())
-			return
-		}
-
-		if listResp.StatusCode != http.StatusOK {
+			listResp, lerr := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
+			if lerr != nil {
+				resp.Diagnostics.AddError("Error listing project groups", lerr.Error())
+				return
+			}
+			if listResp.StatusCode != http.StatusOK {
+				listResp.Body.Close()
+				resp.Diagnostics.AddError("API error listing project groups", fmt.Sprintf("API returned: %s", listResp.Status))
+				return
+			}
+			var listData ProjectGroupListResponse
+			if derr := json.NewDecoder(listResp.Body).Decode(&listData); derr != nil {
+				listResp.Body.Close()
+				resp.Diagnostics.AddError("Error parsing response", derr.Error())
+				return
+			}
 			listResp.Body.Close()
-			resp.Diagnostics.AddError("API error listing project groups", fmt.Sprintf("API returned: %s", listResp.Status))
-			return
-		}
 
-		var listData ProjectGroupListResponse
-		if err := json.NewDecoder(listResp.Body).Decode(&listData); err != nil {
-			listResp.Body.Close()
-			resp.Diagnostics.AddError("Error parsing response", err.Error())
-			return
-		}
-		listResp.Body.Close()
-
-		found := false
-		for i := range listData.Data {
-			if listData.Data[i].GroupID == groupID {
-				groupResp = listData.Data[i]
-				found = true
+			found := false
+			for i := range listData.Data {
+				if listData.Data[i].GroupID == groupID {
+					groupResp = listData.Data[i]
+					found = true
+					break
+				}
+			}
+			if found {
 				break
 			}
+			if !listData.HasMore || listData.Next == nil {
+				resp.Diagnostics.AddError("Group not found", fmt.Sprintf("Group %s not found in project %s after adding", groupID, projectID))
+				return
+			}
+			cursor = *listData.Next
 		}
-		if found {
-			break
-		}
-		if !listData.HasMore || listData.Next == nil {
-			resp.Diagnostics.AddError("Group not found", fmt.Sprintf("Group %s not found in project %s after adding", groupID, projectID))
-			return
-		}
-		cursor = *listData.Next
+	default:
+		resp.Diagnostics.AddError("API error adding group to project", fmt.Sprintf("%s - %s", httpResp.Status, string(respBody)))
+		return
 	}
 
 	// Step 2: Assign additional roles (first one was set via membership endpoint)

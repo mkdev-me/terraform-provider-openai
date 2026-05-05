@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `openai_project_group` Create no longer issues a paginated list of all
+  groups in the project after a successful POST. The POST response itself
+  is the project-group object, so we parse it directly. The list-and-find
+  fallback now runs only on the idempotent "already exists in project"
+  path. During a parallel apply attaching N groups to one project, this
+  reduces 2N admin-API calls (POST + paginated list per group) to N (POST
+  only), which keeps the admin rate limit from 429'ing the apply mid-flight.
+
+## [2.2.4]
+
+### Fixed
 - The `openai_project_role` data source (singular and plural) and the
   `openai_group` data source (singular and plural) now share their admin-API
   list calls across invocations via per-process caches, so a `terraform
