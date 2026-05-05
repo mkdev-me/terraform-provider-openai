@@ -2,12 +2,8 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -108,73 +104,21 @@ func (d *GroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	apiURL := d.client.OpenAIClient.APIURL
-	var reqURL string
-	if strings.Contains(apiURL, "/v1") {
-		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1/organization/groups"
-	} else {
-		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1/organization/groups"
+	groups, err := cachedListAllGroups(ctx, d.client)
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing organization groups", err.Error())
+		return
 	}
 
 	var foundGroup *GroupResponseFramework
-	cursor := ""
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-
-	for foundGroup == nil {
-		parsedURL, err := url.Parse(reqURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
-			return
-		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
-
-		httpResp, err := doRequestWithRetry(ctx, httpClient, d.client, "GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error executing request", err.Error())
-			return
-		}
-
-		if httpResp.StatusCode != 200 {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
-			return
-		}
-
-		var listResp GroupListResponse
-		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("Error decoding response", err.Error())
-			return
-		}
-		httpResp.Body.Close()
-
-		for i := range listResp.Data {
-			group := listResp.Data[i]
-			if groupID != "" && group.ID == groupID {
-				foundGroup = &group
-				break
-			}
-			if groupName != "" && strings.EqualFold(group.Name, groupName) {
-				foundGroup = &group
-				break
-			}
-		}
-
-		if foundGroup != nil {
+	for i := range groups {
+		group := groups[i]
+		if groupID != "" && group.ID == groupID {
+			foundGroup = &group
 			break
 		}
-
-		if !listResp.HasMore {
-			break
-		}
-		if len(listResp.Data) > 0 {
-			cursor = listResp.Data[len(listResp.Data)-1].ID
-		} else {
+		if groupName != "" && strings.EqualFold(group.Name, groupName) {
+			foundGroup = &group
 			break
 		}
 	}
@@ -306,71 +250,23 @@ func (d *GroupsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	apiURL := d.client.OpenAIClient.APIURL
-	var reqURL string
-	if strings.Contains(apiURL, "/v1") {
-		reqURL = strings.TrimSuffix(apiURL, "/v1") + "/v1/organization/groups"
-	} else {
-		reqURL = strings.TrimSuffix(apiURL, "/") + "/v1/organization/groups"
+	groups, err := cachedListAllGroups(ctx, d.client)
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing organization groups", err.Error())
+		return
 	}
 
-	allGroups := make([]GroupResultModel, 0)
-	groupIDs := make([]string, 0)
+	allGroups := make([]GroupResultModel, 0, len(groups))
+	groupIDs := make([]string, 0, len(groups))
 
-	cursor := ""
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	for {
-		parsedURL, err := url.Parse(reqURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
-			return
-		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
-
-		httpResp, err := doRequestWithRetry(ctx, httpClient, d.client, "GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error executing request", err.Error())
-			return
-		}
-
-		if httpResp.StatusCode != 200 {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
-			return
-		}
-
-		var listResp GroupListResponse
-		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("Error decoding response", err.Error())
-			return
-		}
-		httpResp.Body.Close()
-
-		for _, g := range listResp.Data {
-			groupModel := GroupResultModel{
-				ID:            types.StringValue(g.ID),
-				Name:          types.StringValue(g.Name),
-				CreatedAt:     types.Int64Value(g.CreatedAt),
-				IsSCIMManaged: types.BoolValue(g.IsSCIMManaged),
-			}
-			allGroups = append(allGroups, groupModel)
-			groupIDs = append(groupIDs, g.ID)
-		}
-
-		if !listResp.HasMore {
-			break
-		}
-		if len(listResp.Data) > 0 {
-			cursor = listResp.Data[len(listResp.Data)-1].ID
-		} else {
-			break
-		}
+	for _, g := range groups {
+		allGroups = append(allGroups, GroupResultModel{
+			ID:            types.StringValue(g.ID),
+			Name:          types.StringValue(g.Name),
+			CreatedAt:     types.Int64Value(g.CreatedAt),
+			IsSCIMManaged: types.BoolValue(g.IsSCIMManaged),
+		})
+		groupIDs = append(groupIDs, g.ID)
 	}
 
 	data.ID = types.StringValue("organization-groups")

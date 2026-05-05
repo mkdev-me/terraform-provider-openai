@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The `openai_project_role` data source (singular and plural) and the
+  `openai_group` data source (singular and plural) now share their admin-API
+  list calls across invocations via per-process caches, so a `terraform
+  plan` that declares N role lookups against M projects and K group lookups
+  resolves to M + 1 admin-API list calls instead of N + K. Roles are cached
+  per project ID; groups are cached once for the org. Without this, retry
+  alone (added in v2.2.3) was insufficient — concurrent paginated lookups
+  for the same data still bursted past the admin rate limit and 429'd
+  repeatedly even with jittered backoff.
+
+## [2.2.3]
+
+### Fixed
 - All admin-API HTTP calls in the `openai_project_group` resource (Create/
   Read/Update/Delete), the `openai_project_user` resource (Create/Read/
   Update/Delete), and the `openai_group` data source now retry on `429 Too

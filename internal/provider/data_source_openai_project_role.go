@@ -2,12 +2,8 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -133,77 +129,37 @@ func (d *ProjectRolesDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	apiURL := d.client.OpenAIClient.APIURL
-	baseURL := strings.TrimSuffix(apiURL, "/v1")
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	reqURL := fmt.Sprintf("%s/v1/projects/%s/roles", baseURL, projectID)
-
 	// Initialize slices to empty to avoid nil (which becomes null in state)
 	allRoles := make([]RoleResultModel, 0)
 	roleIDs := make([]string, 0)
 
-	cursor := ""
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	for {
-		parsedURL, err := url.Parse(reqURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
-			return
-		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
+	roles, err := cachedListProjectRolesFull(ctx, d.client, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing project roles", err.Error())
+		return
+	}
 
-		httpResp, err := doWithRetry(ctx, httpClient, d.client, parsedURL.String())
-		if err != nil {
-			resp.Diagnostics.AddError("Error executing request", err.Error())
-			return
+	for _, r := range roles {
+		permissions := make([]types.String, len(r.Permissions))
+		for i, p := range r.Permissions {
+			permissions[i] = types.StringValue(p)
 		}
 
-		if httpResp.StatusCode != 200 {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
-			return
+		description := ""
+		if r.Description != nil {
+			description = *r.Description
 		}
 
-		var listResp RoleListResponse
-		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("Error decoding response", err.Error())
-			return
+		roleModel := RoleResultModel{
+			RoleID:         types.StringValue(r.ID),
+			Name:           types.StringValue(r.Name),
+			Description:    types.StringValue(description),
+			Permissions:    permissions,
+			ResourceType:   types.StringValue(r.ResourceType),
+			PredefinedRole: types.BoolValue(r.PredefinedRole),
 		}
-		httpResp.Body.Close()
-
-		for _, r := range listResp.Data {
-			permissions := make([]types.String, len(r.Permissions))
-			for i, p := range r.Permissions {
-				permissions[i] = types.StringValue(p)
-			}
-
-			description := ""
-			if r.Description != nil {
-				description = *r.Description
-			}
-
-			roleModel := RoleResultModel{
-				RoleID:         types.StringValue(r.ID),
-				Name:           types.StringValue(r.Name),
-				Description:    types.StringValue(description),
-				Permissions:    permissions,
-				ResourceType:   types.StringValue(r.ResourceType),
-				PredefinedRole: types.BoolValue(r.PredefinedRole),
-			}
-			allRoles = append(allRoles, roleModel)
-			roleIDs = append(roleIDs, r.ID)
-		}
-
-		if !listResp.HasMore || listResp.Next == nil {
-			break
-		}
-		cursor = *listResp.Next
+		allRoles = append(allRoles, roleModel)
+		roleIDs = append(roleIDs, r.ID)
 	}
 
 	data.ID = types.StringValue("project-roles-" + projectID)
@@ -325,75 +281,35 @@ func (d *ProjectRoleDataSource) Read(ctx context.Context, req datasource.ReadReq
 		return
 	}
 
-	apiURL := d.client.OpenAIClient.APIURL
-	baseURL := strings.TrimSuffix(apiURL, "/v1")
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	reqURL := fmt.Sprintf("%s/v1/projects/%s/roles", baseURL, projectID)
+	roles, err := cachedListProjectRolesFull(ctx, d.client, projectID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing project roles", err.Error())
+		return
+	}
 
-	cursor := ""
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	for {
-		parsedURL, err := url.Parse(reqURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
-			return
-		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
-
-		httpResp, err := doWithRetry(ctx, httpClient, d.client, parsedURL.String())
-		if err != nil {
-			resp.Diagnostics.AddError("Error executing request", err.Error())
-			return
-		}
-
-		if httpResp.StatusCode != 200 {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("API Error", fmt.Sprintf("Status: %s", httpResp.Status))
-			return
-		}
-
-		var listResp RoleListResponse
-		if err := json.NewDecoder(httpResp.Body).Decode(&listResp); err != nil {
-			httpResp.Body.Close()
-			resp.Diagnostics.AddError("Error decoding response", err.Error())
-			return
-		}
-		httpResp.Body.Close()
-
-		for _, r := range listResp.Data {
-			if strings.EqualFold(r.Name, roleName) {
-				permissions := make([]types.String, len(r.Permissions))
-				for i, p := range r.Permissions {
-					permissions[i] = types.StringValue(p)
-				}
-
-				description := ""
-				if r.Description != nil {
-					description = *r.Description
-				}
-
-				data.RoleID = types.StringValue(r.ID)
-				data.Name = types.StringValue(r.Name)
-				data.Description = types.StringValue(description)
-				data.Permissions = permissions
-				data.ResourceType = types.StringValue(r.ResourceType)
-				data.PredefinedRole = types.BoolValue(r.PredefinedRole)
-				data.ID = types.StringValue(r.ID)
-
-				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-				return
+	for _, r := range roles {
+		if strings.EqualFold(r.Name, roleName) {
+			permissions := make([]types.String, len(r.Permissions))
+			for i, p := range r.Permissions {
+				permissions[i] = types.StringValue(p)
 			}
-		}
 
-		if !listResp.HasMore || listResp.Next == nil {
-			break
+			description := ""
+			if r.Description != nil {
+				description = *r.Description
+			}
+
+			data.RoleID = types.StringValue(r.ID)
+			data.Name = types.StringValue(r.Name)
+			data.Description = types.StringValue(description)
+			data.Permissions = permissions
+			data.ResourceType = types.StringValue(r.ResourceType)
+			data.PredefinedRole = types.BoolValue(r.PredefinedRole)
+			data.ID = types.StringValue(r.ID)
+
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
 		}
-		cursor = *listResp.Next
 	}
 
 	resp.Diagnostics.AddError(
