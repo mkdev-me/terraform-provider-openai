@@ -26,6 +26,24 @@ var (
 	roleCacheMu sync.Mutex
 	// projectID → lowercased role name → role ID
 	roleCache = map[string]map[string]string{}
+
+	// fullRoleCache stores complete role objects per project. Used by the
+	// `data "openai_project_role"` data source (singular and plural) so that
+	// multiple lookups against the same project — e.g. one for "member" and
+	// one for "owner" — share a single admin-API list call. Without this,
+	// a `terraform plan` declaring N role lookups across M projects fires
+	// N concurrent paginated GETs that burst the admin rate limit even with
+	// retries.
+	fullRoleCacheMu sync.Mutex
+	fullRoleCache   = map[string][]RoleResponseFramework{}
+
+	// groupCache stores all SCIM-managed groups in the org. Used by the
+	// `data "openai_group"` data source (singular and plural). The endpoint
+	// returns the same list regardless of which group name we're filtering
+	// for, so N concurrent group lookups all paginate the same data — cache
+	// once and serve all subsequent lookups from memory.
+	groupCacheMu sync.Mutex
+	groupCache   []GroupResponseFramework
 )
 
 // resetRoleCacheForTest clears the package-level role cache. Used only by tests.
@@ -33,6 +51,14 @@ func resetRoleCacheForTest() {
 	roleCacheMu.Lock()
 	defer roleCacheMu.Unlock()
 	roleCache = map[string]map[string]string{}
+
+	fullRoleCacheMu.Lock()
+	defer fullRoleCacheMu.Unlock()
+	fullRoleCache = map[string][]RoleResponseFramework{}
+
+	groupCacheMu.Lock()
+	defer groupCacheMu.Unlock()
+	groupCache = nil
 }
 
 // projectClientHTTP returns the provider's configured *http.Client when
@@ -85,6 +111,142 @@ func lookupProjectRoleIDByName(ctx context.Context, c *OpenAIClient, projectID, 
 		return id, nil
 	}
 	return "", fmt.Errorf("no role with name %q found in project %s", roleName, projectID)
+}
+
+// cachedListProjectRolesFull returns all roles for the given project, fetching
+// them via the admin API on first call and serving subsequent calls from a
+// per-process cache. The lock is held across the API call so concurrent
+// callers for the same project resolve to a single list-roles request.
+func cachedListProjectRolesFull(ctx context.Context, c *OpenAIClient, projectID string) ([]RoleResponseFramework, error) {
+	if c == nil {
+		return nil, fmt.Errorf("openai client is not configured")
+	}
+	if adminAPIKey(c) == "" {
+		return nil, fmt.Errorf("admin API key is required to list roles for project %s", projectID)
+	}
+
+	fullRoleCacheMu.Lock()
+	defer fullRoleCacheMu.Unlock()
+
+	if cached, ok := fullRoleCache[projectID]; ok {
+		return cached, nil
+	}
+
+	httpClient := projectClientHTTP(c)
+	rolesURL := adminBaseURL(c) + "/v1/projects/" + projectID + "/roles"
+	cursor := ""
+	out := []RoleResponseFramework{}
+
+	for {
+		parsedURL, err := url.Parse(rolesURL)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing roles URL: %w", err)
+		}
+		q := parsedURL.Query()
+		q.Set("limit", "100")
+		if cursor != "" {
+			q.Set("after", cursor)
+		}
+		parsedURL.RawQuery = q.Encode()
+
+		resp, err := doWithRetry(ctx, httpClient, c, parsedURL.String())
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("API error listing project roles for %s: %s", projectID, resp.Status)
+		}
+
+		var listResp RoleListResponse
+		if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("error parsing roles response: %w", err)
+		}
+		resp.Body.Close()
+
+		out = append(out, listResp.Data...)
+
+		if !listResp.HasMore || listResp.Next == nil {
+			break
+		}
+		next := *listResp.Next
+		if next == "" || next == cursor {
+			break
+		}
+		cursor = next
+	}
+
+	fullRoleCache[projectID] = out
+	return out, nil
+}
+
+// cachedListAllGroups returns all SCIM-managed groups in the org, fetching on
+// first call and serving subsequent calls from a per-process cache. The
+// `data "openai_group"` data source filters this list by name client-side; N
+// concurrent group lookups now resolve to a single paginated list call.
+func cachedListAllGroups(ctx context.Context, c *OpenAIClient) ([]GroupResponseFramework, error) {
+	if c == nil {
+		return nil, fmt.Errorf("openai client is not configured")
+	}
+	if adminAPIKey(c) == "" {
+		return nil, fmt.Errorf("admin API key is required to list organization groups")
+	}
+
+	groupCacheMu.Lock()
+	defer groupCacheMu.Unlock()
+
+	if groupCache != nil {
+		return groupCache, nil
+	}
+
+	httpClient := projectClientHTTP(c)
+	groupsURL := adminBaseURL(c) + "/v1/organization/groups"
+	cursor := ""
+	out := []GroupResponseFramework{}
+
+	for {
+		parsedURL, err := url.Parse(groupsURL)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing groups URL: %w", err)
+		}
+		q := parsedURL.Query()
+		q.Set("limit", "100")
+		if cursor != "" {
+			q.Set("after", cursor)
+		}
+		parsedURL.RawQuery = q.Encode()
+
+		resp, err := doWithRetry(ctx, httpClient, c, parsedURL.String())
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("API error listing organization groups: %s", resp.Status)
+		}
+
+		var listResp GroupListResponse
+		if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("error parsing groups response: %w", err)
+		}
+		resp.Body.Close()
+
+		out = append(out, listResp.Data...)
+
+		if !listResp.HasMore || listResp.Next == nil {
+			break
+		}
+		next := *listResp.Next
+		if next == "" || next == cursor {
+			break
+		}
+		cursor = next
+	}
+
+	groupCache = out
+	return out, nil
 }
 
 // listProjectRoles fetches all roles defined in a project and returns them as
