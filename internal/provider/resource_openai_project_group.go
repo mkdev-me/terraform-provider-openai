@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -155,15 +154,7 @@ func (r *ProjectGroupResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	addURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/groups"
-	httpReq, err := http.NewRequest("POST", addURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", addURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error adding group to project", err.Error())
 		return
@@ -196,14 +187,7 @@ func (r *ProjectGroupResource) Create(ctx context.Context, req resource.CreateRe
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		listReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, listReq)
-
-		listResp, err := httpClient.Do(listReq)
+		listResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error listing project groups", err.Error())
 			return
@@ -250,15 +234,7 @@ func (r *ProjectGroupResource) Create(ctx context.Context, req resource.CreateRe
 		}
 
 		assignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/groups/" + groupID + "/roles"
-		assignReq, err := http.NewRequest("POST", assignURL, bytes.NewReader(assignBody))
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating role assign request", err.Error())
-			return
-		}
-		assignReq.Header.Set("Content-Type", "application/json")
-		setAdminAuthHeaders(r.client, assignReq)
-
-		assignResp, err := httpClient.Do(assignReq)
+		assignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", assignURL, assignBody)
 		if err != nil {
 			resp.Diagnostics.AddError("Error assigning role to group", err.Error())
 			return
@@ -314,14 +290,7 @@ func (r *ProjectGroupResource) Read(ctx context.Context, req resource.ReadReques
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		apiReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, apiReq)
-
-		apiResp, err := httpClient.Do(apiReq)
+		apiResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error listing project groups", err.Error())
 			return
@@ -390,14 +359,7 @@ func (r *ProjectGroupResource) Read(ctx context.Context, req resource.ReadReques
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		rolesReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating roles request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, rolesReq)
-
-		rolesResp, err := httpClient.Do(rolesReq)
+		rolesResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error reading group roles", err.Error())
 			return
@@ -484,14 +446,7 @@ func (r *ProjectGroupResource) Update(ctx context.Context, req resource.UpdateRe
 		if !newSet[id] {
 			unassignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/groups/" + groupID + "/roles/" + id
 			tflog.Info(ctx, "Unassigning role", map[string]interface{}{"url": unassignURL, "role_id": id})
-			unassignReq, err := http.NewRequest("DELETE", unassignURL, nil)
-			if err != nil {
-				resp.Diagnostics.AddError("Error creating role unassign request", err.Error())
-				return
-			}
-			setAdminAuthHeaders(r.client, unassignReq)
-
-			unassignResp, err := httpClient.Do(unassignReq)
+			unassignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", unassignURL, nil)
 			if err != nil {
 				resp.Diagnostics.AddError("Error unassigning role", err.Error())
 				return
@@ -517,15 +472,7 @@ func (r *ProjectGroupResource) Update(ctx context.Context, req resource.UpdateRe
 
 			assignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/groups/" + groupID + "/roles"
 			tflog.Info(ctx, "Assigning role", map[string]interface{}{"url": assignURL, "role_id": id})
-			assignReq, err := http.NewRequest("POST", assignURL, bytes.NewReader(assignBody))
-			if err != nil {
-				resp.Diagnostics.AddError("Error creating role assign request", err.Error())
-				return
-			}
-			assignReq.Header.Set("Content-Type", "application/json")
-			setAdminAuthHeaders(r.client, assignReq)
-
-			assignResp, err := httpClient.Do(assignReq)
+			assignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", assignURL, assignBody)
 			if err != nil {
 				resp.Diagnostics.AddError("Error assigning role", err.Error())
 				return
@@ -567,14 +514,7 @@ func (r *ProjectGroupResource) Delete(ctx context.Context, req resource.DeleteRe
 	// Step 1: Unassign all roles
 	for _, roleID := range roleIDsFromSet(data.RoleIDs) {
 		unassignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/groups/" + groupID + "/roles/" + roleID
-		unassignReq, err := http.NewRequest("DELETE", unassignURL, nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating role unassign request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, unassignReq)
-
-		unassignResp, err := httpClient.Do(unassignReq)
+		unassignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", unassignURL, nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error unassigning role from group", err.Error())
 			return
@@ -589,14 +529,7 @@ func (r *ProjectGroupResource) Delete(ctx context.Context, req resource.DeleteRe
 
 	// Step 2: Remove group from project
 	removeURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/groups/" + groupID
-	removeReq, err := http.NewRequest("DELETE", removeURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, removeReq)
-
-	removeResp, err := httpClient.Do(removeReq)
+	removeResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", removeURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error removing group from project", err.Error())
 		return

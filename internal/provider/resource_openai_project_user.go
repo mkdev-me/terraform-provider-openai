@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -136,15 +135,7 @@ func (r *ProjectUserResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	addURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/users"
-	httpReq, err := http.NewRequest("POST", addURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", addURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error adding user to project", err.Error())
 		return
@@ -162,14 +153,7 @@ func (r *ProjectUserResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Read user details from the project (works whether we just added or already existed)
 	getUserURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/users/" + userID
-	getUserReq, err := http.NewRequest("GET", getUserURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, getUserReq)
-
-	getUserResp, err := httpClient.Do(getUserReq)
+	getUserResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", getUserURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading project user", err.Error())
 		return
@@ -197,15 +181,7 @@ func (r *ProjectUserResource) Create(ctx context.Context, req resource.CreateReq
 		}
 
 		assignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/users/" + userID + "/roles"
-		assignReq, err := http.NewRequest("POST", assignURL, bytes.NewReader(assignBody))
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating role assign request", err.Error())
-			return
-		}
-		assignReq.Header.Set("Content-Type", "application/json")
-		setAdminAuthHeaders(r.client, assignReq)
-
-		assignResp, err := httpClient.Do(assignReq)
+		assignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", assignURL, assignBody)
 		if err != nil {
 			resp.Diagnostics.AddError("Error assigning role to user", err.Error())
 			return
@@ -244,14 +220,7 @@ func (r *ProjectUserResource) Read(ctx context.Context, req resource.ReadRequest
 
 	// Step 1: Verify the user is still in the project
 	userURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/users/" + userID
-	apiReq, err := http.NewRequest("GET", userURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, apiReq)
-
-	apiResp, err := httpClient.Do(apiReq)
+	apiResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", userURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading project user", err.Error())
 		return
@@ -297,14 +266,7 @@ func (r *ProjectUserResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		rolesReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating roles request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, rolesReq)
-
-		rolesResp, err := httpClient.Do(rolesReq)
+		rolesResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error reading user roles", err.Error())
 			return
@@ -386,14 +348,7 @@ func (r *ProjectUserResource) Update(ctx context.Context, req resource.UpdateReq
 		if !newSet[id] {
 			unassignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/users/" + userID + "/roles/" + id
 			tflog.Info(ctx, "Unassigning role from user", map[string]interface{}{"role_id": id})
-			unassignReq, err := http.NewRequest("DELETE", unassignURL, nil)
-			if err != nil {
-				resp.Diagnostics.AddError("Error creating role unassign request", err.Error())
-				return
-			}
-			setAdminAuthHeaders(r.client, unassignReq)
-
-			unassignResp, err := httpClient.Do(unassignReq)
+			unassignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", unassignURL, nil)
 			if err != nil {
 				resp.Diagnostics.AddError("Error unassigning role", err.Error())
 				return
@@ -419,15 +374,7 @@ func (r *ProjectUserResource) Update(ctx context.Context, req resource.UpdateReq
 
 			assignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/users/" + userID + "/roles"
 			tflog.Info(ctx, "Assigning role to user", map[string]interface{}{"role_id": id})
-			assignReq, err := http.NewRequest("POST", assignURL, bytes.NewReader(assignBody))
-			if err != nil {
-				resp.Diagnostics.AddError("Error creating role assign request", err.Error())
-				return
-			}
-			assignReq.Header.Set("Content-Type", "application/json")
-			setAdminAuthHeaders(r.client, assignReq)
-
-			assignResp, err := httpClient.Do(assignReq)
+			assignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", assignURL, assignBody)
 			if err != nil {
 				resp.Diagnostics.AddError("Error assigning role", err.Error())
 				return
@@ -469,14 +416,7 @@ func (r *ProjectUserResource) Delete(ctx context.Context, req resource.DeleteReq
 	// Step 1: Unassign all roles
 	for _, roleID := range roleIDsFromSet(data.RoleIDs) {
 		unassignURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/users/" + userID + "/roles/" + roleID
-		unassignReq, err := http.NewRequest("DELETE", unassignURL, nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating role unassign request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, unassignReq)
-
-		unassignResp, err := httpClient.Do(unassignReq)
+		unassignResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", unassignURL, nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error unassigning role from user", err.Error())
 			return
@@ -490,14 +430,7 @@ func (r *ProjectUserResource) Delete(ctx context.Context, req resource.DeleteReq
 
 	// Step 2: Remove user from project
 	removeURL := adminBaseURL(r.client) + "/v1/organization/projects/" + projectID + "/users/" + userID
-	removeReq, err := http.NewRequest("DELETE", removeURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, removeReq)
-
-	removeResp, err := httpClient.Do(removeReq)
+	removeResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", removeURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error removing user from project", err.Error())
 		return

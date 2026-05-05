@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- All admin-API HTTP calls in the `openai_project_group` resource (Create/
+  Read/Update/Delete), the `openai_project_user` resource (Create/Read/
+  Update/Delete), and the `openai_group` data source now retry on `429 Too
+  Many Requests` and transient `5xx` responses, using the same backoff
+  helper introduced in v2.2.1. Previously only the `openai_project_role`
+  data source (v2.2.2) and the v0→v1 state upgrader (v2.2.1) were covered,
+  leaving plans that read groups and applies that create/update/delete
+  project memberships exposed: a `terraform apply` attaching ~14 groups to
+  a single project consistently failed with `API error listing project
+  groups: 429`.
+- Backoff schedule now applies full jitter (actual sleep is uniformly
+  random in `[base/2, base]` for base values 1, 2, 4, 8, 16, 30s). Without
+  jitter, N concurrent requests that all 429 at the same moment retry on
+  the same instants and keep colliding; jitter spreads them out and lets
+  the rate-limit window drain.
+
+## [2.2.2]
+
+### Fixed
 - The `openai_project_role` data source (singular and plural) now retries on
   `429 Too Many Requests` and transient `5xx` responses from the admin API,
   using the same exponential backoff helper that the state upgrader uses

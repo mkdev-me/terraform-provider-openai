@@ -133,19 +133,7 @@ func (d *GroupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		httpRequest, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-
-		httpRequest.Header.Set("Authorization", "Bearer "+adminKey)
-		httpRequest.Header.Set("Content-Type", "application/json")
-		if d.client.OpenAIClient.OrganizationID != "" {
-			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
-		}
-
-		httpResp, err := httpClient.Do(httpRequest)
+		httpResp, err := doRequestWithRetry(ctx, httpClient, d.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
@@ -344,18 +332,7 @@ func (d *GroupsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		httpRequest, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		httpRequest.Header.Set("Authorization", "Bearer "+adminKey)
-		httpRequest.Header.Set("Content-Type", "application/json")
-		if d.client.OpenAIClient.OrganizationID != "" {
-			httpRequest.Header.Set("OpenAI-Organization", d.client.OpenAIClient.OrganizationID)
-		}
-
-		httpResp, err := httpClient.Do(httpRequest)
+		httpResp, err := doRequestWithRetry(ctx, httpClient, d.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error executing request", err.Error())
 			return
