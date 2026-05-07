@@ -8,17 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Admin-API calls are now paced by a token-bucket rate limiter (default 6
+  RPM with a burst of 4) in addition to the v2.2.6 concurrency semaphore.
+  Empirical testing on 2026-05-07 found the admin API throttles per-endpoint
+  at ~7-10 RPM (no `x-ratelimit-*` or `Retry-After` headers exposed): seven
+  sequential `GET /v1/projects/{id}/roles` calls succeed, the next seven in
+  the same minute return 429, and the bucket refills after ~60s. The
+  v2.2.6 concurrency cap was therefore insufficient — even one-in-flight
+  sequential calls 429 once the per-minute bucket is exhausted. A real
+  `terraform plan` against 14 distinct projects now completes without 429s
+  (vs. failing under v2.2.6). Override defaults via `OPENAI_ADMIN_MAX_RPM`
+  (clamped `[1, 600]`) and `OPENAI_ADMIN_BURST` (clamped `[1, 100]`).
+
+## [2.2.6]
+
+### Fixed
 - All admin-API calls now pass through a per-process counting semaphore
   (default 3 in-flight, override via `OPENAI_ADMIN_MAX_CONCURRENT`,
-  clamped to `[1, 64]`). The org-wide admin rate limit (~60 RPM) is shared
-  across the whole provider process, so Terraform's parallelism (default
-  10) was bursting requests faster than the rate-limit window could drain
-  — even with the per-request retry+jitter added in v2.2.3, the retries
-  themselves stacked under load and kept colliding with the window. A
-  v2.2.5 plan touching ~30 `openai_project_group` resources still 429'd
-  consistently with `API error listing project groups`. Serialising at
-  the provider level (below Terraform's parallelism flag) is the only
-  stable fix; retry+jitter remains as a safety net for transient bursts.
+  clamped to `[1, 64]`). Terraform's parallelism (default 10) was bursting
+  requests faster than the per-request retry+jitter (v2.2.3) could absorb;
+  the retries themselves stacked under load and kept colliding with the
+  rate-limit window. Serialising at the provider level — independent of
+  Terraform's parallelism flag — is necessary on top of retry+jitter. (See
+  v2.2.7 for the additional rate-limit fix once empirical testing showed
+  concurrency capping alone was still insufficient against the admin
+  API's per-minute ceiling.)
 - `openai_project_group` Create no longer issues a paginated list of all
   groups in the project after a successful POST. The POST response itself
   is the project-group object, so we parse it directly. The list-and-find

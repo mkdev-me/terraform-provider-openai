@@ -14,6 +14,15 @@ import (
 	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
+// init effectively disables the admin rate limiter for the test binary.
+// Tests that need to exercise rate-limit behaviour explicitly call
+// resetAdminBucketForTest with a tighter bucket. Without this, every test
+// that hits doRequestWithRetry would burn ~10s waiting on the default 6
+// RPM bucket, blowing test timeouts.
+func init() {
+	resetAdminBucketForTest(100000, 1000)
+}
+
 // resetAdminSemaphoreForTest re-initialises the package-level semaphore so
 // tests that mutate OPENAI_ADMIN_MAX_CONCURRENT or want a clean state can do
 // so. Not safe for concurrent use; tests must serialise around it.
@@ -21,6 +30,20 @@ func resetAdminSemaphoreForTest(size int) {
 	adminSemaphore = make(chan struct{}, size)
 	adminSemaphoreOnce = sync.Once{}
 	adminSemaphoreOnce.Do(func() {}) // mark consumed so initAdminSemaphore won't overwrite
+}
+
+// resetAdminBucketForTest re-initialises the rate-limit bucket. Pass a
+// large rpm (e.g. 100000) and burst (e.g. 1000) to effectively disable the
+// limiter when a test focuses on something other than rate.
+func resetAdminBucketForTest(rpm float64, burst int) {
+	adminBucket = &adminTokenBucket{
+		tokens:       float64(burst),
+		capacity:     float64(burst),
+		refillPerSec: rpm / 60.0,
+		lastRefill:   time.Now(),
+	}
+	adminBucketOnce = sync.Once{}
+	adminBucketOnce.Do(func() {}) // mark consumed so initAdminBucket won't overwrite
 }
 
 func newTestOpenAIClient(serverURL string) *OpenAIClient {
@@ -404,6 +427,7 @@ func TestBackoffDuration_HonoursRetryAfter(t *testing.T) {
 // simultaneously — exactly the burst pattern that 429s the real admin API.
 func TestAdminSemaphore_LimitsConcurrency(t *testing.T) {
 	resetAdminSemaphoreForTest(2)
+	resetAdminBucketForTest(100000, 1000) // effectively disable rate limiter
 
 	var (
 		inFlight    int32
@@ -462,6 +486,7 @@ func TestAdminSemaphore_RateLimitedServer(t *testing.T) {
 		serverLimit = 3  // server allows at most 3 in-flight; 4th and beyond get 429
 	)
 	resetAdminSemaphoreForTest(serverLimit)
+	resetAdminBucketForTest(100000, 1000)
 
 	var (
 		inFlight   int32
@@ -531,6 +556,7 @@ func TestAdminSemaphore_RateLimitedServer_WithoutSemaphore(t *testing.T) {
 		serverLimit = 3
 	)
 	resetAdminSemaphoreForTest(N) // effectively no limit vs. serverLimit
+	resetAdminBucketForTest(100000, 1000)
 
 	var (
 		inFlight   int32
@@ -575,11 +601,91 @@ func TestAdminSemaphore_RateLimitedServer_WithoutSemaphore(t *testing.T) {
 		N, serverLimit, atomic.LoadInt32(&rejections))
 }
 
+// TestAdminRateLimiter_PacesRequests fires N requests against a server with
+// no concurrency limit, but with the bucket sized to allow only `burst`
+// instant requests then refill at `rpm` requests per minute. Verifies the
+// total elapsed time matches what the bucket math predicts — i.e. requests
+// after the initial burst are paced, not all-at-once.
+func TestAdminRateLimiter_PacesRequests(t *testing.T) {
+	const (
+		N     = 10
+		burst = 3
+		rpm   = 120.0 // 2 per second; tight enough to be testable, slow enough to be measurable
+	)
+	resetAdminSemaphoreForTest(N) // disable concurrency limit for this test
+	resetAdminBucketForTest(rpm, burst)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	httpClient := projectClientHTTP(c)
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			resp, err := doRequestWithRetry(context.Background(), httpClient, c, "GET", server.URL+"/v1/anything", nil)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			resp.Body.Close()
+		}()
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+
+	// Burst tokens are spent instantly; the remaining (N - burst) requests
+	// each wait for a token at rate rpm/60 per second. Lower bound is
+	// generous (allow scheduler jitter); upper bound catches catastrophic
+	// over-pacing.
+	expectedMin := time.Duration(float64(N-burst) / (rpm / 60.0) * float64(time.Second) * 0.7)
+	expectedMax := time.Duration(float64(N-burst)/(rpm/60.0)*float64(time.Second)) + 2*time.Second
+	if elapsed < expectedMin || elapsed > expectedMax {
+		t.Errorf("N=%d burst=%d rpm=%.0f → elapsed=%v, want in [%v, %v]",
+			N, burst, rpm, elapsed, expectedMin, expectedMax)
+	}
+	t.Logf("paced %d requests (burst=%d, rpm=%.0f) in %v", N, burst, rpm, elapsed)
+}
+
+// TestAdminRateLimiter_ContextCancellation verifies that a goroutine
+// waiting on the bucket returns promptly when the context is cancelled,
+// instead of blocking until a token frees up.
+func TestAdminRateLimiter_ContextCancellation(t *testing.T) {
+	resetAdminSemaphoreForTest(10)
+	// Bucket starts empty (burst=1, but we drain it below) and refills at
+	// 1 token per 30s — slow enough that ctx must win.
+	resetAdminBucketForTest(2.0, 1)
+	if err := waitForAdminToken(context.Background()); err != nil {
+		t.Fatalf("priming the bucket: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := waitForAdminToken(ctx)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected error when context cancels before token frees")
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Errorf("waitForAdminToken returned after %v, want < 200ms", elapsed)
+	}
+}
+
 // TestAdminSemaphore_ContextCancellation verifies that callers blocked
 // waiting for a slot return promptly when the context is cancelled, rather
 // than blocking the apply indefinitely.
 func TestAdminSemaphore_ContextCancellation(t *testing.T) {
 	resetAdminSemaphoreForTest(1)
+	resetAdminBucketForTest(100000, 1000)
 
 	// Saturate the single slot.
 	release, err := acquireAdminSlot(context.Background())

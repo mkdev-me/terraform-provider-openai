@@ -310,20 +310,33 @@ func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (m
 	return out, nil
 }
 
-// adminConcurrencyDefault caps the number of in-flight admin-API requests per
-// provider process. The OpenAI admin API enforces a low org-wide rate limit
-// (~60 RPM); with Terraform's default parallelism of 10, a plan/apply touching
-// many project_group/project_user resources fires bursts that 429 even with
-// per-request retry+jitter (the retries themselves stack up under load and
-// keep colliding with the rate-limit window). Serialising at the provider
-// level — independent of Terraform's parallelism flag — is the only stable
-// fix.
-//
-// Default of 3 was chosen empirically: low enough that a fully-saturated
-// stream (3 in-flight, each ~200ms) stays under 1000 RPM peak, well below
-// the admin limit, while still hiding network latency. Override with the
+// adminConcurrencyDefault caps the number of in-flight admin-API requests
+// per provider process. Acts as a second line of defence on top of the
+// rate limiter (see adminRateDefault below). Override with the
 // OPENAI_ADMIN_MAX_CONCURRENT environment variable (clamped to [1, 64]).
 const adminConcurrencyDefault = 3
+
+// adminRateDefault and adminBurstDefault control the token-bucket rate
+// limiter that paces admin-API calls. Empirically, the OpenAI admin API
+// rate-limits per-endpoint at ~7-10 requests per minute (verified
+// 2026-05-07: 7 sequential `GET /v1/projects/{id}/roles` calls succeeded,
+// the next 7 in the same minute returned 429; bucket refilled after ~60s).
+// No `x-ratelimit-*` or `Retry-After` headers are exposed, so the client
+// cannot adapt dynamically.
+//
+// A pure concurrency cap (semaphore) does NOT fix this: even 1-in-flight
+// sequential calls 429 once the per-minute bucket is exhausted. We need
+// to pace at *rate*, not just concurrency.
+//
+// Default of 6 RPM with a burst of 4 leaves a comfortable margin under the
+// observed ~7-10 RPM ceiling and lets short bursts (e.g. plan startup
+// reading 4 cached roles) complete instantly while sustained load gets
+// throttled. Override with OPENAI_ADMIN_MAX_RPM (clamped to [1, 600]) and
+// OPENAI_ADMIN_BURST (clamped to [1, 100]).
+const (
+	adminRateDefault  = 6.0 // requests per minute (sustained)
+	adminBurstDefault = 4   // initial burst capacity
+)
 
 // adminSemaphore gates entry into doRequestWithRetry. Buffered channel used
 // as a counting semaphore: send to acquire, receive to release. Initialised
@@ -357,6 +370,91 @@ func acquireAdminSlot(ctx context.Context) (release func(), err error) {
 		return func() { <-adminSemaphore }, nil
 	case <-ctx.Done():
 		return func() {}, ctx.Err()
+	}
+}
+
+// adminTokenBucket is a simple token-bucket rate limiter. tokens accrue at
+// `refillPerSec` until `capacity`; each admin request consumes one token.
+// When the bucket is empty, callers wait for the next token.
+//
+// Hand-rolled rather than pulling in `golang.org/x/time/rate` because that
+// dep would force a Go toolchain bump (>= 1.25 in current versions) on a
+// project that targets 1.24, and the bucket logic we need is ~30 lines.
+type adminTokenBucket struct {
+	mu           sync.Mutex
+	tokens       float64
+	capacity     float64
+	refillPerSec float64
+	lastRefill   time.Time
+}
+
+var (
+	adminBucketOnce sync.Once
+	adminBucket     *adminTokenBucket
+)
+
+func initAdminBucket() {
+	rpm := adminRateDefault
+	if v := os.Getenv("OPENAI_ADMIN_MAX_RPM"); v != "" {
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && parsed >= 1 {
+			if parsed > 600 {
+				parsed = 600
+			}
+			rpm = parsed
+		}
+	}
+	burst := adminBurstDefault
+	if v := os.Getenv("OPENAI_ADMIN_BURST"); v != "" {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && parsed >= 1 {
+			if parsed > 100 {
+				parsed = 100
+			}
+			burst = parsed
+		}
+	}
+	adminBucket = &adminTokenBucket{
+		tokens:       float64(burst),
+		capacity:     float64(burst),
+		refillPerSec: rpm / 60.0,
+		lastRefill:   time.Now(),
+	}
+}
+
+// waitForAdminToken consumes one token from the rate-limit bucket, sleeping
+// (interruptible by ctx) until one becomes available. Loops on wake-up
+// because multiple goroutines waiting on the same refill window will all
+// get their timer signal together — only one wins the next token, the
+// others recompute and sleep again.
+func waitForAdminToken(ctx context.Context) error {
+	adminBucketOnce.Do(initAdminBucket)
+	for {
+		adminBucket.mu.Lock()
+		now := time.Now()
+		elapsed := now.Sub(adminBucket.lastRefill).Seconds()
+		if elapsed > 0 {
+			adminBucket.tokens += elapsed * adminBucket.refillPerSec
+			if adminBucket.tokens > adminBucket.capacity {
+				adminBucket.tokens = adminBucket.capacity
+			}
+			adminBucket.lastRefill = now
+		}
+		if adminBucket.tokens >= 1.0 {
+			adminBucket.tokens -= 1.0
+			adminBucket.mu.Unlock()
+			return nil
+		}
+		needed := 1.0 - adminBucket.tokens
+		wait := time.Duration(needed / adminBucket.refillPerSec * float64(time.Second))
+		adminBucket.mu.Unlock()
+
+		t := time.NewTimer(wait)
+		select {
+		case <-t.C:
+			// loop and re-check; another goroutine may have taken the token.
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		}
 	}
 }
 
@@ -419,6 +517,15 @@ func doRequestWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIC
 		}
 		setAdminAuthHeaders(c, req)
 		req.Header.Set("Content-Type", "application/json")
+
+		// Rate-limit at *rate*, not just concurrency. The admin API throttles
+		// per endpoint at ~7-10 RPM (no exposed headers) — even one-in-flight
+		// sequential calls 429 once the bucket is empty. Consuming a token
+		// per attempt (including retries) keeps every request the provider
+		// makes paced under the ceiling.
+		if err := waitForAdminToken(ctx); err != nil {
+			return nil, fmt.Errorf("admin rate-limit wait cancelled: %w", err)
+		}
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
