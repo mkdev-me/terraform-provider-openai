@@ -6,11 +6,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
+
+// resetAdminSemaphoreForTest re-initialises the package-level semaphore so
+// tests that mutate OPENAI_ADMIN_MAX_CONCURRENT or want a clean state can do
+// so. Not safe for concurrent use; tests must serialise around it.
+func resetAdminSemaphoreForTest(size int) {
+	adminSemaphore = make(chan struct{}, size)
+	adminSemaphoreOnce = sync.Once{}
+	adminSemaphoreOnce.Do(func() {}) // mark consumed so initAdminSemaphore won't overwrite
+}
 
 func newTestOpenAIClient(serverURL string) *OpenAIClient {
 	return &OpenAIClient{
@@ -384,5 +395,209 @@ func TestBackoffDuration_HonoursRetryAfter(t *testing.T) {
 	got := backoffDuration(0, "not-a-number")
 	if got < 500*time.Millisecond || got > 1*time.Second {
 		t.Errorf("invalid retry-after should fall back to attempt 0 jitter range [500ms, 1s], got %v", got)
+	}
+}
+
+// TestAdminSemaphore_LimitsConcurrency fires N concurrent requests against a
+// test server with the semaphore set to 2 and asserts the server never sees
+// more than 2 in-flight at once. Without the semaphore, all N would land
+// simultaneously — exactly the burst pattern that 429s the real admin API.
+func TestAdminSemaphore_LimitsConcurrency(t *testing.T) {
+	resetAdminSemaphoreForTest(2)
+
+	var (
+		inFlight    int32
+		maxObserved int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		for {
+			seen := atomic.LoadInt32(&maxObserved)
+			if cur <= seen || atomic.CompareAndSwapInt32(&maxObserved, seen, cur) {
+				break
+			}
+		}
+		// Hold the slot long enough that any unbounded concurrency would
+		// pile on visibly before the first request releases.
+		time.Sleep(50 * time.Millisecond)
+		atomic.AddInt32(&inFlight, -1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	httpClient := projectClientHTTP(c)
+
+	const N = 10
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			resp, err := doRequestWithRetry(context.Background(), httpClient, c, "GET", server.URL+"/v1/anything", nil)
+			if err != nil {
+				t.Errorf("request failed: %v", err)
+				return
+			}
+			resp.Body.Close()
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&maxObserved); got > 2 {
+		t.Errorf("max in-flight requests = %d, want <= 2", got)
+	}
+}
+
+// TestAdminSemaphore_RateLimitedServer reproduces the production failure
+// mode: a server that returns 429 when more than `serverLimit` requests are
+// in-flight simultaneously. With the semaphore sized to <= serverLimit, all
+// N concurrent callers must complete successfully without exhausting their
+// retry budget. Without the semaphore, retries pile up and the test exhausts
+// retryMaxAttempts (this was the v2.2.5 production behaviour).
+func TestAdminSemaphore_RateLimitedServer(t *testing.T) {
+	const (
+		N           = 50 // concurrent callers — well above Terraform's default parallelism of 10
+		serverLimit = 3  // server allows at most 3 in-flight; 4th and beyond get 429
+	)
+	resetAdminSemaphoreForTest(serverLimit)
+
+	var (
+		inFlight   int32
+		totalCalls int32
+		rejections int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&totalCalls, 1)
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+
+		if cur > serverLimit {
+			atomic.AddInt32(&rejections, 1)
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		// Simulate API work so requests overlap.
+		time.Sleep(20 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	httpClient := projectClientHTTP(c)
+
+	var (
+		wg       sync.WaitGroup
+		failures int32
+	)
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			resp, err := doRequestWithRetry(context.Background(), httpClient, c, "GET", server.URL+"/v1/anything", nil)
+			if err != nil {
+				atomic.AddInt32(&failures, 1)
+				return
+			}
+			if resp.StatusCode != http.StatusOK {
+				atomic.AddInt32(&failures, 1)
+			}
+			resp.Body.Close()
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&failures); got != 0 {
+		t.Errorf("%d/%d requests failed; semaphore should have kept us under server limit", got, N)
+	}
+	if got := atomic.LoadInt32(&rejections); got != 0 {
+		t.Errorf("server saw %d 429s; semaphore should have prevented all of them", got)
+	}
+	t.Logf("N=%d concurrent callers, serverLimit=%d, semaphore=%d → totalCalls=%d, 429s=%d, failures=%d",
+		N, serverLimit, serverLimit, atomic.LoadInt32(&totalCalls), atomic.LoadInt32(&rejections), atomic.LoadInt32(&failures))
+}
+
+// TestAdminSemaphore_RateLimitedServer_WithoutSemaphore is the negative
+// control: same scenario but with the semaphore sized larger than the
+// server's limit, so concurrency exceeds capacity and we see 429s. This
+// asserts the test setup actually exercises the rate-limit path — without
+// it, a passing TestAdminSemaphore_RateLimitedServer could be vacuous.
+func TestAdminSemaphore_RateLimitedServer_WithoutSemaphore(t *testing.T) {
+	const (
+		N           = 50
+		serverLimit = 3
+	)
+	resetAdminSemaphoreForTest(N) // effectively no limit vs. serverLimit
+
+	var (
+		inFlight   int32
+		rejections int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+
+		if cur > serverLimit {
+			atomic.AddInt32(&rejections, 1)
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	c := newTestOpenAIClient(server.URL)
+	httpClient := projectClientHTTP(c)
+
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			resp, err := doRequestWithRetry(context.Background(), httpClient, c, "GET", server.URL+"/v1/anything", nil)
+			if err == nil && resp != nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&rejections); got == 0 {
+		t.Fatal("expected 429s when semaphore size > server limit; test setup may be wrong")
+	}
+	t.Logf("control: with semaphore=%d > serverLimit=%d, server returned %d 429s (proves the rate-limit path is exercised)",
+		N, serverLimit, atomic.LoadInt32(&rejections))
+}
+
+// TestAdminSemaphore_ContextCancellation verifies that callers blocked
+// waiting for a slot return promptly when the context is cancelled, rather
+// than blocking the apply indefinitely.
+func TestAdminSemaphore_ContextCancellation(t *testing.T) {
+	resetAdminSemaphoreForTest(1)
+
+	// Saturate the single slot.
+	release, err := acquireAdminSlot(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err = acquireAdminSlot(ctx)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected error when context cancels before slot frees")
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Errorf("acquire took %v, want < 200ms", elapsed)
 	}
 }
