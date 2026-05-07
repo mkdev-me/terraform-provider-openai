@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -309,6 +310,56 @@ func listProjectRoles(ctx context.Context, c *OpenAIClient, projectID string) (m
 	return out, nil
 }
 
+// adminConcurrencyDefault caps the number of in-flight admin-API requests per
+// provider process. The OpenAI admin API enforces a low org-wide rate limit
+// (~60 RPM); with Terraform's default parallelism of 10, a plan/apply touching
+// many project_group/project_user resources fires bursts that 429 even with
+// per-request retry+jitter (the retries themselves stack up under load and
+// keep colliding with the rate-limit window). Serialising at the provider
+// level — independent of Terraform's parallelism flag — is the only stable
+// fix.
+//
+// Default of 3 was chosen empirically: low enough that a fully-saturated
+// stream (3 in-flight, each ~200ms) stays under 1000 RPM peak, well below
+// the admin limit, while still hiding network latency. Override with the
+// OPENAI_ADMIN_MAX_CONCURRENT environment variable (clamped to [1, 64]).
+const adminConcurrencyDefault = 3
+
+// adminSemaphore gates entry into doRequestWithRetry. Buffered channel used
+// as a counting semaphore: send to acquire, receive to release. Initialised
+// once via sync.Once on first use so tests that mutate the env var before
+// the first call see the right value.
+var (
+	adminSemaphoreOnce sync.Once
+	adminSemaphore     chan struct{}
+)
+
+func initAdminSemaphore() {
+	n := adminConcurrencyDefault
+	if v := os.Getenv("OPENAI_ADMIN_MAX_CONCURRENT"); v != "" {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && parsed >= 1 {
+			if parsed > 64 {
+				parsed = 64
+			}
+			n = parsed
+		}
+	}
+	adminSemaphore = make(chan struct{}, n)
+}
+
+// acquireAdminSlot blocks until a slot is available or ctx is cancelled.
+// Returns a release function the caller MUST invoke (via defer) once the
+// admin call (including any retries) completes.
+func acquireAdminSlot(ctx context.Context) (release func(), err error) {
+	adminSemaphoreOnce.Do(initAdminSemaphore)
+	select {
+	case adminSemaphore <- struct{}{}:
+		return func() { <-adminSemaphore }, nil
+	case <-ctx.Done():
+		return func() {}, ctx.Err()
+	}
+}
+
 // retryStatusCodes are HTTP status codes that should trigger a retry with
 // exponential backoff (rate limiting and transient server errors).
 var retryStatusCodes = map[int]bool{
@@ -349,6 +400,12 @@ func doWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, 
 // 1s, 2s, 4s, 8s, 16s, 30s — actual sleep is uniformly random in [base/2,
 // base] to avoid thundering-herd when many concurrent retries fire).
 func doRequestWithRetry(ctx context.Context, httpClient *http.Client, c *OpenAIClient, method, urlStr string, body []byte) (*http.Response, error) {
+	release, err := acquireAdminSlot(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("admin slot acquisition cancelled: %w", err)
+	}
+	defer release()
+
 	var lastErr error
 
 	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
