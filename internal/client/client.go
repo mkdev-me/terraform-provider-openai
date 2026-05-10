@@ -165,10 +165,10 @@ type RateLimit struct {
 	Model                       string `json:"model"`
 	MaxRequestsPer1Minute       int    `json:"max_requests_per_1_minute"`
 	MaxTokensPer1Minute         int    `json:"max_tokens_per_1_minute"`
-	MaxImagesPer1Minute         int    `json:"max_images_per_1_minute"`
-	Batch1DayMaxInputTokens     int    `json:"batch_1_day_max_input_tokens"`
-	MaxAudioMegabytesPer1Minute int    `json:"max_audio_megabytes_per_1_minute"`
-	MaxRequestsPer1Day          int    `json:"max_requests_per_1_day"`
+	MaxImagesPer1Minute         *int   `json:"max_images_per_1_minute"`
+	Batch1DayMaxInputTokens     *int   `json:"batch_1_day_max_input_tokens"`
+	MaxAudioMegabytesPer1Minute *int   `json:"max_audio_megabytes_per_1_minute"`
+	MaxRequestsPer1Day          *int   `json:"max_requests_per_1_day"`
 }
 
 // RateLimitListResponse represents the response from the API when listing rate limits
@@ -1435,17 +1435,17 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) err
 	}
 
 	// Add optional fields if they exist in the default values
-	if defaultValues.MaxImagesPer1Minute > 0 {
-		req["max_images_per_1_minute"] = defaultValues.MaxImagesPer1Minute
+	if defaultValues.MaxImagesPer1Minute != nil && *defaultValues.MaxImagesPer1Minute > 0 {
+		req["max_images_per_1_minute"] = *defaultValues.MaxImagesPer1Minute
 	}
-	if defaultValues.MaxAudioMegabytesPer1Minute > 0 {
-		req["max_audio_megabytes_per_1_minute"] = defaultValues.MaxAudioMegabytesPer1Minute
+	if defaultValues.MaxAudioMegabytesPer1Minute != nil && *defaultValues.MaxAudioMegabytesPer1Minute > 0 {
+		req["max_audio_megabytes_per_1_minute"] = *defaultValues.MaxAudioMegabytesPer1Minute
 	}
-	if defaultValues.Batch1DayMaxInputTokens > 0 {
-		req["batch_1_day_max_input_tokens"] = defaultValues.Batch1DayMaxInputTokens
+	if defaultValues.Batch1DayMaxInputTokens != nil && *defaultValues.Batch1DayMaxInputTokens > 0 {
+		req["batch_1_day_max_input_tokens"] = *defaultValues.Batch1DayMaxInputTokens
 	}
-	if defaultValues.MaxRequestsPer1Day > 0 {
-		req["max_requests_per_1_day"] = defaultValues.MaxRequestsPer1Day
+	if defaultValues.MaxRequestsPer1Day != nil && *defaultValues.MaxRequestsPer1Day > 0 {
+		req["max_requests_per_1_day"] = *defaultValues.MaxRequestsPer1Day
 	}
 
 	// Send POST request to reset the rate limit to default values
@@ -2891,12 +2891,12 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 		if !ok {
 			return &RateLimit{
 				Model:                       model,
-				MaxRequestsPer1Minute:       1000000, // Very high value to effectively make it unlimited
-				MaxTokensPer1Minute:         1000000, // Very high value to effectively make it unlimited
-				MaxImagesPer1Minute:         1000000, // Very high value to effectively make it unlimited
-				Batch1DayMaxInputTokens:     1000000, // Very high value to effectively make it unlimited
-				MaxAudioMegabytesPer1Minute: 1000000, // Very high value to effectively make it unlimited
-				MaxRequestsPer1Day:          1000000, // Very high value to effectively make it unlimited
+				MaxRequestsPer1Minute:       1000000,         // Very high value to effectively make it unlimited
+				MaxTokensPer1Minute:         1000000,         // Very high value to effectively make it unlimited
+				MaxImagesPer1Minute:         intPtr(1000000), // Very high value to effectively make it unlimited
+				Batch1DayMaxInputTokens:     intPtr(1000000), // Very high value to effectively make it unlimited
+				MaxAudioMegabytesPer1Minute: intPtr(1000000), // Very high value to effectively make it unlimited
+				MaxRequestsPer1Day:          intPtr(1000000), // Very high value to effectively make it unlimited
 			}
 		}
 	}
@@ -2906,11 +2906,15 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 		Model:                       model,
 		MaxRequestsPer1Minute:       defaults.MaxRequestsPer1Minute,
 		MaxTokensPer1Minute:         defaults.MaxTokensPer1Minute,
-		MaxImagesPer1Minute:         defaults.MaxImagesPer1Minute,
-		Batch1DayMaxInputTokens:     defaults.Batch1DayMaxInputTokens,
-		MaxAudioMegabytesPer1Minute: defaults.MaxAudioMegabytesPer1Minute,
-		MaxRequestsPer1Day:          defaults.MaxRequestsPer1Day,
+		MaxImagesPer1Minute:         intPtr(defaults.MaxImagesPer1Minute),
+		Batch1DayMaxInputTokens:     intPtr(defaults.Batch1DayMaxInputTokens),
+		MaxAudioMegabytesPer1Minute: intPtr(defaults.MaxAudioMegabytesPer1Minute),
+		MaxRequestsPer1Day:          intPtr(defaults.MaxRequestsPer1Day),
 	}
+}
+
+func intPtr(v int) *int {
+	return &v
 }
 
 // TestNetworkConnectivity tests if we can connect to the OpenAI API
