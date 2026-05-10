@@ -163,12 +163,12 @@ type RateLimit struct {
 	ID                          string `json:"id"`
 	Object                      string `json:"object"`
 	Model                       string `json:"model"`
-	MaxRequestsPer1Minute       *int   `json:"max_requests_per_1_minute"`
-	MaxTokensPer1Minute         *int   `json:"max_tokens_per_1_minute"`
-	MaxImagesPer1Minute         *int   `json:"max_images_per_1_minute"`
-	Batch1DayMaxInputTokens     *int   `json:"batch_1_day_max_input_tokens"`
-	MaxAudioMegabytesPer1Minute *int   `json:"max_audio_megabytes_per_1_minute"`
-	MaxRequestsPer1Day          *int   `json:"max_requests_per_1_day"`
+	MaxRequestsPer1Minute       *int64 `json:"max_requests_per_1_minute"`
+	MaxTokensPer1Minute         *int64 `json:"max_tokens_per_1_minute"`
+	MaxImagesPer1Minute         *int64 `json:"max_images_per_1_minute"`
+	Batch1DayMaxInputTokens     *int64 `json:"batch_1_day_max_input_tokens"`
+	MaxAudioMegabytesPer1Minute *int64 `json:"max_audio_megabytes_per_1_minute"`
+	MaxRequestsPer1Day          *int64 `json:"max_requests_per_1_day"`
 }
 
 // RateLimitListResponse represents the response from the API when listing rate limits
@@ -2410,12 +2410,12 @@ func extractModelFromRateLimitID(rateLimitID string) string {
 
 // defaultRateLimits contains the default rate limit values for each model
 var defaultRateLimits = map[string]struct {
-	MaxRequestsPer1Minute       int
-	MaxTokensPer1Minute         int
-	MaxImagesPer1Minute         int
-	Batch1DayMaxInputTokens     int
-	MaxAudioMegabytesPer1Minute int
-	MaxRequestsPer1Day          int
+	MaxRequestsPer1Minute       int64
+	MaxTokensPer1Minute         int64
+	MaxImagesPer1Minute         int64
+	Batch1DayMaxInputTokens     int64
+	MaxAudioMegabytesPer1Minute int64
+	MaxRequestsPer1Day          int64
 }{
 	"babbage-002": {
 		MaxRequestsPer1Minute: 3000,
@@ -2891,7 +2891,7 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 
 		// If still not found, use fallback values
 		if !ok {
-			fallback := 1000000
+			fallback := int64(1000000)
 			return &RateLimit{
 				Model:                       model,
 				MaxRequestsPer1Minute:       &fallback, // Very high value to effectively make it unlimited

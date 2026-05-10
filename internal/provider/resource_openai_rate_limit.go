@@ -228,22 +228,15 @@ func (r *RateLimitResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	if rl != nil {
-		data.MaxRequestsPerMinute = int64PointerValue(rl.MaxRequestsPer1Minute)
-		data.MaxTokensPerMinute = int64PointerValue(rl.MaxTokensPer1Minute)
-		data.MaxImagesPerMinute = int64PointerValue(rl.MaxImagesPer1Minute)
-		data.Batch1DayMaxInputTokens = int64PointerValue(rl.Batch1DayMaxInputTokens)
-		data.MaxAudioMegabytesPer1Minute = int64PointerValue(rl.MaxAudioMegabytesPer1Minute)
-		data.MaxRequestsPer1Day = int64PointerValue(rl.MaxRequestsPer1Day)
+		data.MaxRequestsPerMinute = types.Int64PointerValue(rl.MaxRequestsPer1Minute)
+		data.MaxTokensPerMinute = types.Int64PointerValue(rl.MaxTokensPer1Minute)
+		data.MaxImagesPerMinute = types.Int64PointerValue(rl.MaxImagesPer1Minute)
+		data.Batch1DayMaxInputTokens = types.Int64PointerValue(rl.Batch1DayMaxInputTokens)
+		data.MaxAudioMegabytesPer1Minute = types.Int64PointerValue(rl.MaxAudioMegabytesPer1Minute)
+		data.MaxRequestsPer1Day = types.Int64PointerValue(rl.MaxRequestsPer1Day)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-}
-
-func int64PointerValue(v *int) types.Int64 {
-	if v == nil {
-		return types.Int64Null()
-	}
-	return types.Int64Value(int64(*v))
 }
 
 func (r *RateLimitResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
