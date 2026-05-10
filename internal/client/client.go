@@ -2891,14 +2891,15 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 
 		// If still not found, use fallback values
 		if !ok {
+			fallback := 1000000
 			return &RateLimit{
 				Model:                       model,
-				MaxRequestsPer1Minute:       intPtr(1000000), // Very high value to effectively make it unlimited
-				MaxTokensPer1Minute:         intPtr(1000000), // Very high value to effectively make it unlimited
-				MaxImagesPer1Minute:         intPtr(1000000), // Very high value to effectively make it unlimited
-				Batch1DayMaxInputTokens:     intPtr(1000000), // Very high value to effectively make it unlimited
-				MaxAudioMegabytesPer1Minute: intPtr(1000000), // Very high value to effectively make it unlimited
-				MaxRequestsPer1Day:          intPtr(1000000), // Very high value to effectively make it unlimited
+				MaxRequestsPer1Minute:       &fallback, // Very high value to effectively make it unlimited
+				MaxTokensPer1Minute:         &fallback, // Very high value to effectively make it unlimited
+				MaxImagesPer1Minute:         &fallback, // Very high value to effectively make it unlimited
+				Batch1DayMaxInputTokens:     &fallback, // Very high value to effectively make it unlimited
+				MaxAudioMegabytesPer1Minute: &fallback, // Very high value to effectively make it unlimited
+				MaxRequestsPer1Day:          &fallback, // Very high value to effectively make it unlimited
 			}
 		}
 	}
@@ -2906,17 +2907,13 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 	// Return values from the defaults map
 	return &RateLimit{
 		Model:                       model,
-		MaxRequestsPer1Minute:       intPtr(defaults.MaxRequestsPer1Minute),
-		MaxTokensPer1Minute:         intPtr(defaults.MaxTokensPer1Minute),
-		MaxImagesPer1Minute:         intPtr(defaults.MaxImagesPer1Minute),
-		Batch1DayMaxInputTokens:     intPtr(defaults.Batch1DayMaxInputTokens),
-		MaxAudioMegabytesPer1Minute: intPtr(defaults.MaxAudioMegabytesPer1Minute),
-		MaxRequestsPer1Day:          intPtr(defaults.MaxRequestsPer1Day),
+		MaxRequestsPer1Minute:       &defaults.MaxRequestsPer1Minute,
+		MaxTokensPer1Minute:         &defaults.MaxTokensPer1Minute,
+		MaxImagesPer1Minute:         &defaults.MaxImagesPer1Minute,
+		Batch1DayMaxInputTokens:     &defaults.Batch1DayMaxInputTokens,
+		MaxAudioMegabytesPer1Minute: &defaults.MaxAudioMegabytesPer1Minute,
+		MaxRequestsPer1Day:          &defaults.MaxRequestsPer1Day,
 	}
-}
-
-func intPtr(v int) *int {
-	return &v
 }
 
 // TestNetworkConnectivity tests if we can connect to the OpenAI API
