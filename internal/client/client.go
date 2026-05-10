@@ -2408,6 +2408,7 @@ func extractModelFromRateLimitID(rateLimitID string) string {
 	return strings.TrimPrefix(rateLimitID, "rl-")
 }
 
+// ptr returns a pointer to v.
 func ptr[T any](v T) *T {
 	return &v
 }

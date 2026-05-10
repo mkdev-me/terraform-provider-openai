@@ -44,6 +44,7 @@ func testClient() *client.OpenAIClient {
 	)
 }
 
+// TestRateLimitResourceReadPreservesNullOptionalIntegers verifies null API rate limit values stay null in Terraform state.
 func TestRateLimitResourceReadPreservesNullOptionalIntegers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead && r.URL.Path == "/v1" {
