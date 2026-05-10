@@ -163,12 +163,12 @@ type RateLimit struct {
 	ID                          string `json:"id"`
 	Object                      string `json:"object"`
 	Model                       string `json:"model"`
-	MaxRequestsPer1Minute       int    `json:"max_requests_per_1_minute"`
-	MaxTokensPer1Minute         int    `json:"max_tokens_per_1_minute"`
-	MaxImagesPer1Minute         int    `json:"max_images_per_1_minute"`
-	Batch1DayMaxInputTokens     int    `json:"batch_1_day_max_input_tokens"`
-	MaxAudioMegabytesPer1Minute int    `json:"max_audio_megabytes_per_1_minute"`
-	MaxRequestsPer1Day          int    `json:"max_requests_per_1_day"`
+	MaxRequestsPer1Minute       *int64 `json:"max_requests_per_1_minute"`
+	MaxTokensPer1Minute         *int64 `json:"max_tokens_per_1_minute"`
+	MaxImagesPer1Minute         *int64 `json:"max_images_per_1_minute"`
+	Batch1DayMaxInputTokens     *int64 `json:"batch_1_day_max_input_tokens"`
+	MaxAudioMegabytesPer1Minute *int64 `json:"max_audio_megabytes_per_1_minute"`
+	MaxRequestsPer1Day          *int64 `json:"max_requests_per_1_day"`
 }
 
 // RateLimitListResponse represents the response from the API when listing rate limits
@@ -1429,23 +1429,25 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) err
 	defaultValues := getDefaultRateLimitValues(targetRateLimit.Model)
 
 	// Create the request body with default values
-	req := map[string]interface{}{
-		"max_requests_per_1_minute": defaultValues.MaxRequestsPer1Minute,
-		"max_tokens_per_1_minute":   defaultValues.MaxTokensPer1Minute,
-	}
+	req := map[string]interface{}{}
 
-	// Add optional fields if they exist in the default values
-	if defaultValues.MaxImagesPer1Minute > 0 {
-		req["max_images_per_1_minute"] = defaultValues.MaxImagesPer1Minute
+	if defaultValues.MaxRequestsPer1Minute != nil {
+		req["max_requests_per_1_minute"] = *defaultValues.MaxRequestsPer1Minute
 	}
-	if defaultValues.MaxAudioMegabytesPer1Minute > 0 {
-		req["max_audio_megabytes_per_1_minute"] = defaultValues.MaxAudioMegabytesPer1Minute
+	if defaultValues.MaxTokensPer1Minute != nil {
+		req["max_tokens_per_1_minute"] = *defaultValues.MaxTokensPer1Minute
 	}
-	if defaultValues.Batch1DayMaxInputTokens > 0 {
-		req["batch_1_day_max_input_tokens"] = defaultValues.Batch1DayMaxInputTokens
+	if defaultValues.MaxImagesPer1Minute != nil {
+		req["max_images_per_1_minute"] = *defaultValues.MaxImagesPer1Minute
 	}
-	if defaultValues.MaxRequestsPer1Day > 0 {
-		req["max_requests_per_1_day"] = defaultValues.MaxRequestsPer1Day
+	if defaultValues.MaxAudioMegabytesPer1Minute != nil {
+		req["max_audio_megabytes_per_1_minute"] = *defaultValues.MaxAudioMegabytesPer1Minute
+	}
+	if defaultValues.Batch1DayMaxInputTokens != nil {
+		req["batch_1_day_max_input_tokens"] = *defaultValues.Batch1DayMaxInputTokens
+	}
+	if defaultValues.MaxRequestsPer1Day != nil {
+		req["max_requests_per_1_day"] = *defaultValues.MaxRequestsPer1Day
 	}
 
 	// Send POST request to reset the rate limit to default values
@@ -2406,475 +2408,480 @@ func extractModelFromRateLimitID(rateLimitID string) string {
 	return strings.TrimPrefix(rateLimitID, "rl-")
 }
 
+// ptr returns a pointer to v.
+func ptr[T any](v T) *T {
+	return &v
+}
+
 // defaultRateLimits contains the default rate limit values for each model
 var defaultRateLimits = map[string]struct {
-	MaxRequestsPer1Minute       int
-	MaxTokensPer1Minute         int
-	MaxImagesPer1Minute         int
-	Batch1DayMaxInputTokens     int
-	MaxAudioMegabytesPer1Minute int
-	MaxRequestsPer1Day          int
+	MaxRequestsPer1Minute       *int64
+	MaxTokensPer1Minute         *int64
+	MaxImagesPer1Minute         *int64
+	Batch1DayMaxInputTokens     *int64
+	MaxAudioMegabytesPer1Minute *int64
+	MaxRequestsPer1Day          *int64
 }{
 	"babbage-002": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"chatgpt-4o-latest": {
-		MaxRequestsPer1Minute: 200,
-		MaxTokensPer1Minute:   500000,
+		MaxRequestsPer1Minute: ptr(int64(200)),
+		MaxTokensPer1Minute:   ptr(int64(500000)),
 	},
 	"computer-use-preview": {
-		MaxRequestsPer1Minute:   3000,
-		MaxTokensPer1Minute:     20000000,
-		MaxImagesPer1Minute:     20000,
-		Batch1DayMaxInputTokens: 450000000,
+		MaxRequestsPer1Minute:   ptr(int64(3000)),
+		MaxTokensPer1Minute:     ptr(int64(20000000)),
+		MaxImagesPer1Minute:     ptr(int64(20000)),
+		Batch1DayMaxInputTokens: ptr(int64(450000000)),
 	},
 	"computer-use-preview-2025-03-11": {
-		MaxRequestsPer1Minute:   3000,
-		MaxTokensPer1Minute:     20000000,
-		MaxImagesPer1Minute:     20000,
-		Batch1DayMaxInputTokens: 450000000,
+		MaxRequestsPer1Minute:   ptr(int64(3000)),
+		MaxTokensPer1Minute:     ptr(int64(20000000)),
+		MaxImagesPer1Minute:     ptr(int64(20000)),
+		Batch1DayMaxInputTokens: ptr(int64(450000000)),
 	},
 	"dall-e-2": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
-		MaxImagesPer1Minute:   100,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
+		MaxImagesPer1Minute:   ptr(int64(100)),
 	},
 	"dall-e-3": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
-		MaxImagesPer1Minute:   15,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
+		MaxImagesPer1Minute:   ptr(int64(15)),
 	},
 	"davinci-002": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"default": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"ft:babbage-002": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"ft:davinci-002": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"ft:gpt-3.5-turbo-0125": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"ft:gpt-3.5-turbo-0613": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"ft:gpt-3.5-turbo-1106": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"ft:	-0613": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     300000,
-		Batch1DayMaxInputTokens: 30000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(300000)),
+		Batch1DayMaxInputTokens: ptr(int64(30000000)),
 	},
 	"ft:gpt-4o-2024-05-13": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"ft:gpt-4o-mini-2024-07-18": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-3.5-turbo": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-3.5-turbo-0125": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-3.5-turbo-1106": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-3.5-turbo-16k": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-3.5-turbo-instruct": {
-		MaxRequestsPer1Minute:   3500,
-		MaxTokensPer1Minute:     90000,
-		MaxImagesPer1Minute:     2147483647,
-		Batch1DayMaxInputTokens: 200000,
+		MaxRequestsPer1Minute:   ptr(int64(3500)),
+		MaxTokensPer1Minute:     ptr(int64(90000)),
+		MaxImagesPer1Minute:     ptr(int64(2147483647)),
+		Batch1DayMaxInputTokens: ptr(int64(200000)),
 	},
 	"gpt-3.5-turbo-instruct-0914": {
-		MaxRequestsPer1Minute:   3500,
-		MaxTokensPer1Minute:     90000,
-		MaxImagesPer1Minute:     2147483647,
-		Batch1DayMaxInputTokens: 200000,
+		MaxRequestsPer1Minute:   ptr(int64(3500)),
+		MaxTokensPer1Minute:     ptr(int64(90000)),
+		MaxImagesPer1Minute:     ptr(int64(2147483647)),
+		Batch1DayMaxInputTokens: ptr(int64(200000)),
 	},
 	"gpt-4": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     300000,
-		Batch1DayMaxInputTokens: 30000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(300000)),
+		Batch1DayMaxInputTokens: ptr(int64(30000000)),
 	},
 	"gpt-4-0125-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     300000,
-		Batch1DayMaxInputTokens: 30000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(300000)),
+		Batch1DayMaxInputTokens: ptr(int64(30000000)),
 	},
 	"gpt-4-0613": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     300000,
-		Batch1DayMaxInputTokens: 30000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(300000)),
+		Batch1DayMaxInputTokens: ptr(int64(30000000)),
 	},
 	"gpt-4-1106-preview": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   450000,
-		MaxRequestsPer1Day:    2147483647,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(450000)),
+		MaxRequestsPer1Day:    ptr(int64(2147483647)),
 	},
 	"gpt-4-turbo": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     800000,
-		MaxImagesPer1Minute:     10000,
-		Batch1DayMaxInputTokens: 80000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(800000)),
+		MaxImagesPer1Minute:     ptr(int64(10000)),
+		Batch1DayMaxInputTokens: ptr(int64(80000000)),
 	},
 	"gpt-4-turbo-2024-04-09": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     800000,
-		MaxImagesPer1Minute:     10000,
-		Batch1DayMaxInputTokens: 80000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(800000)),
+		MaxImagesPer1Minute:     ptr(int64(10000)),
+		Batch1DayMaxInputTokens: ptr(int64(80000000)),
 	},
 	"gpt-4-turbo-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     800000,
-		MaxImagesPer1Minute:     10000,
-		Batch1DayMaxInputTokens: 80000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(800000)),
+		MaxImagesPer1Minute:     ptr(int64(10000)),
+		Batch1DayMaxInputTokens: ptr(int64(80000000)),
 	},
 	"gpt-4.1": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4.1-2025-04-14": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4.1-long-context": {
-		MaxRequestsPer1Minute:   1000,
-		MaxTokensPer1Minute:     5000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 100000000,
+		MaxRequestsPer1Minute:   ptr(int64(1000)),
+		MaxTokensPer1Minute:     ptr(int64(5000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(100000000)),
 	},
 	"gpt-4.1-mini": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4.1-mini-2025-04-14": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4.1-mini-long-context": {
-		MaxRequestsPer1Minute:   2000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(2000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4.1-nano": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4.1-nano-2025-04-14": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4.1-nano-long-context": {
-		MaxRequestsPer1Minute:   2000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(2000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4.5-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     1000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 100000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(1000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(100000000)),
 	},
 	"gpt-4.5-preview-2025-02-27": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     1000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 100000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(1000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(100000000)),
 	},
 	"gpt-4o": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-2024-05-13": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-2024-08-06": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-2024-11-20": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-audio-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-audio-preview-2024-10-01": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-audio-preview-2024-12-17": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"gpt-4o-mini": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4o-mini-2024-07-18": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4o-mini-audio-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4o-mini-audio-preview-2024-12-17": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"gpt-4o-mini-realtime-preview": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   4000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(4000000)),
 	},
 	"gpt-4o-mini-realtime-preview-2024-12-17": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   4000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(4000000)),
 	},
 	"gpt-4o-mini-search-preview": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   200000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(200000)),
 	},
 	"gpt-4o-mini-search-preview-2025-03-11": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   200000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(200000)),
 	},
 	"gpt-4o-mini-transcribe": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   2000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(2000000)),
 	},
 	"gpt-4o-mini-tts": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   2000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(2000000)),
 	},
 	"gpt-4o-realtime-preview": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   4000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(4000000)),
 	},
 	"gpt-4o-realtime-preview-2024-10-01": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   4000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(4000000)),
 	},
 	"gpt-4o-realtime-preview-2024-12-17": {
-		MaxRequestsPer1Minute: 3000,
-		MaxTokensPer1Minute:   250000,
-		MaxImagesPer1Minute:   10,
+		MaxRequestsPer1Minute: ptr(int64(3000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
+		MaxImagesPer1Minute:   ptr(int64(10)),
 	},
 	"gpt-4o-search-preview": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   200000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(200000)),
 	},
 	"gpt-4o-search-preview-2025-03-11": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   200000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(200000)),
 	},
 	"gpt-4o-transcribe": {
-		MaxRequestsPer1Minute: 10000,
-		MaxTokensPer1Minute:   2000000,
+		MaxRequestsPer1Minute: ptr(int64(10000)),
+		MaxTokensPer1Minute:   ptr(int64(2000000)),
 	},
 	"o1": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o1-2024-12-17": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o1-mini": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"o1-mini-2024-09-12": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"o1-preview": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o1-preview-2024-09-12": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o1-pro": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o1-pro-2025-03-19": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o3": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o3-2025-04-16": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     2000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 200000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(2000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(200000000)),
 	},
 	"o3-mini": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"o3-mini-2025-01-31": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"o4-mini": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"o4-mini-2025-04-16": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     10000000,
-		MaxImagesPer1Minute:     50000,
-		Batch1DayMaxInputTokens: 1000000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(10000000)),
+		MaxImagesPer1Minute:     ptr(int64(50000)),
+		Batch1DayMaxInputTokens: ptr(int64(1000000000)),
 	},
 	"omni-moderation-2024-09-26": {
-		MaxRequestsPer1Minute: 2000,
-		MaxTokensPer1Minute:   250000,
+		MaxRequestsPer1Minute: ptr(int64(2000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
 	},
 	"omni-moderation-latest": {
-		MaxRequestsPer1Minute: 2000,
-		MaxTokensPer1Minute:   250000,
+		MaxRequestsPer1Minute: ptr(int64(2000)),
+		MaxTokensPer1Minute:   ptr(int64(250000)),
 	},
 	"text-embedding-3-large": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     5000000,
-		Batch1DayMaxInputTokens: 500000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(5000000)),
+		Batch1DayMaxInputTokens: ptr(int64(500000000)),
 	},
 	"text-embedding-3-small": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     5000000,
-		Batch1DayMaxInputTokens: 500000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(5000000)),
+		Batch1DayMaxInputTokens: ptr(int64(500000000)),
 	},
 	"text-embedding-ada-002": {
-		MaxRequestsPer1Minute:   10000,
-		MaxTokensPer1Minute:     5000000,
-		Batch1DayMaxInputTokens: 500000000,
+		MaxRequestsPer1Minute:   ptr(int64(10000)),
+		MaxTokensPer1Minute:     ptr(int64(5000000)),
+		Batch1DayMaxInputTokens: ptr(int64(500000000)),
 	},
 	"text-moderation-latest": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   150000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(150000)),
 	},
 	"text-moderation-stable": {
-		MaxRequestsPer1Minute: 1000,
-		MaxTokensPer1Minute:   150000,
+		MaxRequestsPer1Minute: ptr(int64(1000)),
+		MaxTokensPer1Minute:   ptr(int64(150000)),
 	},
 	"tts-1": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
 	},
 	"tts-1-1106": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
 	},
 	"tts-1-hd": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
-		MaxImagesPer1Minute:   2147483647,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
+		MaxImagesPer1Minute:   ptr(int64(2147483647)),
 	},
 	"tts-1-hd-1106": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
-		MaxImagesPer1Minute:   2147483647,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
+		MaxImagesPer1Minute:   ptr(int64(2147483647)),
 	},
 	"whisper-1": {
-		MaxRequestsPer1Minute: 7500,
-		MaxTokensPer1Minute:   2147483647,
+		MaxRequestsPer1Minute: ptr(int64(7500)),
+		MaxTokensPer1Minute:   ptr(int64(2147483647)),
 	},
 }
 
@@ -2891,12 +2898,12 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 		if !ok {
 			return &RateLimit{
 				Model:                       model,
-				MaxRequestsPer1Minute:       1000000, // Very high value to effectively make it unlimited
-				MaxTokensPer1Minute:         1000000, // Very high value to effectively make it unlimited
-				MaxImagesPer1Minute:         1000000, // Very high value to effectively make it unlimited
-				Batch1DayMaxInputTokens:     1000000, // Very high value to effectively make it unlimited
-				MaxAudioMegabytesPer1Minute: 1000000, // Very high value to effectively make it unlimited
-				MaxRequestsPer1Day:          1000000, // Very high value to effectively make it unlimited
+				MaxRequestsPer1Minute:       ptr(int64(1000000)), // Very high value to effectively make it unlimited
+				MaxTokensPer1Minute:         ptr(int64(1000000)), // Very high value to effectively make it unlimited
+				MaxImagesPer1Minute:         ptr(int64(1000000)), // Very high value to effectively make it unlimited
+				Batch1DayMaxInputTokens:     ptr(int64(1000000)), // Very high value to effectively make it unlimited
+				MaxAudioMegabytesPer1Minute: ptr(int64(1000000)), // Very high value to effectively make it unlimited
+				MaxRequestsPer1Day:          ptr(int64(1000000)), // Very high value to effectively make it unlimited
 			}
 		}
 	}
