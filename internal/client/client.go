@@ -163,8 +163,8 @@ type RateLimit struct {
 	ID                          string `json:"id"`
 	Object                      string `json:"object"`
 	Model                       string `json:"model"`
-	MaxRequestsPer1Minute       int    `json:"max_requests_per_1_minute"`
-	MaxTokensPer1Minute         int    `json:"max_tokens_per_1_minute"`
+	MaxRequestsPer1Minute       *int   `json:"max_requests_per_1_minute"`
+	MaxTokensPer1Minute         *int   `json:"max_tokens_per_1_minute"`
 	MaxImagesPer1Minute         *int   `json:"max_images_per_1_minute"`
 	Batch1DayMaxInputTokens     *int   `json:"batch_1_day_max_input_tokens"`
 	MaxAudioMegabytesPer1Minute *int   `json:"max_audio_megabytes_per_1_minute"`
@@ -1429,12 +1429,14 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) err
 	defaultValues := getDefaultRateLimitValues(targetRateLimit.Model)
 
 	// Create the request body with default values
-	req := map[string]interface{}{
-		"max_requests_per_1_minute": defaultValues.MaxRequestsPer1Minute,
-		"max_tokens_per_1_minute":   defaultValues.MaxTokensPer1Minute,
-	}
+	req := map[string]interface{}{}
 
-	// Add optional fields if they exist in the default values
+	if defaultValues.MaxRequestsPer1Minute != nil {
+		req["max_requests_per_1_minute"] = *defaultValues.MaxRequestsPer1Minute
+	}
+	if defaultValues.MaxTokensPer1Minute != nil {
+		req["max_tokens_per_1_minute"] = *defaultValues.MaxTokensPer1Minute
+	}
 	if defaultValues.MaxImagesPer1Minute != nil && *defaultValues.MaxImagesPer1Minute > 0 {
 		req["max_images_per_1_minute"] = *defaultValues.MaxImagesPer1Minute
 	}
@@ -2891,8 +2893,8 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 		if !ok {
 			return &RateLimit{
 				Model:                       model,
-				MaxRequestsPer1Minute:       1000000,         // Very high value to effectively make it unlimited
-				MaxTokensPer1Minute:         1000000,         // Very high value to effectively make it unlimited
+				MaxRequestsPer1Minute:       intPtr(1000000), // Very high value to effectively make it unlimited
+				MaxTokensPer1Minute:         intPtr(1000000), // Very high value to effectively make it unlimited
 				MaxImagesPer1Minute:         intPtr(1000000), // Very high value to effectively make it unlimited
 				Batch1DayMaxInputTokens:     intPtr(1000000), // Very high value to effectively make it unlimited
 				MaxAudioMegabytesPer1Minute: intPtr(1000000), // Very high value to effectively make it unlimited
@@ -2904,8 +2906,8 @@ func getDefaultRateLimitValues(model string) *RateLimit {
 	// Return values from the defaults map
 	return &RateLimit{
 		Model:                       model,
-		MaxRequestsPer1Minute:       defaults.MaxRequestsPer1Minute,
-		MaxTokensPer1Minute:         defaults.MaxTokensPer1Minute,
+		MaxRequestsPer1Minute:       intPtr(defaults.MaxRequestsPer1Minute),
+		MaxTokensPer1Minute:         intPtr(defaults.MaxTokensPer1Minute),
 		MaxImagesPer1Minute:         intPtr(defaults.MaxImagesPer1Minute),
 		Batch1DayMaxInputTokens:     intPtr(defaults.Batch1DayMaxInputTokens),
 		MaxAudioMegabytesPer1Minute: intPtr(defaults.MaxAudioMegabytesPer1Minute),

@@ -228,8 +228,8 @@ func (r *RateLimitResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	if rl != nil {
-		data.MaxRequestsPerMinute = types.Int64Value(int64(rl.MaxRequestsPer1Minute))
-		data.MaxTokensPerMinute = types.Int64Value(int64(rl.MaxTokensPer1Minute))
+		data.MaxRequestsPerMinute = int64PointerValue(rl.MaxRequestsPer1Minute)
+		data.MaxTokensPerMinute = int64PointerValue(rl.MaxTokensPer1Minute)
 		data.MaxImagesPerMinute = int64PointerValue(rl.MaxImagesPer1Minute)
 		data.Batch1DayMaxInputTokens = int64PointerValue(rl.Batch1DayMaxInputTokens)
 		data.MaxAudioMegabytesPer1Minute = int64PointerValue(rl.MaxAudioMegabytesPer1Minute)
