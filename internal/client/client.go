@@ -1437,16 +1437,16 @@ func (c *OpenAIClient) DeleteRateLimit(projectID, modelOrRateLimitID string) err
 	if defaultValues.MaxTokensPer1Minute != nil {
 		req["max_tokens_per_1_minute"] = *defaultValues.MaxTokensPer1Minute
 	}
-	if defaultValues.MaxImagesPer1Minute != nil && *defaultValues.MaxImagesPer1Minute > 0 {
+	if defaultValues.MaxImagesPer1Minute != nil {
 		req["max_images_per_1_minute"] = *defaultValues.MaxImagesPer1Minute
 	}
-	if defaultValues.MaxAudioMegabytesPer1Minute != nil && *defaultValues.MaxAudioMegabytesPer1Minute > 0 {
+	if defaultValues.MaxAudioMegabytesPer1Minute != nil {
 		req["max_audio_megabytes_per_1_minute"] = *defaultValues.MaxAudioMegabytesPer1Minute
 	}
-	if defaultValues.Batch1DayMaxInputTokens != nil && *defaultValues.Batch1DayMaxInputTokens > 0 {
+	if defaultValues.Batch1DayMaxInputTokens != nil {
 		req["batch_1_day_max_input_tokens"] = *defaultValues.Batch1DayMaxInputTokens
 	}
-	if defaultValues.MaxRequestsPer1Day != nil && *defaultValues.MaxRequestsPer1Day > 0 {
+	if defaultValues.MaxRequestsPer1Day != nil {
 		req["max_requests_per_1_day"] = *defaultValues.MaxRequestsPer1Day
 	}
 
