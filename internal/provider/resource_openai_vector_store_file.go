@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+const (
+	// vectorStoreFileReadMaxRetries bounds the read-after-create verification at
+	// 5 attempts (~31s worst case with exponential backoff: 1s, 2s, 4s, 8s, 16s).
+	vectorStoreFileReadMaxRetries = 5
+	vectorStoreFileReadBaseDelay  = 1 * time.Second
 )
 
 var _ resource.Resource = &VectorStoreFileResource{}
@@ -196,21 +205,39 @@ func (r *VectorStoreFileResource) Create(ctx context.Context, req resource.Creat
 	data.Status = types.StringValue(vsFileResp.Status)
 	data.UsageBytes = types.Int64Value(vsFileResp.UsageBytes)
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-}
+	tflog.Info(ctx, fmt.Sprintf("Vector store file created: %s in vector store %s", vsFileResp.ID, data.VectorStoreID.ValueString()))
 
-func (r *VectorStoreFileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data VectorStoreFileResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	// The OpenAI API is eventually consistent: a GET issued right after creation can
+	// return "no file found", especially when many files are created at once (#35).
+	// Verify the file is readable before finishing, retrying with exponential backoff.
+	verified, err := r.readVectorStoreFileWithRetry(ctx, data.VectorStoreID.ValueString(), vsFileResp.ID, vectorStoreFileReadMaxRetries)
+	if err != nil {
+		// The file was created; persist state so it is tracked (tainted) instead of orphaned.
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		resp.Diagnostics.AddError("Error reading vector store file after creation", err.Error())
 		return
 	}
 
-	url := fmt.Sprintf("%s/vector_stores/%s/files/%s", r.client.OpenAIClient.APIURL, data.VectorStoreID.ValueString(), data.ID.ValueString())
+	data.Status = types.StringValue(verified.Status)
+	data.UsageBytes = types.Int64Value(verified.UsageBytes)
+	if verified.LastError != nil {
+		data.LastError = &VSLastErrorModel{
+			Code:    types.StringValue(verified.LastError.Code),
+			Message: types.StringValue(verified.LastError.Message),
+		}
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// getVectorStoreFile retrieves a single vector store file from the API.
+// A 404 is returned as an error whose message matches containsRetriableError,
+// alongside the HTTP status code so callers can distinguish "gone" from failure.
+func (r *VectorStoreFileResource) getVectorStoreFile(vectorStoreID, fileID string) (*VectorStoreFileResponse, int, error) {
+	url := fmt.Sprintf("%s/vector_stores/%s/files/%s", r.client.OpenAIClient.APIURL, vectorStoreID, fileID)
 	apiReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
+		return nil, 0, err
 	}
 	apiReq.Header.Set("Authorization", "Bearer "+r.client.OpenAIClient.APIKey)
 	apiReq.Header.Set("OpenAI-Beta", "assistants=v2")
@@ -220,26 +247,101 @@ func (r *VectorStoreFileResource) Read(ctx context.Context, req resource.ReadReq
 
 	apiResp, err := http.DefaultClient.Do(apiReq)
 	if err != nil {
-		resp.Diagnostics.AddError("Error making request", err.Error())
-		return
+		return nil, 0, err
 	}
 	defer apiResp.Body.Close()
 
+	respBodyBytes, _ := io.ReadAll(apiResp.Body)
 	if apiResp.StatusCode == http.StatusNotFound {
-		resp.State.RemoveResource(ctx)
-		return
+		return nil, apiResp.StatusCode, fmt.Errorf("no file found with id '%s' in vector store '%s'", fileID, vectorStoreID)
 	}
 	if apiResp.StatusCode != http.StatusOK {
-		resp.Diagnostics.AddError("API error", fmt.Sprintf("API returned error: %s", apiResp.Status))
-		return
+		return nil, apiResp.StatusCode, fmt.Errorf("API returned error: %s - %s", apiResp.Status, string(respBodyBytes))
 	}
 
 	var vsFileResp VectorStoreFileResponse
-	respBodyBytes, _ := io.ReadAll(apiResp.Body)
 	if err := json.Unmarshal(respBodyBytes, &vsFileResp); err != nil {
-		resp.Diagnostics.AddError("Error parsing response", err.Error())
+		return nil, apiResp.StatusCode, fmt.Errorf("error parsing response: %s", err)
+	}
+	return &vsFileResp, apiResp.StatusCode, nil
+}
+
+// containsRetriableError checks if an error message indicates a retriable error.
+// Uses case-insensitive matching to catch "404 Not Found", "No file found", etc.
+func containsRetriableError(message string) bool {
+	lowerMsg := strings.ToLower(message)
+	return strings.Contains(lowerMsg, "no file found") || strings.Contains(lowerMsg, "not found")
+}
+
+// retryVectorStoreFileRead runs read, retrying on "not found" errors to handle
+// eventual consistency issues with the OpenAI API.
+//
+// Retry behavior:
+//   - Retries up to maxRetries times (must be >= 1)
+//   - Exponential backoff: baseDelay * 1, 2, 4, 8, 16...
+//   - Only retries on "not found" errors (case-insensitive); other errors fail immediately
+func retryVectorStoreFileRead(ctx context.Context, maxRetries int, baseDelay time.Duration, read func() error) error {
+	if maxRetries <= 0 {
+		return fmt.Errorf("maxRetries must be at least 1 for vector store file read retries")
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			backoffDuration := time.Duration(1<<uint(attempt-1)) * baseDelay
+			tflog.Info(ctx, fmt.Sprintf("Retrying vector store file read after %v (attempt %d/%d)", backoffDuration, attempt+1, maxRetries))
+			time.Sleep(backoffDuration)
+		}
+
+		err := read()
+		if err == nil {
+			return nil
+		}
+		if !containsRetriableError(err.Error()) {
+			return err
+		}
+
+		lastErr = err
+		tflog.Warn(ctx, fmt.Sprintf("Vector store file not found, will retry (attempt %d/%d)", attempt+1, maxRetries))
+	}
+
+	tflog.Error(ctx, fmt.Sprintf("Failed to read vector store file after %d attempts", maxRetries))
+	return lastErr
+}
+
+func (r *VectorStoreFileResource) readVectorStoreFileWithRetry(ctx context.Context, vectorStoreID, fileID string, maxRetries int) (*VectorStoreFileResponse, error) {
+	var result *VectorStoreFileResponse
+	err := retryVectorStoreFileRead(ctx, maxRetries, vectorStoreFileReadBaseDelay, func() error {
+		vsFile, _, err := r.getVectorStoreFile(vectorStoreID, fileID)
+		if err != nil {
+			return err
+		}
+		result = vsFile
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *VectorStoreFileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data VectorStoreFileResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	vsFile, statusCode, err := r.getVectorStoreFile(data.VectorStoreID.ValueString(), data.ID.ValueString())
+	if statusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if err != nil {
+		resp.Diagnostics.AddError("API error", err.Error())
+		return
+	}
+	vsFileResp := *vsFile
 
 	data.Status = types.StringValue(vsFileResp.Status)
 	data.CreatedAt = types.Int64Value(vsFileResp.CreatedAt)
