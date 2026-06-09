@@ -62,4 +62,4 @@ jobs:
       - run: go mod download
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.6
+          version: v2.8.0

@@ -54,6 +54,8 @@ output "audio_file_path" {
 
 Import is supported using the following syntax:
 
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
 ```shell
 #!/bin/bash
 # Text-to-speech resources cannot be imported
