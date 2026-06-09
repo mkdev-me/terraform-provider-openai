@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # pull_request_target (not pull_request) is required for the autolabeler to
+  # work on PRs from forks: the workflow and release-drafter config are read
+  # from the trusted base branch, no PR code is checked out or executed, and
+  # the token keeps the write permissions the autolabeler needs.
+  pull_request_target:
     types: [opened, reopened, synchronize]
 
 permissions:
