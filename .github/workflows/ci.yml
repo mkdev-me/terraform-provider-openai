@@ -6,6 +6,12 @@ on:
     branches:
       - main
 
+# CI builds and runs code from the PR, so it must stay on the pull_request
+# trigger (untrusted forks only get a read-only token there) and never needs
+# more than read access itself.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
