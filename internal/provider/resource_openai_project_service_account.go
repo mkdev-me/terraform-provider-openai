@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -125,29 +124,8 @@ func (r *ProjectServiceAccountResource) Create(ctx context.Context, req resource
 		return
 	}
 
-	// API Endpoint for creating service account in a project
-	// URL: POST /organization/projects/{project_id}/service_accounts
-	url := fmt.Sprintf("%s/organization/projects/%s/service_accounts", r.client.OpenAIClient.APIURL, projectID)
-	apiReq, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-
-	apiReq.Header.Set("Content-Type", "application/json")
-	// Needs Admin Key? SDKv2 uses GetOpenAIClientWithAdminKey
-	// We should use AdminAPIKey if available.
-	apiKey := r.client.OpenAIClient.APIKey
-	if r.client.AdminAPIKey != "" {
-		apiKey = r.client.AdminAPIKey
-	}
-	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
-	// Does it need Organization ID? Not explicitly mentioned but safe to add if available
-	if r.client.OpenAIClient.OrganizationID != "" {
-		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
-	}
-
-	apiResp, err := http.DefaultClient.Do(apiReq)
+	url := fmt.Sprintf("%s/v1/organization/projects/%s/service_accounts", adminBaseURL(r.client), projectID)
+	apiResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, url, reqBody)
 	if err != nil {
 		resp.Diagnostics.AddError("Error making request", err.Error())
 		return
@@ -201,23 +179,8 @@ func (r *ProjectServiceAccountResource) Read(ctx context.Context, req resource.R
 
 	data.ProjectID = types.StringValue(projectID)
 
-	url := fmt.Sprintf("%s/organization/projects/%s/service_accounts/%s", r.client.OpenAIClient.APIURL, projectID, serviceAccountID)
-	apiReq, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-
-	apiKey := r.client.OpenAIClient.APIKey
-	if r.client.AdminAPIKey != "" {
-		apiKey = r.client.AdminAPIKey
-	}
-	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
-	if r.client.OpenAIClient.OrganizationID != "" {
-		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
-	}
-
-	apiResp, err := http.DefaultClient.Do(apiReq)
+	url := fmt.Sprintf("%s/v1/organization/projects/%s/service_accounts/%s", adminBaseURL(r.client), projectID, serviceAccountID)
+	apiResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodGet, url, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error making request", err.Error())
 		return
@@ -276,22 +239,18 @@ func (r *ProjectServiceAccountResource) Delete(ctx context.Context, req resource
 	projectID := idParts[0]
 	serviceAccountID := idParts[1]
 
-	url := fmt.Sprintf("%s/organization/projects/%s/service_accounts/%s", r.client.OpenAIClient.APIURL, projectID, serviceAccountID)
-	apiReq, err := http.NewRequest("DELETE", url, nil)
+	url := fmt.Sprintf("%s/v1/organization/projects/%s/service_accounts/%s", adminBaseURL(r.client), projectID, serviceAccountID)
+	deleteResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodDelete, url, nil)
 	if err != nil {
+		resp.Diagnostics.AddError("Error deleting project service account", err.Error())
 		return
 	}
+	defer deleteResp.Body.Close()
 
-	apiKey := r.client.OpenAIClient.APIKey
-	if r.client.AdminAPIKey != "" {
-		apiKey = r.client.AdminAPIKey
+	if deleteResp.StatusCode != http.StatusOK && deleteResp.StatusCode != http.StatusNoContent && deleteResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(deleteResp.Body)
+		resp.Diagnostics.AddError("API error deleting project service account", fmt.Sprintf("%s - %s", deleteResp.Status, string(body)))
 	}
-	apiReq.Header.Set("Authorization", "Bearer "+apiKey)
-	if r.client.OpenAIClient.OrganizationID != "" {
-		apiReq.Header.Set("OpenAI-Organization", r.client.OpenAIClient.OrganizationID)
-	}
-
-	http.DefaultClient.Do(apiReq)
 }
 
 func (r *ProjectServiceAccountResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

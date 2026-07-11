@@ -3,6 +3,7 @@ module github.com/mkdev-me/terraform-provider-openai
 go 1.25.8
 
 require (
+	github.com/gokyle/filecache v0.0.0-20220803205700-e8a4791094b7
 	github.com/hashicorp/terraform-plugin-docs v0.25.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0

@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"strings"
+	"io"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -12,14 +14,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/mkdev-me/terraform-provider-openai/internal/client"
 )
 
 var _ resource.Resource = &ProjectResource{}
 var _ resource.ResourceWithImportState = &ProjectResource{}
 
 type ProjectResource struct {
-	client *client.OpenAIClient
+	client *OpenAIClient
 }
 
 func NewProjectResource() resource.Resource {
@@ -80,14 +81,7 @@ func (r *ProjectResource) Configure(ctx context.Context, req resource.ConfigureR
 		return
 	}
 
-	// Project management requires Admin Keys
-	cl, err := GetOpenAIClientWithAdminKey(providerClient)
-	if err != nil {
-		resp.Diagnostics.AddError("Error getting OpenAI Client with Admin Key", err.Error())
-		return
-	}
-
-	r.client = cl
+	r.client = providerClient
 }
 
 func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -97,25 +91,28 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	project, err := r.client.CreateProject(data.Name.ValueString())
+	requestBody := map[string]interface{}{
+		"name": data.Name.ValueString(),
+	}
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		resp.Diagnostics.AddError("Error marshaling request", err.Error())
+		return
+	}
+
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, adminBaseURL(r.client)+"/v1/organization/projects", body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating project", err.Error())
 		return
 	}
+	defer httpResp.Body.Close()
 
-	data.ID = types.StringValue(project.ID)
-	data.Name = types.StringValue(project.Name)
-	data.Status = types.StringValue(project.Status)
-
-	if project.CreatedAt != nil {
-		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
+	project, err := decodeProjectResponse(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("API error creating project", err.Error())
+		return
 	}
-
-	if project.ArchivedAt != nil {
-		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
-	} else {
-		data.ArchivedAt = types.StringNull()
-	}
+	setProjectResourceData(&data, project)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -127,52 +124,23 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	project, err := r.client.GetProject(data.ID.ValueString())
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodGet, adminBaseURL(r.client)+"/v1/organization/projects/"+data.ID.ValueString(), nil)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
-			resp.State.RemoveResource(ctx)
-			return
-		}
 		resp.Diagnostics.AddError("Error reading project", err.Error())
 		return
 	}
+	defer httpResp.Body.Close()
 
-	// Check if project is loaded (GetProject might return error if 404, or might return nil if logic handled it?
-	// Currently client.GetProject returns error on non-200. I should verify if I need to handle 404 string in error.)
-	// Looking at client.GetProject in client.go, it wraps doRequest.
-	// doRequest checks for >= 400 and returns "API error (status %d): ..." or "API error: message".
-	// So I should check error string for "404" or similar if I want to remove from state.
-	// But actually client.GetProject returns error.
-
-	// Wait, I should verify client.GetProject.
-	// It calls doRequest. doRequest can return error with message.
-	// Common logic:
-	/*
-		if err != nil {
-			if strings.Contains(err.Error(), "404") {
-				resp.State.RemoveResource(ctx)
-				return
-			}
-			resp.Diagnostics.AddError("Error reading project", err.Error())
-			return
-		}
-	*/
-
-	// I'll add the 404 check since I'm refactoring. However I can't check strings without `strings` package imported.
-	// I need to ensure `strings` is imported.
-
-	data.Name = types.StringValue(project.Name)
-	data.Status = types.StringValue(project.Status)
-
-	if project.CreatedAt != nil {
-		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
+	if httpResp.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		return
 	}
-
-	if project.ArchivedAt != nil {
-		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
-	} else {
-		data.ArchivedAt = types.StringNull()
+	project, err := decodeProjectResponse(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("API error reading project", err.Error())
+		return
 	}
+	setProjectResourceData(&data, project)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -184,24 +152,28 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	project, err := r.client.UpdateProject(data.ID.ValueString(), data.Name.ValueString())
+	requestBody := map[string]interface{}{
+		"name": data.Name.ValueString(),
+	}
+	body, err := json.Marshal(requestBody)
+	if err != nil {
+		resp.Diagnostics.AddError("Error marshaling request", err.Error())
+		return
+	}
+
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, adminBaseURL(r.client)+"/v1/organization/projects/"+data.ID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating project", err.Error())
 		return
 	}
+	defer httpResp.Body.Close()
 
-	data.Name = types.StringValue(project.Name)
-	data.Status = types.StringValue(project.Status)
-
-	if project.CreatedAt != nil {
-		data.CreatedAt = types.StringValue(time.Unix(*project.CreatedAt, 0).Format(time.RFC3339))
+	project, err := decodeProjectResponse(httpResp)
+	if err != nil {
+		resp.Diagnostics.AddError("API error updating project", err.Error())
+		return
 	}
-
-	if project.ArchivedAt != nil {
-		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
-	} else {
-		data.ArchivedAt = types.StringNull()
-	}
+	setProjectResourceData(&data, project)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -213,16 +185,55 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	err := r.client.DeleteProject(data.ID.ValueString())
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, adminBaseURL(r.client)+"/v1/organization/projects/"+data.ID.ValueString()+"/archive", nil)
 	if err != nil {
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
-			return
-		}
 		resp.Diagnostics.AddError("Error deleting (archiving) project", err.Error())
+		return
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode == http.StatusNotFound {
+		return
+	}
+	if httpResp.StatusCode < http.StatusOK || httpResp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(httpResp.Body)
+		resp.Diagnostics.AddError("API error deleting (archiving) project", fmt.Sprintf("%s - %s", httpResp.Status, string(body)))
 		return
 	}
 }
 
 func (r *ProjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func decodeProjectResponse(resp *http.Response) (*ProjectResponseFramework, error) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("%s - %s", resp.Status, string(body))
+	}
+
+	var project ProjectResponseFramework
+	if err := json.Unmarshal(body, &project); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal project response: %w", err)
+	}
+	return &project, nil
+}
+
+func setProjectResourceData(data *ProjectResourceModel, project *ProjectResponseFramework) {
+	data.ID = types.StringValue(project.ID)
+	data.Name = types.StringValue(project.Name)
+	data.Status = types.StringValue(project.Status)
+
+	if project.CreatedAt != 0 {
+		data.CreatedAt = types.StringValue(time.Unix(project.CreatedAt, 0).Format(time.RFC3339))
+	}
+
+	if project.ArchivedAt != nil {
+		data.ArchivedAt = types.StringValue(time.Unix(*project.ArchivedAt, 0).Format(time.RFC3339))
+	} else {
+		data.ArchivedAt = types.StringNull()
+	}
 }

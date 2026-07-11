@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -47,6 +48,8 @@ var (
 	groupCache   []GroupResponseFramework
 )
 
+var errProjectRolesNotFound = errors.New("project roles not found")
+
 // resetRoleCacheForTest clears the package-level role cache. Used only by tests.
 func resetRoleCacheForTest() {
 	roleCacheMu.Lock()
@@ -60,6 +63,16 @@ func resetRoleCacheForTest() {
 	groupCacheMu.Lock()
 	defer groupCacheMu.Unlock()
 	groupCache = nil
+}
+
+func invalidateProjectRoleCaches(projectID string) {
+	roleCacheMu.Lock()
+	delete(roleCache, projectID)
+	roleCacheMu.Unlock()
+
+	fullRoleCacheMu.Lock()
+	delete(fullRoleCache, projectID)
+	fullRoleCacheMu.Unlock()
 }
 
 // projectClientHTTP returns the provider's configured *http.Client when
@@ -154,6 +167,10 @@ func cachedListProjectRolesFull(ctx context.Context, c *OpenAIClient, projectID 
 		if err != nil {
 			return nil, err
 		}
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return nil, fmt.Errorf("%w for project %s", errProjectRolesNotFound, projectID)
+		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
 			return nil, fmt.Errorf("API error listing project roles for %s: %s", projectID, resp.Status)
@@ -180,6 +197,20 @@ func cachedListProjectRolesFull(ctx context.Context, c *OpenAIClient, projectID 
 
 	fullRoleCache[projectID] = out
 	return out, nil
+}
+
+func cachedProjectRoleByID(ctx context.Context, c *OpenAIClient, projectID, roleID string) (*RoleResponseFramework, error) {
+	roles, err := cachedListProjectRolesFull(ctx, c, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range roles {
+		if roles[i].ID == roleID {
+			role := roles[i]
+			return &role, nil
+		}
+	}
+	return nil, nil
 }
 
 // cachedListAllGroups returns all SCIM-managed groups in the org, fetching on

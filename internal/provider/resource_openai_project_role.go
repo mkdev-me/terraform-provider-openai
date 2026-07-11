@@ -1,15 +1,13 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -137,17 +135,7 @@ func (r *ProjectRoleResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	apiURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/roles"
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, adminBaseURL(r.client)+"/v1/projects/"+projectID+"/roles", body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating project role", err.Error())
 		return
@@ -159,6 +147,7 @@ func (r *ProjectRoleResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("API error creating project role", fmt.Sprintf("%s - %s", httpResp.Status, string(respBody)))
 		return
 	}
+	invalidateProjectRoleCaches(projectID)
 
 	var roleResp RoleResponseFramework
 	if err := json.Unmarshal(respBody, &roleResp); err != nil {
@@ -201,71 +190,14 @@ func (r *ProjectRoleResource) Read(ctx context.Context, req resource.ReadRequest
 	projectID := idParts[0]
 	roleID := idParts[1]
 
-	rolesURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/roles"
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-
-	var foundRole *RoleResponseFramework
-	cursor := ""
-
-	for foundRole == nil {
-		parsedURL, err := url.Parse(rolesURL)
-		if err != nil {
-			resp.Diagnostics.AddError("Error parsing URL", err.Error())
-			return
-		}
-		q := parsedURL.Query()
-		q.Set("limit", "100")
-		if cursor != "" {
-			q.Set("after", cursor)
-		}
-		parsedURL.RawQuery = q.Encode()
-
-		apiReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, apiReq)
-
-		apiResp, err := httpClient.Do(apiReq)
-		if err != nil {
-			resp.Diagnostics.AddError("Error listing project roles", err.Error())
-			return
-		}
-
-		if apiResp.StatusCode == http.StatusNotFound {
-			apiResp.Body.Close()
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		if apiResp.StatusCode != http.StatusOK {
-			apiResp.Body.Close()
-			resp.Diagnostics.AddError("API error listing project roles", fmt.Sprintf("API returned: %s", apiResp.Status))
-			return
-		}
-
-		var listResp RoleListResponse
-		if err := json.NewDecoder(apiResp.Body).Decode(&listResp); err != nil {
-			apiResp.Body.Close()
-			resp.Diagnostics.AddError("Error parsing project roles response", err.Error())
-			return
-		}
-		apiResp.Body.Close()
-
-		for i := range listResp.Data {
-			if listResp.Data[i].ID == roleID {
-				foundRole = &listResp.Data[i]
-				break
-			}
-		}
-
-		if foundRole != nil {
-			break
-		}
-		if !listResp.HasMore || listResp.Next == nil {
-			break
-		}
-		cursor = *listResp.Next
+	foundRole, err := cachedProjectRoleByID(ctx, r.client, projectID, roleID)
+	if errors.Is(err, errProjectRolesNotFound) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	if err != nil {
+		resp.Diagnostics.AddError("Error listing project roles", err.Error())
+		return
 	}
 
 	if foundRole == nil {
@@ -325,17 +257,7 @@ func (r *ProjectRoleResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	apiURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/roles/" + roleID
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, adminBaseURL(r.client)+"/v1/projects/"+projectID+"/roles/"+roleID, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating project role", err.Error())
 		return
@@ -347,6 +269,7 @@ func (r *ProjectRoleResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.AddError("API error updating project role", fmt.Sprintf("%s - %s", httpResp.Status, string(respBody)))
 		return
 	}
+	invalidateProjectRoleCaches(projectID)
 
 	var roleResp RoleResponseFramework
 	if err := json.Unmarshal(respBody, &roleResp); err != nil {
@@ -389,16 +312,7 @@ func (r *ProjectRoleResource) Delete(ctx context.Context, req resource.DeleteReq
 	projectID := idParts[0]
 	roleID := idParts[1]
 
-	deleteURL := adminBaseURL(r.client) + "/v1/projects/" + projectID + "/roles/" + roleID
-	deleteReq, err := http.NewRequest("DELETE", deleteURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, deleteReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	deleteResp, err := httpClient.Do(deleteReq)
+	deleteResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodDelete, adminBaseURL(r.client)+"/v1/projects/"+projectID+"/roles/"+roleID, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error deleting project role", err.Error())
 		return
@@ -410,6 +324,7 @@ func (r *ProjectRoleResource) Delete(ctx context.Context, req resource.DeleteReq
 		resp.Diagnostics.AddError("API error deleting project role", fmt.Sprintf("%s - %s", deleteResp.Status, string(body)))
 		return
 	}
+	invalidateProjectRoleCaches(projectID)
 }
 
 func (r *ProjectRoleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

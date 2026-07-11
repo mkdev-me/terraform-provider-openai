@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -98,17 +96,9 @@ func (r *OrganizationGroupRoleResource) Create(ctx context.Context, req resource
 		return
 	}
 
+	httpClient := projectClientHTTP(r.client)
 	apiURL := adminBaseURL(r.client) + "/v1/organization/groups/" + groupID + "/roles"
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, httpClient, r.client, "POST", apiURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error assigning role to group", err.Error())
 		return
@@ -142,7 +132,7 @@ func (r *OrganizationGroupRoleResource) Read(ctx context.Context, req resource.R
 	roleID := idParts[1]
 
 	rolesURL := adminBaseURL(r.client) + "/v1/organization/groups/" + groupID + "/roles"
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := projectClientHTTP(r.client)
 
 	found := false
 	cursor := ""
@@ -160,14 +150,7 @@ func (r *OrganizationGroupRoleResource) Read(ctx context.Context, req resource.R
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		apiReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, apiReq)
-
-		apiResp, err := httpClient.Do(apiReq)
+		apiResp, err := doRequestWithRetry(ctx, httpClient, r.client, "GET", parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error listing group roles", err.Error())
 			return
@@ -238,16 +221,9 @@ func (r *OrganizationGroupRoleResource) Delete(ctx context.Context, req resource
 	groupID := idParts[0]
 	roleID := idParts[1]
 
+	httpClient := projectClientHTTP(r.client)
 	deleteURL := adminBaseURL(r.client) + "/v1/organization/groups/" + groupID + "/roles/" + roleID
-	deleteReq, err := http.NewRequest("DELETE", deleteURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, deleteReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	deleteResp, err := httpClient.Do(deleteReq)
+	deleteResp, err := doRequestWithRetry(ctx, httpClient, r.client, "DELETE", deleteURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error removing role from group", err.Error())
 		return

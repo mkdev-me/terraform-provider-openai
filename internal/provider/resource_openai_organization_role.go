@@ -1,14 +1,12 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -127,16 +125,7 @@ func (r *OrganizationRoleResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	apiURL := adminBaseURL(r.client) + "/v1/organization/roles"
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, apiURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating organization role", err.Error())
 		return
@@ -185,7 +174,7 @@ func (r *OrganizationRoleResource) Read(ctx context.Context, req resource.ReadRe
 
 	roleID := data.ID.ValueString()
 	rolesURL := adminBaseURL(r.client) + "/v1/organization/roles"
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := projectClientHTTP(r.client)
 
 	var foundRole *RoleResponseFramework
 	cursor := ""
@@ -203,14 +192,7 @@ func (r *OrganizationRoleResource) Read(ctx context.Context, req resource.ReadRe
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		apiReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, apiReq)
-
-		apiResp, err := httpClient.Do(apiReq)
+		apiResp, err := doRequestWithRetry(ctx, httpClient, r.client, http.MethodGet, parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error listing organization roles", err.Error())
 			return
@@ -317,16 +299,7 @@ func (r *OrganizationRoleResource) Update(ctx context.Context, req resource.Upda
 	}
 
 	apiURL := adminBaseURL(r.client) + "/v1/organization/roles/" + roleID
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodPost, apiURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating organization role", err.Error())
 		return
@@ -376,15 +349,7 @@ func (r *OrganizationRoleResource) Delete(ctx context.Context, req resource.Dele
 	roleID := data.ID.ValueString()
 
 	deleteURL := adminBaseURL(r.client) + "/v1/organization/roles/" + roleID
-	deleteReq, err := http.NewRequest("DELETE", deleteURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, deleteReq)
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	deleteResp, err := httpClient.Do(deleteReq)
+	deleteResp, err := doRequestWithRetry(ctx, projectClientHTTP(r.client), r.client, http.MethodDelete, deleteURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error deleting organization role", err.Error())
 		return
