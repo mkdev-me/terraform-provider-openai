@@ -269,6 +269,8 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewModerationResource,
 		NewResponseResource,
 		NewRateLimitResource,
+		NewProjectModelPermissionsResource,
+		NewProjectSpendAlertResource,
 	}
 }
 
