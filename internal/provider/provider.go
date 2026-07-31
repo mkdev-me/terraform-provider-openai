@@ -271,6 +271,9 @@ func (p *FrameworkProvider) Resources(ctx context.Context) []func() resource.Res
 		NewRateLimitResource,
 		NewProjectModelPermissionsResource,
 		NewProjectSpendAlertResource,
+		NewProjectSpendLimitResource,
+		NewOrganizationSpendLimitResource,
+		NewOrganizationSpendAlertResource,
 	}
 }
 
