@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -397,8 +398,10 @@ func TestBackoffDuration_HonoursRetryAfter(t *testing.T) {
 	if got := backoffDuration(0, "5"); got.Seconds() != 5 {
 		t.Errorf("retry-after=5 → %v, want 5s", got)
 	}
-	if got := backoffDuration(0, "120"); got.Seconds() != 60 {
-		t.Errorf("retry-after=120 should cap at 60s, got %v", got)
+	for _, seconds := range []int{61, 64, 65, 120} {
+		if got := backoffDuration(0, fmt.Sprint(seconds)); got != time.Duration(seconds)*time.Second {
+			t.Errorf("retry-after=%d should be honoured exactly, got %v", seconds, got)
+		}
 	}
 	// Fallback path uses jittered exponential backoff: actual sleep is in
 	// [base/2, base] for base values 1, 2, 4, 8, 16, 30s.
