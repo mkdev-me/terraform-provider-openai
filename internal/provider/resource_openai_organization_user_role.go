@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -99,16 +98,8 @@ func (r *OrganizationUserRoleResource) Create(ctx context.Context, req resource.
 	}
 
 	apiURL := adminBaseURL(r.client) + "/v1/organization/users/" + userID + "/roles"
-	httpReq, err := http.NewRequest("POST", apiURL, bytes.NewReader(body))
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAdminAuthHeaders(r.client, httpReq)
-
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := doRequestWithRetry(ctx, httpClient, r.client, http.MethodPost, apiURL, body)
 	if err != nil {
 		resp.Diagnostics.AddError("Error assigning role to user", err.Error())
 		return
@@ -160,14 +151,7 @@ func (r *OrganizationUserRoleResource) Read(ctx context.Context, req resource.Re
 		}
 		parsedURL.RawQuery = q.Encode()
 
-		apiReq, err := http.NewRequest("GET", parsedURL.String(), nil)
-		if err != nil {
-			resp.Diagnostics.AddError("Error creating request", err.Error())
-			return
-		}
-		setAdminAuthHeaders(r.client, apiReq)
-
-		apiResp, err := httpClient.Do(apiReq)
+		apiResp, err := doRequestWithRetry(ctx, httpClient, r.client, http.MethodGet, parsedURL.String(), nil)
 		if err != nil {
 			resp.Diagnostics.AddError("Error listing user roles", err.Error())
 			return
@@ -239,15 +223,8 @@ func (r *OrganizationUserRoleResource) Delete(ctx context.Context, req resource.
 	roleID := idParts[1]
 
 	deleteURL := adminBaseURL(r.client) + "/v1/organization/users/" + userID + "/roles/" + roleID
-	deleteReq, err := http.NewRequest("DELETE", deleteURL, nil)
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating request", err.Error())
-		return
-	}
-	setAdminAuthHeaders(r.client, deleteReq)
-
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	deleteResp, err := httpClient.Do(deleteReq)
+	deleteResp, err := doRequestWithRetry(ctx, httpClient, r.client, http.MethodDelete, deleteURL, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Error removing role from user", err.Error())
 		return

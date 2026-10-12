@@ -575,7 +575,7 @@ func sleepWithBackoff(ctx context.Context, attempt int, retryAfter string) bool 
 
 // backoffDuration returns the wait time for a given attempt index. If
 // retryAfter (the value of the `Retry-After` header) is a non-negative integer
-// number of seconds, that value wins (capped at 60s; 0 means "retry now").
+// number of seconds, that value wins (0 means "retry now").
 // Otherwise we use a capped exponential schedule with "decorrelated" jitter:
 // the actual sleep is uniformly random in [base/2, base] for base values 1,
 // 2, 4, 8, 16, 30s. The jitter avoids thundering-herd when N concurrent
@@ -583,11 +583,7 @@ func sleepWithBackoff(ctx context.Context, attempt int, retryAfter string) bool 
 func backoffDuration(attempt int, retryAfter string) time.Duration {
 	if retryAfter != "" {
 		if secs, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && secs >= 0 {
-			capped := secs
-			if capped > 60 {
-				capped = 60
-			}
-			return time.Duration(capped) * time.Second
+			return time.Duration(secs) * time.Second
 		}
 	}
 	var base time.Duration
